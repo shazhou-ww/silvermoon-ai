@@ -62,3 +62,47 @@
 - 包发布、设备替换、依赖新 connector 的状态恢复/业务执行及真断网结果补传移出本轮 gate；没有把这些未做工作改记为通过，也没有改动已接受的 Ideal/Inner。
 - 此次条件性许可不直接记录为 acceptOuter；完成剩余线上检查、同步证据与 submitOuter 后，仍按精确 revision 呈现部署接受 gate。
 - 当前共享生产浏览器仍在登录页；本轮不创建认证凭据、不绕过鉴权。登录后真实列表/历史验证尚未完成，D-S03/D-AC02/D-AC03 暂未勾选。
+
+## 2026-10-11 22:32 后的真实网站验收
+
+用户共享已登录的 production 页面后，针对已同步的本轮网站范围 `deploymentRevision=dc16f8f376f51c9f8554b97c3545cee0502d2f77` 完成下列检查。所有请求直接访问生产 Relay，没有模拟 API、制造确认或替换设备。
+
+### 列表、搜索、菜单与分组
+
+| 实际操作／观测 | 结果 |
+|---|---|
+| 已授权账号的完整分页 GET | 6 个设备，406 条 Sessions；3 online/3 offline 均 unsupported，当前执行确认数为 0 |
+| 默认菜单 | Show ended、Show unavailable、Show offline、Group by Device 都未勾选；离线 N=150，默认 207 条匹配且标明 state unconfirmed |
+| 生命周期选项组合 | 打开 Show ended 后 N 仍 150；再打开 Show unavailable 后 N=152；恢复两项关闭后 N=150。与同一生产库存的状态条件统计一致 |
+| 仅匹配离线设备的关键词 | 离线选项关闭时 0 行，显示查看历史入口；主动查看后 81 条匹配，关键词保持、All 选中、离线菜单勾选且 N=81，全部行状态 Offline |
+| 不存在的关键词 | 0 行、No matching Sessions；没有 No Sessions yet，离线菜单仍保留 N=0 |
+| 旧在线设备计数 | 没有 Active/Needs input/Failed 按钮；生产 API 确认当前执行状态为 0，不把旧记录的执行状态计数或展示为实时事实 |
+| 设备分组 | 当前可见 2 个离线组，离线组无 input/failed 告警；展开 true、折叠 false，匹配总数与 N 不变 |
+
+当前设备均无新版确认，没有在线非零执行 facet 可以现场切换；本轮生产检查证明关键词范围和零可信状态的交集不会呈现旧工作，非零 facet 切换与重连成功路径仍属于已接受的 Inner 自动化证明／后续设备升级范围，不伪称本次生产已实测。
+
+### 已保存历史、草稿与旧设备限制
+
+- 读取一个 online/unsupported Session：显示 Connector update required，已保存的 2 个消息块可读；本地草稿可编辑，发送禁用。专用测试草稿未发送，随后清空，没有覆盖用户原草稿。
+- 同一会话 ID 可能存在于不同设备。验证选取按 connector ID + Session ID 的真实深链接核对，不以标题相同推断同一业务身份。
+- 在实际 offline 设备中找到已保存 494 个事件的 Session；详情渲染保存内容，主状态仅 Offline，没有最后已知执行徽标。
+- 在 offline 详情编辑空的本地草稿后发送仍禁用；将阅读位置离开底部，等待一次实际历史轮询后位置不变。测试结束清空草稿，未发送或重试设备命令。
+- 桌面实际 CSS 视口 1311×826，无文档横向溢出；窄屏检查 487px 与 625px 宽度下菜单、详情、返回和搜索均可用，无文档级横向溢出。共享集成浏览器的缩放不能稳定锁定 390px，因此只记录实际观察的宽度，不将其冒充 390px。
+- 网络观察的最终复核轮（搜索、分组、offline 深链接、草稿输入与清理）非 GET 请求为 0；没有 session.message、session.create、状态/历史同步重试。浏览器视口恢复到 1311×826，关键词清空、显示选项恢复初始关闭；保留已登录状态，没有注销用户。
+- 没有发布 connector、修改实际设备、执行 agent 工作或读取/持久化浏览器凭据。
+
+### 可复核截图与边界
+
+- [桌面 Offline 详情](./evidence/offline-history-desktop.png)：状态提示与发送限制可见；会话标题、预览、正文与测试草稿遮蔽。
+- [窄屏 Offline 详情](./evidence/offline-history-mobile.png)：详情与本地草稿区可用；会话主体内容遮蔽。
+- [窄屏离线视图菜单](./evidence/offline-menu-mobile.png)：Show offline Sessions 与原显示选项并列，N=150；列表标题/预览遮蔽。
+
+截图不存用户对话正文或凭据，不作为逐条历史内容哈希一致的证明。运行期间 production 数据持续增加：本次库存为 406，随后只读聚合事件可继续增长；原迁移后 404/25,517 的证据保留原时间点，不把新用户活动伪称迁移造成的丢失或本轮创建。
+
+## 本轮 scoped Deployment 完成结论
+
+- D-S01/D-AC01：目标、恢复 bookmark、成功 release run、迁移与 Worker/Pages 版本已核对；本次真实账号能读到既有保存内容，迁移前后原数量未减少，后续正常活动另行说明。
+- D-S02：本轮只授权网站/Relay/数据库，匹配源码的实际成功发布已完成；connector 发布和设备升级明确排除，不再据此阻塞本轮服务范围。
+- D-S03/D-AC02/D-AC03：已登录生产页面的离线菜单、搜索、历史、草稿、旧设备更新要求与发送禁用已实际验证，鉴权保护保持。
+- 依赖新 connector 的实时执行、真断网/重连成功、业务命令补传和状态失败重试仍未在 production 验证；它们属于后续设备升级范围，不记为本轮通过，不改变 Ideal/Inner 接受事实。
+- 以上完成的是用户于 22:14 明确缩小的部署验收范围；同步本证据与 ledger 后可提交精确 Outer revision。没有在条件性“完成即可 accept”上直接记录 acceptOuter。
