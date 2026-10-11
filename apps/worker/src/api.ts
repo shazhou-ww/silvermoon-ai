@@ -495,7 +495,23 @@ export async function handleApi(
       );
     }
     const owned = await env.DB.prepare(
-      `SELECT history_synced_at IS NOT NULL AS history_current
+      `SELECT CASE
+         WHEN session.history_synced_at IS NULL THEN 0
+         WHEN session.status != 'waiting' THEN 1
+         WHEN EXISTS (
+           SELECT 1
+           FROM agent_session_events AS event
+           WHERE event.user_id = session.user_id
+             AND event.connector_id = session.connector_id
+             AND event.session_id = session.id
+             AND json_type(event.data_json, '$.inputRequest') = 'object'
+             AND COALESCE(
+               json_extract(event.data_json, '$.inputRequestResolved'),
+               0
+             ) = 0
+         ) THEN 1
+         ELSE 0
+       END AS history_current
        FROM agent_sessions AS session
        WHERE session.user_id = ?1
          AND session.connector_id = ?2
