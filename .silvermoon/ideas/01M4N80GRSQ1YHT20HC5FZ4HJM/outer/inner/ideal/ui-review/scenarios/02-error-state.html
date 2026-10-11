@@ -13,8 +13,8 @@
       <p>提供商回调失败，用户返回登录页。</p>
     </div>
     <ul class="callouts" aria-label="可见变化">
-      <li>错误贴近对应操作</li>
-      <li>所有提供商仍可重试</li>
+      <li>错误贴近左侧登录操作</li>
+      <li>所有带图标入口仍可重试</li>
     </ul>
   </header>
   <main class="comparison">
@@ -44,33 +44,35 @@
     </section>
     <section class="state after" aria-labelledby="after-title">
       <header class="state-label"><strong id="after-title">之后</strong><span>相同失败回调</span></header>
-      <div class="product-surface">
+      <div class="product-surface after-surface">
         <div class="after-shell">
           <div class="moon"></div>
           <div class="brand"><span class="brand-mark"></span> Silvermoon <span style="color:#687487;font-weight:500">Relay</span></div>
-          <div class="after-grid">
-            <section class="hero-copy">
-              <h2>Your agents, within reach from anywhere.</h2>
-              <p>Silvermoon keeps watch over every session, so you can pick up the thread wherever you are.</p>
-              <div class="features">
-                <div class="feature"><strong>Across every device</strong><span>See connected machines and their local Agent sessions.</span></div>
-                <div class="feature"><strong>Resume the thread</strong><span>Continue without returning to the original machine.</span></div>
-                <div class="feature"><strong>Follow in real time</strong><span>Watch progress and send the next instruction.</span></div>
-              </div>
-            </section>
+          <section class="hero-copy">
+            <h2>Your agents, within reach from anywhere.</h2>
+            <p>Silvermoon keeps watch over every session, so you can pick up the thread wherever you are.</p>
+          </section>
+          <div class="after-body">
             <section class="after-login">
               <h3>Sign in or get started</h3>
               <p>Choose an account to continue. We’ll create your Relay account if you’re new.</p>
               <p class="error" role="alert"><strong>We couldn’t verify that sign-in.</strong><br>Try again or choose another provider.</p>
               <div class="oauth">
-                <button>Continue with Google</button>
-                <button>Continue with Microsoft</button>
-                <button>Continue with GitHub</button>
+                <button><span class="provider-icon google" aria-hidden="true">G</span><span class="provider-label">Continue with Google</span><span></span></button>
+                <button><span class="provider-icon microsoft" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="provider-label">Continue with Microsoft</span><span></span></button>
+                <button><span class="provider-icon github" aria-hidden="true">GH</span><span class="provider-label">Continue with GitHub</span><span></span></button>
               </div>
               <p class="privacy">Provider credentials never enter the relay protocol.</p>
             </section>
+            <div class="mascot-stage">
+              <img class="mascot" src="../assets/silvermoon-mascot.png" alt="Silvermoon, the project's artifact spirit, waving">
+            </div>
           </div>
-          <img class="mascot" src="../assets/silvermoon-mascot.png" alt="Silvermoon, the project's artifact spirit, waving">
+          <div class="features">
+            <div class="feature"><strong>Across every device</strong><span>See connected machines and their local Agent sessions.</span></div>
+            <div class="feature"><strong>Resume the thread</strong><span>Continue without returning to the original machine.</span></div>
+            <div class="feature"><strong>Follow in real time</strong><span>Watch progress and send the next instruction.</span></div>
+          </div>
         </div>
       </div>
     </section>
