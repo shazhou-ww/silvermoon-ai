@@ -2545,7 +2545,6 @@ function App() {
                           data-status={group.source.status}
                         >
                           {group.source.status}
-                          {group.source.status === "online" && groupCounts.pending > 0 ? " · state unconfirmed" : ""}
                         </span>
                       </button>
                       {expanded && group.sessions.map((item) =>

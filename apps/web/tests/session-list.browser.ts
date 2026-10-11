@@ -266,7 +266,12 @@ test("offline history, keyword facets and selected zero states use AND semantics
 })
 
 test("view options reveal hidden states and focus device groups", async ({ page }) => {
-  await fixture(page)
+  await fixture(
+    page,
+    "succeeded",
+    optionInputRequest,
+    { status: "online", generation: 2, confirmedGeneration: 1 },
+  )
   await page.getByRole("button", { name: "Session view options" }).click()
   await page.getByRole("menuitemcheckbox", { name: "Show ended" }).click()
   await page.getByRole("button", { name: "Session view options" }).click()
@@ -281,6 +286,7 @@ test("view options reveal hidden states and focus device groups", async ({ page 
   const studioGroup = page.getByRole("button", { name: /Studio laptop/ })
   await expect(studioGroup).toHaveCSS("position", "sticky")
   await expect(studioGroup).toHaveCSS("top", "0px")
+  await expect(studioGroup.locator(".session-device-status")).toHaveText("online")
   await expect(studioGroup)
     .toHaveAttribute("aria-expanded", "true")
   await expect(page.getByRole("button", { name: /Work desktop/ }))
