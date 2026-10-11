@@ -30,7 +30,10 @@ import {
 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import type { AgentInputRequest } from "@silvermoon-ai/protocol"
+import type {
+  AgentInputQuestion,
+  AgentInputRequest,
+} from "@silvermoon-ai/protocol"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -291,6 +294,13 @@ function inputRequestSummary(request: AgentInputRequest | null | undefined) {
     ?? null
 }
 
+function allowsCustomAnswer(question: AgentInputQuestion) {
+  return (
+    question.kind === "single-select"
+    || question.kind === "multi-select"
+  ) && question.allowFreeformInput === true
+}
+
 function sessionPreview(session: AgentSession): string | null {
   if (session.status !== "waiting") return session.lastMessagePreview
   return inputRequestSummary(session.pendingInputRequest)
@@ -324,10 +334,12 @@ function PendingInputPanel({
   request,
   canReply,
   onChoose,
+  onCustomAnswer,
 }: {
   request: AgentInputRequest | null | undefined
   canReply: boolean
   onChoose(value: string): void
+  onCustomAnswer(): void
 }) {
   const titleId = "pending-input-title"
   return (
@@ -360,6 +372,7 @@ function PendingInputPanel({
                         { id: "false", label: "No" },
                       ]
                     : [])
+                const customAnswer = allowsCustomAnswer(question)
                 return (
                   <div className="pending-input-question" key={question.id}>
                     {question.title && <strong>{question.title}</strong>}
@@ -369,7 +382,7 @@ function PendingInputPanel({
                         <span className="pending-input-required"> Required</span>
                       )}
                     </span>
-                    {options.length > 0 && (
+                    {(options.length > 0 || customAnswer) && (
                       <div
                         className="pending-input-options"
                         aria-label={`Options for ${question.title ?? question.message}`}
@@ -384,18 +397,31 @@ function PendingInputPanel({
                             <span>{option.label}</span>
                             {"recommended" in option
                               && option.recommended
-                              && <small>Recommended</small>}
+                              && (
+                                <small className="pending-input-recommended">
+                                  Recommended
+                                </small>
+                              )}
                             {"description" in option
                               && option.description
                               && <small>{option.description}</small>}
                           </button>
                         ))}
+                        {customAnswer && (
+                          <button
+                            type="button"
+                            onClick={onCustomAnswer}
+                            disabled={!canReply}
+                          >
+                            <span>Enter custom answer</span>
+                            <small>Type your own response below.</small>
+                          </button>
+                        )}
                       </div>
                     )}
                     {(question.kind === "text"
                       || question.kind === "number"
-                      || question.kind === "integer"
-                      || question.allowFreeformInput) && (
+                      || question.kind === "integer") && (
                       <small className="pending-input-hint">
                         Enter your answer in the reply box below.
                       </small>
@@ -1180,6 +1206,8 @@ function App() {
   const pendingInputRequest = selectedAgentSession?.status === "waiting"
     ? selectedAgentSession.pendingInputRequest
     : null
+  const pendingInputAllowsCustomAnswer =
+    pendingInputRequest?.questions.some(allowsCustomAnswer) ?? false
   const trackedCommandId = trackedCommand?.id ?? null
   const trackedCommandLabel = trackedCommand?.label ?? null
   const trackedHistoryRequestKey = trackedCommand?.historyRequestKey ?? null
@@ -2084,6 +2112,11 @@ function App() {
                             window.requestAnimationFrame(() =>
                               followUpInputRef.current?.focus())
                           }}
+                          onCustomAnswer={() => {
+                            setFollowUp("")
+                            window.requestAnimationFrame(() =>
+                              followUpInputRef.current?.focus())
+                          }}
                         />
                       )}
                       <div className="composer-frame">
@@ -2109,7 +2142,9 @@ function App() {
                             selectedAgentSession.canSendMessage === false
                               ? "This Session is read-only"
                               : selectedAgentSession.status === "waiting"
-                              ? "Reply to the agent's request... Shift+Enter for a new line."
+                              ? pendingInputAllowsCustomAnswer
+                                ? "Enter a custom answer... Shift+Enter for a new line."
+                                : "Reply to the agent's request... Shift+Enter for a new line."
                               : canSendFollowUp
                               ? "Ask for the next step... Shift+Enter for a new line."
                               : "This Session cannot receive messages right now"
