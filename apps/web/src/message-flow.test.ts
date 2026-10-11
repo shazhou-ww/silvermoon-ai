@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   buildTranscript,
+  groupTurnSegments,
   segmentTurnParts,
   transcriptItemIsVisible,
   transcriptToolCount,
@@ -126,6 +127,88 @@ describe("message flow projection", () => {
       },
       { id: "tool-1", text: "Read succeeded", state: "succeeded" },
       { id: "markdown-2", text: "The tests pass.", state: undefined },
+    ])
+  })
+
+  it("places an input answer between the request and later agent output", () => {
+    const items = buildTranscript([
+      event({
+        id: "turn-request",
+        sequence: 1,
+        role: "user",
+        text: "Deploy the release.",
+        data: {
+          turnId: "turn-1",
+          partId: "request",
+          partIndex: 0,
+          partKind: "request",
+        },
+      }),
+      event({
+        id: "before-input",
+        sequence: 2,
+        text: "I need one confirmation first.",
+        data: {
+          turnId: "turn-1",
+          partId: "markdown-1",
+          partIndex: 0,
+          partKind: "markdown",
+        },
+      }),
+      event({
+        id: "input-answer",
+        sequence: 3,
+        role: "user",
+        text: "Pause until I return.",
+        data: {
+          turnId: "turn-1",
+          partId: "input-1",
+          partIndex: 1,
+          partKind: "request",
+          inputRequestId: "input-1",
+          inputRequestResolved: true,
+        },
+      }),
+      event({
+        id: "after-input",
+        sequence: 4,
+        text: "Okay, I will pause here.",
+        data: {
+          turnId: "turn-1",
+          partId: "markdown-2",
+          partIndex: 2,
+          partKind: "markdown",
+        },
+      }),
+    ])
+
+    expect(items).toHaveLength(1)
+    const turn = items[0]
+    if (turn.kind !== "turn") throw new Error("Expected a turn")
+    expect(turn.request?.text).toBe("Deploy the release.")
+    expect(turn.parts.map((part) => ({
+      kind: part.kind,
+      text: part.event.text,
+    }))).toEqual([
+      { kind: "markdown", text: "I need one confirmation first." },
+      { kind: "input", text: "Pause until I return." },
+      { kind: "markdown", text: "Okay, I will pause here." },
+    ])
+    expect(
+      groupTurnSegments(segmentTurnParts(turn.parts)).map((block) =>
+        block.kind === "answer"
+          ? { kind: block.kind, text: block.part.event.text }
+          : {
+              kind: block.kind,
+              text: block.segments.flatMap((segment) =>
+                segment.kind === "part" ? [segment.part.event.text] : []
+              ),
+            }
+      ),
+    ).toEqual([
+      { kind: "response", text: ["I need one confirmation first."] },
+      { kind: "answer", text: "Pause until I return." },
+      { kind: "response", text: ["Okay, I will pause here."] },
     ])
   })
 

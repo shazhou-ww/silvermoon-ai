@@ -1229,6 +1229,10 @@ textarea:focus-visible {
   border-radius: 0.85rem 0.85rem 0.2rem 0.85rem;
 }
 
+.turn-input-answer {
+  margin-top: 1.15rem;
+}
+
 .turn-request.is-system {
   align-self: center;
   color: var(--muted-foreground);

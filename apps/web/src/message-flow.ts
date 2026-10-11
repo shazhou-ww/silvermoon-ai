@@ -17,7 +17,7 @@ export interface AgentSessionEvent {
 type StructuredPartKind = Exclude<
   NonNullable<AgentSessionEventData["partKind"]>,
   "request"
->
+> | "input"
 
 export interface TranscriptPart {
   id: string
@@ -58,11 +58,25 @@ export type TranscriptSegment =
   | TranscriptPartSegment
   | TranscriptToolSegment
 
+export interface TranscriptResponseBlock {
+  kind: "response"
+  segments: TranscriptSegment[]
+}
+
+export interface TranscriptAnswerBlock {
+  kind: "answer"
+  part: TranscriptPart
+}
+
+export type TranscriptBlock =
+  | TranscriptResponseBlock
+  | TranscriptAnswerBlock
+
 interface PartMetadata {
   turnId: string
   partId: string
   partIndex: number
-  partKind: NonNullable<AgentSessionEventData["partKind"]>
+  partKind: NonNullable<AgentSessionEventData["partKind"]> | "input"
 }
 
 interface TurnBuilder {
@@ -99,7 +113,10 @@ function partMetadata(event: AgentSessionEvent): PartMetadata | null {
     turnId: data.turnId,
     partId: data.partId,
     partIndex: data.partIndex as number,
-    partKind: data.partKind,
+    partKind: data.partKind === "request"
+        && typeof data.inputRequestId === "string"
+      ? "input"
+      : data.partKind,
   }
 }
 
@@ -190,6 +207,31 @@ export function segmentTurnParts(
     }
   }
   return segments
+}
+
+export function groupTurnSegments(
+  segments: readonly TranscriptSegment[],
+): TranscriptBlock[] {
+  const blocks: TranscriptBlock[] = []
+  for (const segment of segments) {
+    if (segment.kind === "part" && segment.part.kind === "input") {
+      if (
+        segment.part.event.role === "user"
+        && segment.part.event.text?.trim()
+      ) {
+        blocks.push({ kind: "answer", part: segment.part })
+      }
+      continue
+    }
+
+    const previous = blocks.at(-1)
+    if (previous?.kind === "response") {
+      previous.segments.push(segment)
+    } else {
+      blocks.push({ kind: "response", segments: [segment] })
+    }
+  }
+  return blocks
 }
 
 export function transcriptToolCount(
