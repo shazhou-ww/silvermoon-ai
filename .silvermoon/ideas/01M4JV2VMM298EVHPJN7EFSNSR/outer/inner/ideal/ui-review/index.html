@@ -124,7 +124,7 @@
   <header>
     <div>
       <h1>返回最新消息控件密度评审</h1>
-      <p>比较当前占用消息列表底部整行的文字按钮，与右下角圆形 icon 浮动按钮。</p>
+      <p>比较当前占用消息列表底部整行且叠加较大内容 padding 的状态，与右下角圆形 icon 浮动按钮和紧凑底部间距。</p>
     </div>
     <span class="status">说明性评审材料</span>
   </header>
@@ -133,10 +133,10 @@
     <section class="decision" aria-labelledby="decision-title">
       <div>
         <p class="eyebrow">待决定</p>
-        <h2 id="decision-title">是否将返回最新消息控件改为消息列表右下角的圆形向下箭头按钮？</h2>
+        <h2 id="decision-title">是否将返回控件改为右下角圆形向下箭头，并同步收紧消息列表底部留白？</h2>
       </div>
       <ul class="deltas" aria-label="关键变化">
-        <li>释放固定 4rem 控件行</li>
+        <li>释放固定 4rem 控件行并收紧 2rem padding</li>
         <li>保留 44×44 点击区域和无障碍名称</li>
       </ul>
     </section>
@@ -152,11 +152,11 @@
 
     <section class="review-end" aria-label="评审结论">
       <p>此材料仅用于说明视觉与交互方向，不是生产 UI 或规范性行为契约。<a class="source" href="../Idea.md">规范来源</a></p>
-      <strong>是否同意用右下角圆形 icon 按钮替代当前独占一行的文字按钮？</strong>
+      <strong>是否同意用右下角圆形 icon 按钮替代独占一行的文字按钮，并把底部 padding 收紧为普通间距？</strong>
     </section>
   </main>
 
-  <footer>按钮会覆盖消息列表右下角的一小块区域；实现需保留足够内边距，避免遮住最后一条消息，同时不得重新引入永久占位行。</footer>
+  <footer>拟将消息内容 bottom padding 从 2rem 收紧为 1rem；按钮覆盖右下角的一小块区域，实现需验证最后一条消息和输入区均不被遮挡。</footer>
 
   <script>
     const frame = document.querySelector("#scenario-frame");

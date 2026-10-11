@@ -87,6 +87,7 @@ h1 { margin: 0; font-size: 20px; line-height: 1.3; }
 }
 .before-layout { grid-template-rows: minmax(0, 1fr) 58px; }
 .after-layout { grid-template-rows: minmax(0, 1fr); }
+.compact-content .transcript-content { padding-bottom: 8px; }
 .control-row {
   display: grid;
   place-items: center;
@@ -98,6 +99,7 @@ h1 { margin: 0; font-size: 20px; line-height: 1.3; }
   flex-direction: column;
   padding: 18px 22px;
 }
+.transcript-content.review-position { justify-content: flex-end; }
 .transcript-content.at-bottom { justify-content: flex-end; }
 .origin {
   margin: 0 auto 18px;

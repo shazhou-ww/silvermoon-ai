@@ -14,7 +14,7 @@
       <p>同一条长 Session、同一阅读位置和输入区，仅比较控件占位与视觉密度。</p>
     </div>
     <ul class="callouts" aria-label="可见变化">
-      <li>不再永久占用消息列表底部整行</li>
+      <li>移除控件行并收紧消息底部 padding</li>
       <li>圆形 icon 保留 44×44 点击区域</li>
     </ul>
   </header>
@@ -36,7 +36,7 @@
           </div>
           <div class="transcript-shell before-layout">
             <div class="transcript-window">
-              <div class="transcript-content">
+              <div class="transcript-content review-position">
                 <div class="message assistant"><p>生产 Worker 仅允许配置的 WEB_ORIGIN，本地请求因此没有 CORS header。</p></div>
                 <div class="message user"><p>那本地 OAuth callback 也会失败吗？</p></div>
                 <div class="message assistant"><p>会。本地 Worker 仍使用 production AUTH_BASE_URL，且 .dev.vars 缺失时 OAuth start 返回 500。</p></div>
@@ -76,9 +76,9 @@
             </div>
             <span class="status">Working</span>
           </div>
-          <div class="transcript-shell after-layout">
+          <div class="transcript-shell after-layout compact-content">
             <div class="transcript-window">
-              <div class="transcript-content">
+              <div class="transcript-content review-position">
                 <div class="message assistant"><p>生产 Worker 仅允许配置的 WEB_ORIGIN，本地请求因此没有 CORS header。</p></div>
                 <div class="message user"><p>那本地 OAuth callback 也会失败吗？</p></div>
                 <div class="message assistant"><p>会。本地 Worker 仍使用 production AUTH_BASE_URL，且 .dev.vars 缺失时 OAuth start 返回 500。</p></div>
