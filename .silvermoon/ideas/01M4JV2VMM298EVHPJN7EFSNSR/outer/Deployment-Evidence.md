@@ -62,6 +62,13 @@
 - 生产首页引用 JavaScript `/assets/index-bZPCNRkn.js` 与 CSS `/assets/index-Cg9jXfiL.css`，两项资源均返回 HTTP 200，文件名与当前 implementation 的 production build 输出完全一致。
 - 生产 JavaScript 包含无障碍名称 `Jump to latest`，CSS 包含 `transcript-jump`；不可变 Pages deployment 可访问。这证明圆形控件候选资源已发布，但不替代登录后的生产交互检查。
 
-### D-S02 / D-AC01 / D-AC02：等待当前 revision 的生产体验
+### D-S02 / D-AC01 / D-AC02：当前 revision 的生产体验通过
 
-先前的登录后 smoke 属于旧 deploymentRevision，不能替代圆形控件与紧凑底部间距的当前验证。需要在已登录的生产长 Session 中确认桌面和窄屏的默认最新位置、历史阅读保护、右下角 44×44 圆形按钮、1rem 消息底部间距、返回交互及无遮挡表现。
+2026-10-11T13:21:47.873Z（北京时间 21:21:47），用户在已登录的生产环境完成当前 revision 的体验并明确报告“验收通过”。该结论对应此前给出的线上检查范围：
+
+1. 桌面与窄屏打开长 Session 时默认显示最新可见消息，向上阅读历史后新事件不打断当前位置。
+2. 右下角显示 44×44 圆形向下箭头按钮，不再存在返回控件专用的整行留白。
+3. 消息列表底部间距更紧凑，按钮和最后一条消息均不遮挡输入区。
+4. 激活按钮可返回最新消息并隐藏控件，桌面与窄屏体验均通过。
+
+上述当前生产观察完成 D-S02，并为 D-AC01 与 D-AC02 提供带时间的外部证据。
