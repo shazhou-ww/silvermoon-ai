@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>列表、搜索与离线菜单</title><link rel="stylesheet" href="../review.css"></head>
+<body>
+  <header><h1>列表、搜索与离线菜单</h1><p class="context">两侧相同四条虚构 Sessions：Studio laptop 在线（Running / Needs input），Home PC 离线（原 Needs input / Failed）。仅比较列表，原搜索本来就是 AND，不人为弱化 Before。</p><ul class="callouts"><li>菜单增加显示离线</li><li>状态数字只统计可信当前状态</li><li>快捷查看不清除关键词</li></ul></header>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title"><header class="state-label"><strong id="before-title">Before</strong><span>相同数据 / 关键词 / 状态选择</span></header><div class="surface">
+      <h2>Sessions</h2><p class="summary" id="before-summary">4 current sessions</p>
+      <input class="search" id="before-query" placeholder="Search Sessions, Agents, Devices" aria-label="Before 搜索关键词">
+      <div class="filters"><button class="filter selected" type="button" data-view="all">All</button><button class="filter" type="button" data-view="active">Active 1</button><button class="filter waiting" type="button" data-view="waiting">Needs input 2</button><button class="filter failed" type="button" data-view="failed">Failed 1</button>
+        <details class="view-menu"><summary aria-label="Before Session view options">⋯</summary><div class="view-options"><label class="control preview-only"><input type="checkbox" disabled> Show ended</label><label class="control preview-only"><input type="checkbox" disabled> Show unavailable</label><hr><label class="control preview-only"><input type="checkbox" disabled> Group by Device</label></div></details>
+      </div><div id="before-rows"></div>
+    </div><p class="note">原计数包含离线旧状态，不随关键词变化；这些数字不是伪造的弱化版本。</p></section>
+    <section class="state" aria-labelledby="after-title"><header class="state-label"><strong id="after-title">After · 构想候选</strong><span>相同数据 / 关键词 / 状态选择</span></header><div class="surface">
+      <h2>Sessions</h2><p class="summary" id="after-summary" aria-live="polite"></p>
+      <input class="search" id="after-query" placeholder="Search Sessions, Agents, Devices" aria-label="After 搜索关键词">
+      <div class="filters"><button class="filter selected" type="button" data-view="all">All</button><button class="filter" id="active-count" type="button" data-view="active">Active 1</button><button class="filter waiting" id="waiting-count" type="button" data-view="waiting">Needs input 1</button><button class="filter failed" id="failed-count" type="button" data-view="failed">Failed 0</button>
+        <details class="view-menu" id="after-menu"><summary aria-label="After Session view options">⋯</summary><div class="view-options"><label class="control preview-only"><input type="checkbox" disabled> Show ended</label><label class="control preview-only"><input type="checkbox" disabled> Show unavailable</label><label class="control"><input id="show-offline" type="checkbox" aria-controls="after-rows"><span id="offline-label">Show offline Sessions (2)</span></label><hr><label class="control preview-only"><input type="checkbox" disabled> Group by Device</label></div></details>
+      </div>
+      <div class="notice" id="offline-notice"><span id="offline-detail"></span><button class="action" id="view-history" type="button" hidden>查看离线历史</button></div>
+      <div id="after-rows"></div>
+      <div class="empty" id="after-empty" hidden><strong>当前视图没有在线匹配</strong><p>当前选择保持不变。可在上方主动查看符合条件的离线历史。</p></div>
+    </div><p class="note">选中零状态保留；离线只在 All 显示。菜单里的原有选项未模拟，并非建议禁用。Ended / Gone 与父子 Context 的详细规则留给实施回归。</p></section>
+  </main>
+  <script src="../review.js"></script>
+  <script>
+    const data = [
+      { title: "更新项目测试", device: "Studio laptop", status: "running", preview: "正在运行针对性测试。", time: "2m", offline: false },
+      { title: "确认测试范围", device: "Studio laptop", status: "waiting", preview: "已同步的等待输入状态。", time: "5m", offline: false },
+      { title: "讨论列表优化", device: "Home PC", status: "waiting", preview: "此前同步的讨论内容。", time: "20m", offline: true },
+      { title: "运行项目测试", device: "Home PC", status: "failed", preview: "此前同步的测试报告。", time: "30m", offline: true },
+    ];
+    const labels = { running: "Active", waiting: "Needs input", failed: "Failed" };
+    const state = { query: "", view: "all" };
+    const checkbox = document.querySelector("#show-offline");
+    function matches(item) { return [item.title, item.device, item.preview, "GitHub Copilot"].some((value) => value.toLocaleLowerCase().includes(state.query.trim().toLocaleLowerCase())); }
+    function statusMatches(item) { return state.view === "all" || (state.view === "active" ? item.status === "running" : item.status === state.view); }
+    function row(item, after) {
+      const offline = after && item.offline;
+      const node = document.createElement("div"); node.className = "row";
+      const dot = document.createElement("span"); dot.className = `dot ${offline ? "offline" : item.status === "waiting" ? "wait" : item.status === "failed" ? "fail" : ""}`; dot.setAttribute("aria-hidden", "true");
+      const main = document.createElement("div");
+      const title = document.createElement("span"); title.className = "title"; title.textContent = item.title;
+      const meta = document.createElement("span"); meta.className = "meta"; meta.textContent = `${offline ? "Offline" : labels[item.status]} · ${item.device}`;
+      const preview = document.createElement("span"); preview.className = "preview"; preview.textContent = item.preview;
+      const time = document.createElement("time"); time.textContent = item.time;
+      main.append(title, meta, preview); node.append(dot, main, time); return node;
+    }
+    function render() {
+      const scoped = data.filter(matches);
+      const offline = scoped.filter((item) => item.offline).length;
+      const before = scoped.filter(statusMatches);
+      const after = scoped.filter((item) => item.offline ? checkbox.checked && state.view === "all" : statusMatches(item));
+      document.querySelector("#before-rows").replaceChildren(...before.map((item) => row(item, false)));
+      document.querySelector("#after-rows").replaceChildren(...after.map((item) => row(item, true)));
+      document.querySelector("#before-summary").textContent = `${before.length} current sessions`;
+      document.querySelector("#after-summary").textContent = `${after.length} 条匹配${after.some((item) => item.offline) ? " · 包含离线历史" : ""}`;
+      document.querySelectorAll(".search").forEach((input) => { input.value = state.query; });
+      document.querySelectorAll("[data-view]").forEach((button) => { button.classList.toggle("selected", button.dataset.view === state.view); button.setAttribute("aria-pressed", String(button.dataset.view === state.view)); });
+      for (const view of ["active", "waiting", "failed"]) {
+        const status = view === "active" ? "running" : view;
+        const count = scoped.filter((item) => !item.offline && item.status === status).length;
+        const button = document.querySelector(`#${view}-count`);
+        button.textContent = `${view === "active" ? "Active" : labels[view]} ${count}`;
+        button.hidden = count === 0 && state.view !== view;
+      }
+      document.querySelector("#offline-label").textContent = `Show offline Sessions (${offline})`;
+      document.querySelector("#after-menu").classList.toggle("is-custom", checkbox.checked);
+      const hiddenHistory = offline > 0 && (!checkbox.checked || state.view !== "all");
+      document.querySelector("#offline-notice").hidden = !hiddenHistory;
+      document.querySelector("#offline-detail").textContent = `${offline} 条匹配的离线历史未显示${state.view !== "all" ? "；当前执行状态筛选不包含离线历史。" : "，可在视图选项中查看。"}`;
+      document.querySelector("#view-history").hidden = !hiddenHistory || (!state.query.trim() && after.length > 0 && state.view === "all");
+      document.querySelector("#view-history").textContent = state.view === "all" ? "查看离线历史" : "查看离线历史（切到 All）";
+      document.querySelector("#after-empty").hidden = after.length > 0;
+      reportHeight();
+    }
+    document.querySelectorAll(".search").forEach((input) => input.addEventListener("input", () => { state.query = input.value; render(); }));
+    document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => { state.view = button.dataset.view; render(); }));
+    checkbox.addEventListener("change", render);
+    document.querySelector("#view-history").addEventListener("click", () => { state.view = "all"; checkbox.checked = true; render(); document.querySelector("#after-menu summary").focus(); });
+    render();
+  </script>
+</body>
+</html>

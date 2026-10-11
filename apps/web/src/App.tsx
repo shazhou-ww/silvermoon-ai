@@ -745,39 +745,14 @@ function initialAuthError(): string | null {
 }
 
 function ProviderIcon({ provider }: { provider: Provider }) {
-  if (provider === "google") {
-    return (
-      <span
-        aria-hidden="true"
-        className="login-provider-icon login-provider-google"
-        data-provider-icon={provider}
-      >
-        G
-      </span>
-    )
-  }
-  if (provider === "microsoft") {
-    return (
-      <span
-        aria-hidden="true"
-        className="login-provider-icon login-provider-microsoft"
-        data-provider-icon={provider}
-      >
-        <span />
-        <span />
-        <span />
-        <span />
-      </span>
-    )
-  }
   return (
-    <span
+    <img
       aria-hidden="true"
-      className="login-provider-icon login-provider-github"
+      alt=""
+      className="login-provider-icon"
       data-provider-icon={provider}
-    >
-      GH
-    </span>
+      src={`/provider-icons/${provider === "google" ? "google.png" : `${provider}.svg`}`}
+    />
   )
 }
 

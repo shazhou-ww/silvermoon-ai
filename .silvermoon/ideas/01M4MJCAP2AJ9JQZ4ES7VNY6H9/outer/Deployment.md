@@ -15,3 +15,5 @@
 ### D-AC02: 现有 Session 工作流无回归
 
 通过目标环境冒烟检查证明用户仍可选择 Session、打开详情、前进后退并从移动端详情返回列表。
+
+生产发布与真实数据验证记录见 [Deployment-Evidence.md](./Deployment-Evidence.md)。

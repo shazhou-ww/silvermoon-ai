@@ -18,9 +18,9 @@
 
 ### Deployment steps
 
-- [ ] **D-S01:** 验证目标 Web 环境中的列表体验
+- [x] **D-S01:** 验证目标 Web 环境中的列表体验
 
 ### Deployment acceptance criteria
 
-- [ ] **D-AC01:** 目标环境行为符合契约
-- [ ] **D-AC02:** 现有 Session 工作流无回归
+- [x] **D-AC01:** 目标环境行为符合契约
+- [x] **D-AC02:** 现有 Session 工作流无回归

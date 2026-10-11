@@ -5,7 +5,7 @@
 ### Implementation steps
 
 - [x] **I-S01:** 落实响应式登录布局
-- [x] **I-S02:** 接入既有品牌与提供商视觉
+- [x] **I-S02:** 接入既有品牌与官方提供商视觉
 - [x] **I-S03:** 完善状态与回归覆盖
 
 ### Implementation acceptance criteria

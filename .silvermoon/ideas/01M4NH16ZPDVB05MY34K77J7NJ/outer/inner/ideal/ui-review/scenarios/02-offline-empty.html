@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>全部离线与查看历史</title><link rel="stylesheet" href="../review.css"></head>
+<body>
+  <header><h1>全部离线，不等于没有 Sessions</h1><p class="context">两侧相同数据：Home PC 确认离线，有一条未 Ended / Gone 的历史。当前 Before 仍展示旧行，不虚构为错误空态。</p><ul class="callouts"><li>说明离线过滤原因</li><li>一键查看已有历史</li><li>隐藏不等于删除</li></ul></header>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title"><header class="state-label"><strong id="before-title">Before</strong><span>同一条历史</span></header><div class="surface"><h2>Sessions</h2><p class="summary">1 current session</p><div class="search">Search Sessions, Agents, Devices</div><div class="filters"><span class="filter selected">All</span><span class="filter waiting">Needs input 1</span></div><div class="row"><span class="dot wait"></span><div><span class="title">讨论列表优化</span><span class="meta">Needs input · Home PC</span><span class="preview">此前同步的讨论内容。</span></div><time>20m</time></div></div><p class="note">旧执行状态继续作为 current 展示。</p></section>
+    <section class="state" aria-labelledby="after-title"><header class="state-label"><strong id="after-title">After · 构想候选</strong><span>同一条历史</span></header><div class="surface"><h2>Sessions</h2><p class="summary" id="summary" aria-live="polite">0 条当前在线</p><div class="search">Search Sessions, Agents, Devices</div><div class="filters"><span class="filter selected">All</span><details class="view-menu" id="after-menu"><summary aria-label="After Session view options">⋯</summary><div class="view-options"><label class="control preview-only"><input type="checkbox" disabled>Show ended</label><label class="control preview-only"><input type="checkbox" disabled>Show unavailable</label><label class="control"><input id="show-offline" type="checkbox" aria-controls="history empty">Show offline Sessions (1)</label><hr><label class="control preview-only"><input type="checkbox" disabled>Group by Device</label></div></details></div>
+      <div class="empty" id="empty"><strong>当前没有在线 Sessions</strong><p>设备全部离线。1 条离线历史未显示，未被删除。</p><button class="action" id="view-history" type="button">查看离线历史（1）</button></div>
+      <div class="row" id="history" hidden><span class="dot offline"></span><div><span class="title">讨论列表优化</span><span class="meta">Offline · Home PC</span><span class="preview">此前同步的讨论内容。</span></div><time>20m</time></div>
+    </div><p class="note">成功读取但真正无数据才沿用 No Sessions yet；读取错误要明确报错，不推断设备全部离线。</p></section>
+  </main>
+  <script src="../review.js"></script><script>
+    const checkbox = document.querySelector("#show-offline");
+    function render() { document.querySelector("#empty").hidden = checkbox.checked; document.querySelector("#history").hidden = !checkbox.checked; document.querySelector("#summary").textContent = `0 条当前在线${checkbox.checked ? " / 1 条离线历史已显示" : ""}`; document.querySelector("#after-menu").classList.toggle("is-custom", checkbox.checked); reportHeight(); }
+    checkbox.addEventListener("change", render);
+    document.querySelector("#view-history").addEventListener("click", () => { checkbox.checked = true; render(); document.querySelector("#after-menu summary").focus(); });
+  </script>
+</body>
+</html>
