@@ -119,10 +119,30 @@ describe("relay protocol", () => {
       id: "session-2",
       parentSessionId: "session-1",
       canSendMessage: false,
+      pendingInputRequest: {
+        id: "input-1",
+        message: "Choose a target.",
+        url: null,
+        questions: [{
+          id: "target",
+          kind: "single-select",
+          message: "Where should I deploy?",
+          options: [
+            { id: "staging", label: "Staging", recommended: true },
+            { id: "production", label: "Production" },
+          ],
+        }],
+      },
     })).toMatchObject({
       id: "session-2",
       parentSessionId: "session-1",
       canSendMessage: false,
+      pendingInputRequest: {
+        id: "input-1",
+        questions: [
+          expect.objectContaining({ kind: "single-select" }),
+        ],
+      },
     });
   });
 
