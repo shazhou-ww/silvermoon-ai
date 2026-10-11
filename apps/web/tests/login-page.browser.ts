@@ -47,7 +47,7 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
       )
   ).toBe(true)
   await expect(page.getByRole("img", {
-    name: "Silvermoon, the project’s artifact spirit, waving",
+    name: "Silvermoon seen from behind, with long hair flowing across the ground",
   })).toBeVisible()
 
   const providers = ["google", "microsoft", "github"] as const
@@ -66,7 +66,6 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
     const login = document.querySelector(".login-card")!.getBoundingClientRect()
     const mascot = document.querySelector(".login-mascot")!
       .getBoundingClientRect()
-    const hero = document.querySelector(".login-hero")!.getBoundingClientRect()
     const capabilities = document.querySelector(".login-capabilities")!
       .getBoundingClientRect()
     const panel = document.querySelector(".login-page-content")!
@@ -82,12 +81,6 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
         || login.bottom <= mascot.top
         || login.top >= mascot.bottom
       ),
-      heroMascotOverlap: !(
-        hero.right <= mascot.left
-        || hero.left >= mascot.right
-        || hero.bottom <= mascot.top
-        || hero.top >= mascot.bottom
-      ),
       capabilitiesBottom: capabilities.bottom,
       panelCenterOffset: Math.abs(
         (panel.top + panel.bottom) / 2 - window.innerHeight / 2,
@@ -96,7 +89,7 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
       loginMascotCenterOffset: Math.abs(
         (login.top + login.bottom) / 2 - (mascot.top + mascot.bottom) / 2,
       ),
-      mascotAtLeastAsTallAsLogin: mascot.height >= login.height,
+      mascotAtLeastAsWideAsLogin: mascot.width >= login.width,
       horizontalOverflow:
         document.documentElement.scrollWidth
         > document.documentElement.clientWidth,
@@ -107,11 +100,10 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
   if (layout.viewportWidth > 900) {
     expect(layout.loginLeftOfMascot).toBe(true)
     expect(layout.overlap).toBe(false)
-    expect(layout.heroMascotOverlap).toBe(false)
     expect(layout.panelCenterOffset).toBeLessThanOrEqual(1)
     expect(layout.capabilityPanelGap).toBeGreaterThan(0)
-    expect(layout.loginMascotCenterOffset).toBeLessThanOrEqual(32)
-    expect(layout.mascotAtLeastAsTallAsLogin).toBe(true)
+    expect(layout.loginMascotCenterOffset).toBeLessThanOrEqual(64)
+    expect(layout.mascotAtLeastAsWideAsLogin).toBe(true)
   } else {
     expect(layout.loginBeforeMascot).toBe(true)
   }

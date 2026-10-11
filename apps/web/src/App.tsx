@@ -850,8 +850,8 @@ function LoginPage({
           <div className="login-mascot-stage">
             <img
               className="login-mascot"
-              src="/silvermoon-mascot.png"
-              alt="Silvermoon, the project’s artifact spirit, waving"
+              src="/silvermoon-line-art.svg"
+              alt="Silvermoon seen from behind, with long hair flowing across the ground"
             />
           </div>
         </div>
