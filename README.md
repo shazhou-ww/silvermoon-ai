@@ -72,6 +72,28 @@ while within 64 CSS pixels of the bottom. Scrolling farther up preserves the
 reading position; **Jump to latest** returns to the bottom and resumes following.
 The control supports keyboard activation and respects reduced-motion preferences.
 
+Choose **Settings** from the avatar menu to open the right-side configuration
+page at `/settings`. It contains Devices and Linked identities; browser login
+management is no longer shown. **Sign out** in the avatar menu signs out only
+the current browser. On narrow screens, the list icon opens the existing
+Session navigation in a drawer.
+
+Devices has an **Add device** action that expands the device name and expiry
+inputs inline; **Cancel** discards the unsubmitted form. Copy generated
+connector profiles before leaving Settings or refreshing: complete tokens are
+not cached or redisplayed after navigation.
+
+Each account, Device, and Session has its own follow-up draft in tab-local
+`sessionStorage`. Switching Sessions or opening Settings preserves drafts, and
+refreshing restores them. Browser tab restoration may also restore this
+storage; there is no cross-tab synchronization. Storage failures are reported
+explicitly. Sign out or confirmed authentication expiry clears the account's
+draft cache. Failed deliveries retain the input; a successful command clears
+only the submitted version, not newer edits or another Session's draft.
+Returning to the same Session after temporarily viewing Settings preserves its
+reading position and follow intent; opening a different Session or refreshing
+still opens the latest activity.
+
 Run the Web browser regressions (mocked relay API, no production credentials):
 
 ```powershell
@@ -80,7 +102,64 @@ pnpm --filter @silvermoon-ai/web test:browser
 ```
 
 These cover desktop and narrow-screen positioning, history protection, Session
-switching, filtering, reconnects, layout changes, and accessible return controls.
+switching, filtering, reconnects, layout changes, Settings routes and drawers,
+independent drafts, asynchronous delivery, and accessible return controls.
+
+### Offline Sessions and current state
+
+The Session list hides offline Devices' Sessions by default. **Show offline
+Sessions** is part of the existing view-options menu, alongside **Show ended**
+and **Show unavailable**. Its count follows the search and those visibility
+options. Offline history appears only in **All**, displays **Offline** rather
+than an old execution status, and does not contribute to Active, Needs input,
+or Failed. Search and status filters combine without clearing one another;
+each status count describes the search scope, independently of the selected
+status. The Web app loads all Session pages rather than counting only the first
+500 records.
+
+An open Session stays open when its Device disconnects. Saved content,
+reading position, and local drafts remain available; drafts are not queued or
+sent automatically. Reconnecting alone does not restore sending: Relay must
+confirm the Session's capabilities for the current connection. Execution
+state is confirmed separately. Persisted SDK metadata has unknown execution
+state, but can still support explicitly continuing the Session when its
+current capability permits it. Existing read-only restrictions still apply.
+
+Connector observations carry a connection identity and increasing sequence;
+old connections and older snapshots cannot replace current state or
+capabilities. A new observation made while the current inventory is being
+read is retained with its original sequence; the inventory cannot overwrite it.
+Buffered events are retained as history, not replayed as current execution
+state. Initial inventory failures are explicit and can be retried
+through **Retry state sync**; complete history synchronization remains separate.
+An older history request with an unknown result does not block an explicit new
+read-only history sync; the old command record remains unknown until confirmed.
+
+Delivered commands whose results are not confirmed remain **unknown** after
+reconnection rather than being marked as execution failures or resent. The
+connector retains outcomes it actually observes in memory, including outcomes
+observed while disconnected, and uploads them with the original command's
+connection identity. Retrying this result upload never re-executes the command.
+A process restart can lose that in-memory evidence: if no trustworthy result
+is recoverable, it remains unknown; **Stop watching this result** only
+stops the local watch and never changes the stored outcome or resends it.
+
+Refresh failures keep saved content and local drafts, explicitly mark current
+information as unconfirmed, and disable remote operations. **Retry refresh**
+reloads both Device and Session indexes. Slow paginated reads do not overlap
+the next inventory poll. If a successfully read index no longer includes the
+open Session, the UI reports it unavailable, clears its content, and waits for
+the user to select another Session rather than silently changing the selection.
+
+This revision requires migration
+[`0010_session_confirmation.sql`](./apps/worker/migrations/0010_session_confirmation.sql) and the
+updated Relay and connector before current-connection confirmation is
+available. The transport retains protocol version 2 with opt-in
+`confirmationVersion: 1`. Older connectors may still publish saved inventory
+and history, but cannot confirm current state or enable remote follow-ups;
+the UI explicitly requests a connector update. Apply the schema and update
+Relay before updating connectors and Web. Builds use only a Worker dry run;
+they do not apply migrations or deploy.
 
 ## Run a connector
 

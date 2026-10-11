@@ -69,7 +69,9 @@ function metadataSummary(metadata: SessionMetadata): AgentSession {
   return {
     id: metadata.sessionId,
     title: boundedText(metadata.summary, 256),
-    status: "idle",
+    status: "unknown",
+    executionStateKnown: false,
+    canSendMessage: true,
     createdAt: metadata.startTime.toISOString(),
     updatedAt: metadata.modifiedTime.toISOString(),
     lastMessagePreview: boundedText(metadata.summary, 512),
@@ -164,6 +166,8 @@ export class CopilotAgentAdapter implements AgentAdapter {
       id: session.sessionId,
       title: input.title ?? null,
       status: "running",
+      executionStateKnown: true,
+      canSendMessage: true,
       createdAt: now,
       updatedAt: now,
       lastMessagePreview: input.prompt.slice(0, 512),
@@ -171,7 +175,7 @@ export class CopilotAgentAdapter implements AgentAdapter {
     this.attach(session, summary);
     this.emit({ type: "session.updated", session: summary });
     await session.send({ prompt: input.prompt });
-    return summary;
+    return this.active.get(session.sessionId)?.summary ?? summary;
   }
 
   async sendMessage(input: {
@@ -443,6 +447,9 @@ export class CopilotAgentAdapter implements AgentAdapter {
     publish = true,
   ): void {
     active.summary = { ...active.summary, ...updates };
+    if (updates.status !== undefined) {
+      active.summary.executionStateKnown = updates.status !== "unknown";
+    }
     if (publish) {
       this.emit({ type: "session.updated", session: active.summary });
     }

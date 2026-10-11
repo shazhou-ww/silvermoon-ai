@@ -310,7 +310,8 @@ function sameSession(left: AgentSession, right: AgentSession): boolean {
     && left.updatedAt === right.updatedAt
     && left.lastMessagePreview === right.lastMessagePreview
     && left.parentSessionId === right.parentSessionId
-    && left.canSendMessage === right.canSendMessage;
+    && left.canSendMessage === right.canSendMessage
+    && left.executionStateKnown === right.executionStateKnown;
 }
 
 function preferredBinding(
@@ -342,6 +343,7 @@ export function agentHostSummaryToSession(
     parentSessionId: null,
     title: boundedText(summary.title, 256),
     status: sessionStatus(summary.status),
+    executionStateKnown: summary.status !== undefined,
     nativeStatus: summary.status === undefined ? null : String(summary.status),
     createdAt,
     updatedAt,
@@ -380,6 +382,7 @@ export function agentHostSummaryToSubsessions(
         parentSessionId: parent.id,
         title: boundedText(chat.title, 256),
         status: sessionStatus(chat.status),
+        executionStateKnown: chat.status !== undefined,
         nativeStatus: chat.status === undefined ? null : String(chat.status),
         createdAt: parent.createdAt,
         updatedAt: parent.updatedAt,

@@ -141,7 +141,7 @@ textarea:focus-visible {
   width: min(100%, 92rem);
   margin-inline: auto;
   flex-direction: column;
-  padding: clamp(1.5rem, 3vw, 3rem) clamp(1.25rem, 4vw, 4rem);
+  padding: clamp(1.25rem, 2vw, 1.5rem) clamp(1.25rem, 4vw, 4rem);
   background: linear-gradient(145deg, rgb(251 253 255 / 94%), rgb(237 244 250 / 94%));
   border: 1px solid rgb(255 255 255 / 92%);
   border-radius: 1.75rem;
@@ -167,7 +167,7 @@ textarea:focus-visible {
 
 .login-hero {
   width: 100%;
-  margin-top: clamp(2rem, 4vh, 3rem);
+  margin-top: clamp(1.5rem, 2.5vh, 2rem);
 }
 
 .login-hero h1 {
@@ -191,20 +191,21 @@ textarea:focus-visible {
   display: grid;
   grid-template-columns: minmax(20rem, 1.05fr) minmax(18rem, 0.95fr);
   gap: clamp(2rem, 5vw, 6rem);
-  min-height: 24rem;
-  margin-top: clamp(1.5rem, 3vh, 2rem);
+  min-height: 27.5rem;
+  margin-top: 1rem;
 }
 
 .login-card {
   z-index: 2;
   width: min(100%, 29rem);
-  align-self: start;
+  align-self: center;
   padding: clamp(1.5rem, 2.6vw, 2.25rem);
   background: rgb(255 255 255 / 91%);
   border: 1px solid rgb(255 255 255 / 92%);
   border-radius: 1.25rem;
   box-shadow: 0 1.5rem 4rem rgb(52 68 93 / 13%);
   backdrop-filter: blur(0.75rem);
+  transform: translateX(3%);
 }
 
 .login-card h2 {
@@ -303,18 +304,35 @@ textarea:focus-visible {
 .login-mascot-stage {
   position: relative;
   min-width: 0;
-  min-height: 24rem;
+  min-height: 27.5rem;
 }
 
 .login-mascot {
   position: absolute;
-  right: 4%;
+  right: 0;
   bottom: 0;
-  width: min(92%, 25rem);
-  height: 24rem;
+  left: 0;
+  width: 100%;
+  height: 27.5rem;
   object-fit: contain;
-  object-position: right bottom;
-  filter: drop-shadow(0 1.5rem 1.4rem rgb(77 94 115 / 22%));
+  object-position: center center;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 14%,
+    #000 86%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 14%,
+    #000 86%,
+    transparent 100%
+  );
+  transform: translate(-15%, -12%) scale(1.08);
+  transform-origin: center center;
 }
 
 .login-capabilities {
@@ -559,24 +577,56 @@ textarea:focus-visible {
 }
 
 .session-status[data-status="failed"],
-.session-status[data-status="gone"] {
+.session-status[data-status="gone"],
+.session-status[data-status="sync-failed"] {
   color: #a12f39;
   background: #f8e5e7;
 }
 
-.account-trigger {
-  min-width: 0;
-  max-width: 17rem;
-  height: 2.9rem;
-  justify-content: flex-start;
-  gap: 0.55rem;
-  padding: 0.3rem 0.5rem;
-  border-radius: 0.7rem;
+.session-view-notice,
+.session-connection-notice {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.7rem;
+  padding: 0.65rem 0.9rem;
+  color: var(--muted-foreground);
+  background: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
 }
 
-.account-trigger > svg {
-  width: 0.85rem;
+.session-connection-notice {
+  border-bottom: 1px solid var(--border);
+  padding-inline: var(--conversation-inline-padding);
+}
+
+.session-view-notice.is-error,
+.session-connection-notice.is-error {
+  color: var(--destructive);
+}
+
+.session-view-notice button,
+.session-connection-notice button {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
+  cursor: pointer;
+}
+
+.session-hidden-hint {
+  margin: 0;
+  padding: 0.35rem 1rem;
   color: var(--muted-foreground);
+  font-size: 0.68rem;
+}
+
+.account-trigger {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0.3rem;
+  border-radius: 0.7rem;
 }
 
 .account-avatar {
@@ -599,31 +649,8 @@ textarea:focus-visible {
   object-fit: cover;
 }
 
-.account-trigger-copy {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  text-align: left;
-}
-
-.account-trigger-copy strong,
-.account-trigger-copy span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.account-trigger-copy strong {
-  font-size: 0.78rem;
-}
-
-.account-trigger-copy span {
-  color: var(--muted-foreground);
-  font-size: 0.68rem;
-  font-weight: 400;
-}
-
 .account-menu {
+  z-index: 80;
   width: 16.5rem;
   padding: 0.4rem;
 }
@@ -2227,30 +2254,18 @@ textarea:focus-visible {
   margin-top: 0.25rem;
 }
 
-.settings-dialog {
-  display: grid;
-  width: min(70rem, calc(100vw - 2rem));
-  max-width: 70rem;
-  height: min(50rem, calc(100dvh - 2rem));
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 0;
-  overflow: hidden;
-  padding: 0;
-}
-
-.settings-dialog-header {
-  padding: 1.25rem 1.35rem 1rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.settings-scroll {
+.settings-page {
+  grid-area: workspace;
   display: grid;
   min-height: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+  align-content: start;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: max-content;
   gap: 1rem;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 1rem;
+  padding: 1.5rem;
   background: #f4f6f8;
   scrollbar-gutter: stable;
 }
@@ -2262,9 +2277,89 @@ textarea:focus-visible {
   box-shadow: none;
 }
 
+.settings-page .device-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.device-card-header > div { min-width: 0; }
+.device-card-header > button { flex-shrink: 0; }
+.device-card-header > button[hidden] { display: none; }
+.settings-page .provider-links { justify-content: flex-end; }
+.settings-page .settings-row-actions { justify-content: flex-end; }
+.settings-page .settings-list-row strong { white-space: normal; }
+
+.settings-page .device-settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.65fr) auto;
+}
+
+.settings-page .device-create-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 8rem auto;
+  align-items: end;
+}
+
+.device-settings-context {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.session-workspace[hidden] { display: none; }
+
+.mobile-topbar-context h1 {
+  margin: 0;
+  font: inherit;
+}
+
+.session-navigation-drawer {
+  display: flex;
+  flex-direction: column;
+  top: 0;
+  left: 0;
+  width: min(22rem, calc(100vw - 2.5rem));
+  max-width: none;
+  height: 100dvh;
+  transform: none;
+  translate: none;
+  padding: 0;
+  gap: 0;
+  border-radius: 0;
+}
+
+.session-navigation-drawer .session-rail {
+  display: flex;
+  grid-area: auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.session-navigation-close {
+  position: absolute;
+  top: 0.9rem;
+  right: 0.5rem;
+  z-index: 1;
+}
+
+.session-navigation-drawer .session-rail-heading {
+  padding-right: 3rem;
+}
+
+@media (min-width: 761px) and (max-width: 1150px) {
+  .settings-page .device-settings-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .device-settings-context { grid-column: 1; grid-row: 2; }
+  .device-settings-row > .settings-row-actions { grid-column: 2; grid-row: 1 / span 2; max-width: 14rem; }
+  .settings-page .device-create-row { grid-template-columns: minmax(0, 1fr) 8rem; }
+  .device-create-row .settings-row-actions { grid-column: 1 / -1; }
+}
 .settings-card [data-slot="card-header"] {
   border-bottom: 1px solid var(--border);
 }
+
+.settings-card h2 { margin: 0; font: inherit; }
 
 .settings-card [data-slot="card-title"] svg {
   width: 1rem;
@@ -2363,13 +2458,6 @@ textarea:focus-visible {
   font-size: 0.75rem;
 }
 
-.token-create-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 8rem auto;
-  gap: 0.65rem;
-  align-items: end;
-}
-
 .token-reveal {
   display: grid;
   gap: 0.7rem;
@@ -2413,17 +2501,20 @@ textarea:focus-visible {
 
   .login-card {
     width: min(100%, 34rem);
+    align-self: start;
+    transform: none;
   }
 
   .login-mascot-stage {
-    min-height: 24rem;
+    min-height: 16rem;
   }
 
   .login-mascot {
-    right: 50%;
-    width: min(80%, 20rem);
-    height: 24rem;
-    transform: translateX(50%);
+    right: 0;
+    left: 0;
+    width: 100%;
+    height: 16rem;
+    transform: none;
   }
 }
 
@@ -2473,12 +2564,12 @@ textarea:focus-visible {
   }
 
   .login-mascot-stage {
-    min-height: 21rem;
+    min-height: 13rem;
   }
 
   .login-mascot {
-    width: 16rem;
-    height: 21rem;
+    width: 100%;
+    height: 13rem;
   }
 
   .login-capabilities {
@@ -2531,11 +2622,6 @@ textarea:focus-visible {
     padding: 0.2rem;
   }
 
-  .account-trigger-copy,
-  .account-trigger > svg {
-    display: none;
-  }
-
   .account-avatar {
     width: 2rem;
     height: 2rem;
@@ -2549,9 +2635,13 @@ textarea:focus-visible {
   }
 
   .mobile-view-list .session-workspace,
-  .mobile-view-session .session-rail {
+  .mobile-view-session .session-rail,
+  .workspace-view-settings .session-rail {
     display: none;
   }
+
+  .workspace-view-not-found .session-workspace { display: flex; }
+  .workspace-view-not-found .session-rail { display: none; }
 
   .session-rail {
     border-right: 0;
@@ -2659,20 +2749,8 @@ textarea:focus-visible {
     width: calc(100vw - 1.4rem);
   }
 
-  .settings-dialog {
-    top: 0;
-    left: 0;
-    width: 100vw;
-    max-width: none;
-    height: 100dvh;
-    max-height: none;
-    transform: none;
-    translate: none;
-    border-radius: 0;
-  }
-
-  .settings-scroll {
-    grid-template-columns: 1fr;
+  .settings-page {
+    grid-area: content;
     padding: 0.75rem;
   }
 
@@ -2681,17 +2759,25 @@ textarea:focus-visible {
     max-width: none;
   }
 
-  .token-create-grid {
+  .settings-page .device-create-row {
     grid-template-columns: 1fr;
-  }
-
-  .token-create-grid > button {
-    justify-self: start;
   }
 
   .settings-list-row {
     align-items: flex-start;
   }
+
+  .settings-page .device-settings-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .device-settings-context { grid-column: 1; grid-row: 2; }
+  .device-settings-row > .settings-row-actions {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    max-width: 7.5rem;
+  }
+  .settings-page .device-card-header { gap: 0.5rem; }
+  .settings-page { padding: 0.75rem; }
+  .device-create-row .settings-row-actions { justify-self: end; }
+  .settings-page .token-reveal code { overflow-wrap: anywhere; white-space: pre-wrap; }
 }
 
 @media (pointer: fine) {

@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>打开配置：弹窗与右侧页面</title>
+  <style>
+    :root { color-scheme: light; --ink: #17212b; --muted: #687487; --border: #d8dfe8; --primary: #3454d1; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 18px; color: var(--ink); background: #fff; font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+    h1 { margin: 0; font-size: 20px; }
+    .scenario-heading { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px; }
+    .scenario-heading p { margin: 4px 0 0; color: var(--muted); }
+    .callouts { display: flex; flex-wrap: wrap; align-content: start; justify-content: flex-end; gap: 6px; list-style: none; margin: 0; padding: 0; }
+    .callouts li { padding: 5px 8px; color: #125d55; background: #e8f3f1; border-radius: 5px; font-size: 12px; }
+    .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+    .state { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 7px; }
+    .state-label { padding: 10px 12px; border-bottom: 1px solid var(--border); background: #f4f5f6; }
+    .state-label strong { display: block; }
+    .state-label span { color: var(--muted); font-size: 12px; }
+    .product-surface { position: relative; height: 670px; background: #f3f5f7; font-size: 12px; }
+    .shell { display: grid; height: 100%; grid-template-columns: 25% minmax(0, 1fr); grid-template-rows: 62px minmax(0, 1fr); }
+    .brand, .topbar { display: flex; align-items: center; padding: 12px; background: #f8f9fb; border-bottom: 1px solid var(--border); }
+    .brand { border-right: 1px solid var(--border); font-size: 15px; font-weight: 700; }
+    .topbar { justify-content: space-between; gap: 10px; }
+    .topbar strong { font-size: 16px; }
+    .settings-heading { display: flex; align-items: center; gap: 10px; }
+    .mobile-list { display: none; color: var(--muted); font-size: 20px; }
+    .account { display: flex; align-items: center; gap: 6px; color: var(--muted); min-width: 0; }
+    .avatar { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; color: white; background: #142033; font-size: 11px; font-weight: 750; }
+    .account-copy { display: grid; min-width: 0; }
+    .account-copy strong { font-size: 12px; color: var(--ink); }
+    .account-copy span { font-size: 10px; }
+    .rail { border-right: 1px solid var(--border); padding: 14px 10px; background: #f8f9fb; }
+    .rail h2 { margin: 0 0 14px; font-size: 16px; }
+    .search, .session { margin-bottom: 10px; padding: 9px; border: 1px solid var(--border); border-radius: 7px; overflow-wrap: anywhere; }
+    .search { color: var(--muted); background: #fff; }
+    .session { background: #fff; }
+    .session strong, .session span { display: block; }
+    .session span { margin-top: 3px; color: var(--muted); }
+    .session.selected { border-color: #3454d1; background: #e3e8fb; }
+    .rail-footer { margin-top: 16px; color: var(--muted); }
+    .rail-footer span { display: block; color: var(--primary); }
+    .transcript { padding: 20px; background: #fbfcfd; }
+    .transcript p { padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+    .shade { position: absolute; inset: 0; background: rgb(0 0 0 / 10%); backdrop-filter: blur(2px); }
+    .dialog { position: absolute; inset: 16px; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border-radius: 12px; background: #fff; box-shadow: 0 0 0 1px rgb(23 33 43 / 10%); }
+    .dialog-header { display: flex; align-items: start; justify-content: space-between; gap: 10px; padding: 20px; border-bottom: 1px solid var(--border); }
+    .dialog-header h2 { margin: 0; font-size: 18px; }
+    .dialog-header p { margin: 6px 0 0; color: var(--muted); }
+    .close { color: var(--muted); font-size: 20px; }
+    .settings-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px; background: #f4f6f8; }
+    .page-intro { margin: 0 0 14px; color: var(--muted); }
+    .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+    .after .cards { grid-template-columns: minmax(0, 1fr); }
+    .card { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: #fbfcfd; }
+    .card-header { padding: 14px; border-bottom: 1px solid var(--border); }
+    .card h3 { margin: 0; font-size: 14px; }
+    .card p { margin: 5px 0 0; color: var(--muted); }
+    .after .device-card .card-header { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+    .after .device-card .card-header > div { min-width: 0; }
+    button.control { font: inherit; cursor: pointer; flex-shrink: 0; }
+    button:focus-visible, input:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+    .inline-device[hidden], button[hidden] { display: none; }
+    .inline-device-fields { display: grid; grid-template-columns: minmax(0, 1fr) 8rem auto; align-items: end; gap: 12px; margin: 10px 0; }
+    .inline-device label { display: grid; gap: 5px; }
+    .inline-device input { width: 100%; min-width: 0; font: inherit; color: var(--ink); padding: 7px 9px; border: 1px solid #c8d1dc; border-radius: 5px; background: white; }
+    .inline-device .actions { align-items: center; justify-content: flex-end; }
+    .card-body { display: grid; gap: 10px; padding: 14px; }
+    .field-label { font-weight: 600; }
+    .field { padding: 7px 9px; border: 1px solid #c8d1dc; border-radius: 5px; background: #fff; }
+    .control { display: inline-block; justify-self: start; padding: 5px 9px; border: 1px solid var(--border); border-radius: 5px; background: #fff; }
+    .primary { color: #fff; border-color: var(--primary); background: var(--primary); }
+    .disabled { opacity: 0.5; }
+    .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+    .row:last-child { border: 0; padding-bottom: 0; }
+    .row-copy { min-width: 0; }
+    .row-copy small { margin-top: 4px; }
+    .before .row-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row > .actions { justify-content: flex-end; }
+    .after .device-row { grid-template-columns: minmax(0, 1fr) minmax(0, 0.7fr) auto; }
+    .after .provider-links { justify-content: flex-end; }
+    .inline-device.row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+    .row strong, .row small { display: block; }
+    .row small { color: var(--muted); font-size: 11px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .status { color: #176149; font-size: 11px; }
+    .caption { padding: 10px 12px; margin: 0; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+    @media (max-width: 1000px) { .comparison { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) {
+      body { padding: 12px; }
+      .scenario-heading { grid-template-columns: 1fr; }
+      .callouts { justify-content: flex-start; }
+      .shell { grid-template-columns: 1fr; }
+      .brand, .rail { display: none; }
+      .mobile-list { display: inline; }
+      .account-copy, .chevron { display: none; }
+      .cards { grid-template-columns: 1fr; }
+      .dialog-header { padding: 16px; }
+      .settings-body { padding: 12px; }
+      .inline-device-fields { grid-template-columns: 1fr; }
+      .before .row { grid-template-columns: minmax(0, 1fr); }
+      .before .row > .actions { justify-content: flex-start; }
+      .after .device-row { grid-template-columns: minmax(0, 1fr) auto; }
+      .after .device-row .device-context { grid-column: 1; grid-row: 2; }
+      .after .device-row > .actions { grid-column: 2; grid-row: 1 / span 2; }
+      .product-surface { height: 670px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="scenario-heading">
+    <div>
+      <h1>打开账户与连接配置</h1>
+      <p>同一组虚构数据、同等外壳与比例；展示布局示意，不是运行截图。</p>
+    </div>
+    <ul class="callouts" aria-label="可见差异">
+      <li>取消覆盖全工作区的遮罩</li>
+      <li>左侧仍是 Session 列表</li>
+      <li>单列模块，信息 / 操作横向组织</li>
+      <li>创建与设备条目同级，无子 panel</li>
+      <li>移除 Browser sessions 管理</li>
+    </ul>
+  </header>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title">
+      <header class="state-label">
+        <strong id="before-title">Before · 当前配置弹窗</strong>
+        <span>当前入口：账户菜单 → Account and connections</span>
+      </header>
+      <div class="product-surface">
+        <div class="shell">
+          <div class="brand">Silvermoon</div>
+          <div class="topbar"><strong>Workspace discussion</strong><span class="account"><span class="avatar">DA</span><span class="account-copy"><strong>Demo account</strong><span>demo@example.test</span></span><span class="chevron" aria-hidden="true">⌄</span></span></div>
+          <aside class="rail" aria-label="当前界面中的 Session 列表">
+            <h2>Sessions</h2>
+            <div class="search">Search Sessions</div>
+            <div class="session selected"><strong>Workspace discussion</strong><span>Development Mac</span></div>
+            <div class="session"><strong>Documentation review</strong><span>Development Mac</span></div>
+            <div class="rail-footer">1 online<span>1 Device</span></div>
+          </aside>
+          <div class="transcript"><p>Discuss the workspace layout.</p><p>Let's inspect the current configuration.</p></div>
+        </div>
+        <div class="shade"></div>
+        <section class="dialog" aria-label="当前 Devices 弹窗的静态示意">
+          <div class="dialog-header"><div><h2>Devices</h2><p>Add and manage devices that can connect to this account.</p></div><span class="close" aria-hidden="true">×</span></div>
+          <div class="settings-body"><div class="cards" data-cards></div></div>
+        </section>
+      </div>
+      <p class="caption">当前标题是 Devices，但四块配置同时置于弹窗内。配置区可独立滚动；并非小尺寸弹窗。</p>
+    </section>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label">
+        <strong id="after-title">After · 右侧完整 Settings 页面</strong>
+        <span>建议路由：/settings；已确认左侧保留 Sessions</span>
+      </header>
+      <div class="product-surface">
+        <div class="shell">
+          <div class="brand">Silvermoon</div>
+          <div class="topbar"><span class="settings-heading"><span class="mobile-list" aria-label="窄屏列表图标示意">☰</span><strong>Settings</strong></span><span class="account" aria-label="账户图标示意：Demo account"><span class="avatar" aria-hidden="true">DA</span></span></div>
+          <aside class="rail" aria-label="拟议界面中的 Session 列表">
+            <h2>Sessions</h2>
+            <div class="search">Search Sessions</div>
+            <div class="session"><strong>Workspace discussion</strong><span>Development Mac</span></div>
+            <div class="session"><strong>Documentation review</strong><span>Development Mac</span></div>
+            <div class="rail-footer">1 online<span>1 Device</span></div>
+          </aside>
+          <section class="settings-body" aria-label="拟议 Settings 页面">
+            <p class="page-intro">Account and connections</p>
+            <div class="cards" data-after-cards></div>
+          </section>
+        </div>
+      </div>
+      <p class="caption">Devices 与 Linked identities 两个单列模块；名称、运行信息和操作分区。设备按需创建，宽屏输入及操作同一行，窄屏换行。移除浏览器管理，仅保留账户菜单 Sign out。评审输入只读，不执行创建。</p>
+    </section>
+  </main>
+  <template id="settings-cards">
+    <section class="card">
+      <div class="card-header"><h3>Add device</h3><p>Name the device once. Relay keeps this name with its token.</p></div>
+      <div class="card-body">
+        <div class="field-label">Device name</div><div class="field">Development Mac</div>
+        <div class="field-label">Expires in days</div><div class="field">30</div>
+        <span class="control primary">Add device</span>
+      </div>
+    </section>
+    <section class="card">
+      <div class="card-header"><h3>Devices</h3><p>Each Agent Session and connection token belongs to one Device.</p></div>
+      <div class="card-body">
+        <div class="row device-row"><div class="row-copy"><strong>Development Mac</strong><small>Copilot · 2 Sessions</small></div><div class="actions"><span class="status">online</span><span class="control">Rotate token</span><span class="control">Revoke</span></div></div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="card-header"><h3>Linked identities</h3><p>Keep at least one provider linked to sign in.</p></div>
+      <div class="card-body">
+        <div class="row"><div class="row-copy"><strong>GitHub</strong><small>demo@example.test</small></div><div class="actions"><span class="control disabled">Unlink</span></div></div>
+        <div class="actions provider-links"><span class="control">Link Google</span><span class="control">Link Microsoft</span></div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="card-header"><h3>Browser sessions</h3><p>Revoke browsers that should no longer access the relay.</p></div>
+      <div class="card-body">
+        <div class="row"><div class="row-copy"><strong>This browser</strong><small>Demo desktop browser · Expires Oct 18</small></div><div class="actions"><span class="control">Sign out here</span></div></div>
+        <div class="row"><div class="row-copy"><strong>Signed-in browser</strong><small>Demo mobile browser · Expires Oct 18</small></div><div class="actions"><span class="control">Revoke</span></div></div>
+      </div>
+    </section>
+  </template>
+  <template id="inline-device-template">
+    <div class="inline-device row" id="inline-device" hidden aria-label="创建设备 inline 条目示意">
+      <strong>Add device</strong>
+      <div class="inline-device-fields">
+        <label>Device name<input value="Development Mac" readonly></label>
+        <label>Expires in days<input type="number" value="30" min="1" readonly></label>
+        <div class="actions"><span class="control primary">Add device</span><button type="button" class="control" id="cancel-device-form">Cancel</button></div>
+      </div>
+    </div>
+  </template>
+  <script>
+    const cards = document.querySelector("#settings-cards");
+    document.querySelectorAll("[data-cards]").forEach((target) => {
+      target.append(cards.content.cloneNode(true));
+    });
+    const afterCards = document.querySelector("[data-after-cards]");
+    const devices = cards.content.children[1].cloneNode(true);
+    devices.classList.add("device-card");
+    const row = devices.querySelector(".device-row");
+    const context = document.createElement("div");
+    context.className = "device-context";
+    context.append(row.querySelector(".row-copy small"));
+    row.insertBefore(context, row.querySelector(".actions"));
+    const header = devices.querySelector(".card-header");
+    const copy = document.createElement("div");
+    while (header.firstChild) copy.append(header.firstChild);
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "control";
+    openButton.textContent = "Add device";
+    openButton.setAttribute("aria-expanded", "false");
+    openButton.setAttribute("aria-controls", "inline-device");
+    header.append(copy, openButton);
+    devices.querySelector(".card-body").prepend(document.querySelector("#inline-device-template").content.cloneNode(true));
+    afterCards.append(devices, cards.content.children[2].cloneNode(true));
+    const inlineForm = document.querySelector("#inline-device");
+    openButton.addEventListener("click", () => {
+      inlineForm.hidden = false;
+      openButton.hidden = true;
+      openButton.setAttribute("aria-expanded", "true");
+      inlineForm.querySelector("input").focus({ preventScroll: true });
+    });
+    document.querySelector("#cancel-device-form").addEventListener("click", () => {
+      inlineForm.hidden = true;
+      openButton.hidden = false;
+      openButton.setAttribute("aria-expanded", "false");
+      openButton.focus({ preventScroll: true });
+    });
+    function reportHeight() {
+      window.parent.postMessage({ type: "ui-review:height", height: Math.ceil(document.body.getBoundingClientRect().height) }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.body);
+    window.addEventListener("load", reportHeight);
+    window.addEventListener("resize", reportHeight);
+    window.addEventListener("message", (event) => {
+      if (event.source === window.parent && event.data?.type === "ui-review:measure") reportHeight();
+    });
+  </script>
+</body>
+</html>

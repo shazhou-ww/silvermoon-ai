@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session 切换：各自的输入草稿</title>
+  <style>
+    :root { color-scheme: light; --ink: #17212b; --muted: #687487; --border: #d8dfe8; --primary: #3454d1; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 18px; color: var(--ink); background: white; font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+    h1 { margin: 0; font-size: 20px; }
+    .scenario-heading { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px; }
+    .scenario-heading p { margin: 4px 0 0; color: var(--muted); }
+    .callouts { display: flex; flex-wrap: wrap; justify-content: flex-end; align-content: start; gap: 6px; list-style: none; margin: 0; padding: 0; }
+    .callouts li { padding: 5px 8px; color: #125d55; background: #e8f3f1; border-radius: 5px; font-size: 12px; }
+    .steps { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    button { padding: 7px 12px; font: inherit; color: var(--muted); background: #f4f5f6; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+    button[aria-pressed="true"] { color: #125d55; background: #e8f3f1; border-color: #8abdb7; }
+    button:focus-visible, textarea:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+    .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+    .state { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 7px; }
+    .state-label { padding: 10px 12px; border-bottom: 1px solid var(--border); background: #f4f5f6; }
+    .state-label strong { display: block; }
+    .state-label span { color: var(--muted); font-size: 12px; }
+    .product-surface { height: 410px; background: #fbfcfd; display: grid; grid-template-rows: 58px minmax(0, 1fr) auto; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; background: #f8f9fb; border-bottom: 1px solid var(--border); }
+    .topbar strong { font-size: 16px; }
+    .avatar { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; color: white; background: #142033; font-size: 11px; font-weight: 750; }
+    .before-account { display: flex; align-items: center; gap: 8px; }
+    .account-copy { display: grid; }
+    .account-copy span { color: var(--muted); font-size: 11px; }
+    .account-copy strong { font-size: 12px; }
+    .transcript { min-height: 0; overflow-y: auto; padding: 16px; }
+    .transcript p { max-width: 90%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: white; }
+    .composer { margin: 0 16px 16px; padding: 10px 12px; border: 1px solid #c8d1dc; border-radius: 12px; background: white; }
+    textarea { display: block; width: 100%; height: 76px; padding: 4px 0; resize: none; border: 0; background: transparent; color: var(--ink); font: inherit; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 11px; }
+    .send { padding: 4px 8px; color: white; background: var(--primary); border-radius: 5px; }
+    .send.is-disabled { color: var(--muted); background: #edf0f3; }
+    .notification { margin: 0; padding: 10px 12px; color: #bd3f4a; background: #fff1f2; font-size: 12px; }
+    .notification[hidden] { display: none; }
+    .caption { margin: 0; min-height: 60px; padding: 10px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+    .timeline { margin: 12px 0; color: var(--muted); font-size: 12px; }
+    .rules { margin: 14px 0 0; padding: 12px 14px; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+    .rules p { margin: 4px 0; }
+    @media (max-width: 1000px) { .comparison { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) {
+      body { padding: 12px; }
+      .scenario-heading { grid-template-columns: 1fr; }
+      .callouts { justify-content: flex-start; }
+      .account-copy, .chevron { display: none; }
+      .topbar { padding-inline: 12px; }
+      .composer { margin-inline: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="scenario-heading">
+    <div><h1>Session 切换不串用输入</h1><p>相同导航与输入序列；只比较输入草稿，不改消息投递和 Session 状态。</p></div>
+    <ul class="callouts" aria-label="可见差异"><li>已确认：每个 Session 独立草稿</li><li>已确认：当前标签页刷新可恢复</li></ul>
+  </header>
+  <p class="timeline">等价过程：A 输入“请检查配置导航。” → 暂看配置（Before 是弹窗，After 是 Settings 页） → B 输入“请检查文档链接。” → 返回 A。消息数据均为虚构示例。</p>
+  <nav class="steps" aria-label="查看草稿导航步骤">
+    <button type="button" data-step="0" aria-pressed="false" aria-controls="comparison">1 · 切到 B，尚未输入</button>
+    <button type="button" data-step="1" aria-pressed="false" aria-controls="comparison">2 · 在 B 输入</button>
+    <button type="button" data-step="2" aria-pressed="true" aria-controls="comparison">3 · 返回 A</button>
+    <button type="button" data-step="3" aria-pressed="false" aria-controls="comparison">4 · 发送失败</button>
+    <button type="button" data-step="4" aria-pressed="false" aria-controls="comparison">5 · 缓存不可用</button>
+  </nav>
+  <main class="comparison" id="comparison">
+    <section class="state" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before · 单一 follow-up 输入 state</strong><span>基于当前源码：切换会话不切换输入 state</span></header>
+      <div class="product-surface">
+        <div class="topbar"><strong data-session>Workspace discussion</strong><span class="before-account"><span class="avatar" aria-hidden="true">DA</span><span class="account-copy"><strong>Demo account</strong><span>demo@example.test</span></span><span class="chevron" aria-hidden="true">⌄</span></span></div>
+        <div class="transcript"><p data-message>Discuss the workspace layout.</p></div>
+        <div class="composer"><textarea readonly aria-label="Before 当前会话输入草稿" data-before-input>请检查文档链接。</textarea><div class="toolbar"><span>Send to Development Mac</span><span class="send" aria-hidden="true">↑</span></div></div>
+      </div>
+      <p class="notification" data-before-notification hidden></p>
+      <p class="caption" data-before-caption>A 显示了 B 的输入，原来的 A 草稿已经被覆盖。</p>
+    </section>
+    <section class="state" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After · 按 Session 独立草稿</strong><span>输入归属不随右侧导航改变</span></header>
+      <div class="product-surface">
+        <div class="topbar"><strong data-session>Workspace discussion</strong><span class="avatar" aria-label="账户图标示意：Demo account">DA</span></div>
+        <div class="transcript"><p data-message>Discuss the workspace layout.</p></div>
+        <div class="composer"><textarea readonly aria-label="After 当前会话输入草稿" data-after-input>请检查配置导航。</textarea><div class="toolbar"><span>Send to Development Mac</span><span class="send" aria-hidden="true">↑</span></div></div>
+      </div>
+      <p class="notification" data-after-notification hidden></p>
+      <p class="caption" data-after-caption>A 恢复自己的输入；B 的“请检查文档链接。”另行保留。</p>
+    </section>
+  </main>
+  <p role="status" aria-live="polite" data-step-status>正在比较：返回 A。</p>
+  <section class="rules" aria-label="待批准草稿边界">
+    <p><strong>建议批准：</strong>失败保留；命令确认成功后只清源会话的提交版本，不清其他会话或后来编辑的输入；存储失败明确提示。</p>
+    <p>当前标签页内跨刷新恢复；标准浏览器恢复标签页也可能恢复存储。认证失效 / 成功登出清理账户缓存；token 不进入草稿。</p>
+    <p>说明性评审材料，不是生产 UI 或行为契约。步骤按钮只切换预设文本，不执行实际路由、发送或缓存。输入框只读。</p>
+  </section>
+  <script>
+    const alpha = "请检查配置导航。";
+    const beta = "请检查文档链接。";
+    const states = [
+      { session: "Documentation review", message: "Review the documentation links.", before: alpha, after: "", beforeCaption: "B 继承了 A 的未发送输入；两者没有独立草稿。", afterCaption: "B 尚未输入，因此为空；A 草稿在前端独立保留。", label: "切到 B，尚未输入。" },
+      { session: "Documentation review", message: "Review the documentation links.", before: beta, after: beta, beforeCaption: "B 输入新内容，同时覆盖了共享输入 state 中的 A 草稿。", afterCaption: "B 保存自己的输入，不覆盖 A 的“请检查配置导航。”", label: "在 B 输入。" },
+      { session: "Workspace discussion", message: "Discuss the workspace layout.", before: beta, after: alpha, beforeCaption: "A 显示了 B 的输入，原来的 A 草稿已经被覆盖。", afterCaption: "A 恢复自己的输入；B 的“请检查文档链接。”另行保留。", label: "返回 A。" },
+      { session: "Workspace discussion", message: "Discuss the workspace layout.", before: "", after: alpha, beforeCaption: "等价分支：两侧 A 都提交了配置导航输入。当前实现收到 command 回执就清空；随后命令失败，输入已经丢失。", afterCaption: "待批准：命令失败保留 A 的提交文本，继续展示错误，不自动重发。", beforeNotice: "Follow-up failed.", afterNotice: "Follow-up failed.", label: "发送失败分支：两侧 A 均提交了“请检查配置导航。”，命令失败。" },
+      { session: "Workspace discussion", message: "Discuss the workspace layout.", before: alpha, after: alpha, beforeCaption: "等价分支：当前实现只使用内存输入，没有刷新恢复，也不使用草稿存储。", afterCaption: "待批准：存储不可用时保留当前输入并明确提示，不能声称缓存成功。", afterNotice: "草稿未能缓存，当前页面仍可编辑；刷新可能丢失输入。", label: "缓存不可用分支：两侧 A 当前输入相同；浏览器不允许草稿存储。" },
+    ];
+    const buttons = [...document.querySelectorAll("[data-step]")];
+    buttons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const state = states[Number(button.dataset.step)];
+        buttons.forEach((candidate) => candidate.setAttribute("aria-pressed", String(candidate === button)));
+        document.querySelectorAll("[data-session]").forEach((target) => { target.textContent = state.session; });
+        document.querySelectorAll("[data-message]").forEach((target) => { target.textContent = state.message; });
+        document.querySelector("[data-before-input]").value = state.before;
+        document.querySelector("[data-after-input]").value = state.after;
+        document.querySelector(".state:first-child .send").classList.toggle("is-disabled", !state.before);
+        document.querySelector(".state:last-child .send").classList.toggle("is-disabled", !state.after);
+        document.querySelector("[data-before-caption]").textContent = state.beforeCaption;
+        document.querySelector("[data-after-caption]").textContent = state.afterCaption;
+        document.querySelector("[data-step-status]").textContent = `正在比较：${state.label}`;
+        for (const side of ["before", "after"]) {
+          const notification = document.querySelector(`[data-${side}-notification]`);
+          const text = side === "before" ? state.beforeNotice : state.afterNotice;
+          notification.textContent = text ?? "";
+          notification.hidden = !text;
+        }
+      });
+    });
+    function reportHeight() {
+      window.parent.postMessage({ type: "ui-review:height", height: Math.ceil(document.body.getBoundingClientRect().height) }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.body);
+    window.addEventListener("load", reportHeight);
+    window.addEventListener("resize", reportHeight);
+    window.addEventListener("message", (event) => {
+      if (event.source === window.parent && event.data?.type === "ui-review:measure") reportHeight();
+    });
+  </script>
+</body>
+</html>

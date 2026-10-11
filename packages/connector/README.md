@@ -88,6 +88,41 @@ When that chat is already running, follow-up text is queued behind the active
 turn; otherwise it starts a new turn. If VS Code disconnects, sessions that
 also exist in SDK storage fall back to their persisted metadata.
 
+## Reconnection and state confirmation
+
+On each Relay connection, the connector advertises `confirmationVersion: 1`
+and uploads an inventory scoped to the connection identity returned by Relay.
+Current Session snapshots use increasing observation sequences. Snapshots
+from a previous connection are superseded by the new inventory. Observations
+made during the current inventory read retain their original newer sequence,
+so the inventory cannot overwrite them. Buffered activity is
+uploaded as history and must not restore old execution state.
+
+Inventory failures are reported explicitly to Relay. **Retry state sync**
+requests a new inventory without replaying message or create commands.
+Heartbeats maintain the registered connection lease while inventory is
+pending or failed. Commands received during registration wait for registration
+to settle before executing.
+
+Successful or failed outcomes actually observed by the adapter are retained
+in memory if their upload fails or the Relay reconnects during execution.
+Result uploads identify the original command connection and are retried on
+heartbeats/reconnect without resending the operation. Results not observed,
+or lost through a connector process restart, are not fabricated.
+
+Adapters should explicitly return `canSendMessage` and
+`executionStateKnown` for each Session. A readable persisted SDK catalog
+confirms that the adapter can attempt continuation, not that the agent is
+currently idle. Such Sessions have unknown execution state until a trustworthy
+status observation is available. Explicit continuation can fail and reports
+that failure normally. Read-only Agent Host Sessions remain read-only.
+
+Use the updated Relay with migration
+[`0010_session_confirmation.sql`](../../apps/worker/migrations/0010_session_confirmation.sql). Legacy
+connectors remain compatible for history upload, but the updated Web/Relay
+do not treat their snapshots as current-connection confirmations or permit
+remote messages without confirmation.
+
 ## Embed
 
 The package exports `CopilotAgentAdapter`, `VsCodeAgentHostProvider`,

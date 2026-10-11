@@ -4,6 +4,7 @@ import {
   connectorCapabilitiesSchema,
   connectorIdSchema,
   createSessionCommandSchema,
+  listSessionsCommandSchema,
   PROTOCOL_VERSION,
   sendSessionMessageCommandSchema,
   sessionIdSchema,
@@ -57,6 +58,9 @@ interface ConnectorRow {
   last_seen_at: string | null;
   created_at: string;
   session_count: number;
+  connection_id: string | null;
+  session_sync_state: "unsupported" | "pending" | "ready" | "failed";
+  session_sync_error: string | null;
 }
 
 interface InputRequestEventRow {
@@ -109,6 +113,10 @@ export function pendingInputRequests(
   return pending;
 }
 
+type ConnectorState = Pick<ConnectorRow,
+  "id" | "status" | "connection_id" | "session_sync_state" | "capabilities_json"
+>;
+
 function response(
   request: Request,
   env: AppEnv,
@@ -158,12 +166,13 @@ async function connectorForUser(
   env: AppEnv,
   userId: string,
   connectorId: string,
-): Promise<{ id: string; status: "online" | "offline" } | null> {
+): Promise<ConnectorState | null> {
   return env.DB.prepare(
-    "SELECT id, status FROM connectors WHERE user_id = ?1 AND id = ?2",
+    `SELECT id, status, connection_id, session_sync_state, capabilities_json
+     FROM connectors WHERE user_id = ?1 AND id = ?2`,
   )
     .bind(userId, connectorId)
-    .first<{ id: string; status: "online" | "offline" }>();
+    .first<ConnectorState>();
 }
 
 async function dispatchCommand(
@@ -172,10 +181,17 @@ async function dispatchCommand(
   connectorId: string,
   command: ConnectorCommand,
 ): Promise<boolean> {
+  const connector = await connectorForUser(env, userId, connectorId);
+  const addressedCommand = {
+    ...command,
+    ...(command.connectionId || connector?.connection_id
+      ? { connectionId: command.connectionId ?? connector?.connection_id ?? undefined }
+      : {}),
+  };
   await env.DB.prepare(
     `INSERT INTO connector_commands
-      (id, user_id, connector_id, type, session_id, payload_json, status)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued')`,
+      (id, user_id, connector_id, type, session_id, payload_json, status, connection_id)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7)`,
   )
     .bind(
       command.commandId,
@@ -185,7 +201,8 @@ async function dispatchCommand(
       command.type === "session.message" || command.type === "session.history"
         ? command.sessionId
         : null,
-      JSON.stringify(command),
+      JSON.stringify(addressedCommand),
+      addressedCommand.connectionId ?? null,
     )
     .run();
 
@@ -197,7 +214,7 @@ async function dispatchCommand(
       ).bind(userId, connectorId).first<string>("connection_token_id")
         ?? `${userId}:${connectorId}`,
     )
-    .dispatchCommand(command);
+    .dispatchCommand(addressedCommand);
   if (result.delivered) return true;
 
   await env.DB.prepare(
@@ -206,7 +223,7 @@ async function dispatchCommand(
       error_message = 'The connector is not currently connected.',
       completed_at = CURRENT_TIMESTAMP,
       updated_at = CURRENT_TIMESTAMP
-     WHERE id = ?1`,
+     WHERE id = ?1 AND status = 'queued'`,
   )
     .bind(command.commandId)
     .run();
@@ -331,7 +348,8 @@ export async function handleApi(
     const connectors = await env.DB.prepare(
       `SELECT c.id, c.display_name, c.agent_name, c.agent_version,
         c.capabilities_json, c.status, c.connected_at, c.disconnected_at,
-        c.last_seen_at, c.created_at, COUNT(s.id) AS session_count
+        c.last_seen_at, c.created_at, c.connection_id, c.session_sync_state,
+        c.session_sync_error, COUNT(s.id) AS session_count
        FROM connectors c
        LEFT JOIN agent_sessions s
          ON s.user_id = c.user_id AND s.connector_id = c.id
@@ -359,6 +377,9 @@ export async function handleApi(
       lastSeenAt: connector.last_seen_at,
       createdAt: connector.created_at,
       sessionCount: connector.session_count,
+      connectionId: connector.connection_id,
+      sessionSyncState: connector.session_sync_state,
+      sessionSyncError: connector.session_sync_error,
     })));
   }
 
@@ -390,41 +411,53 @@ export async function handleApi(
     }
 
     if (request.method === "GET") {
-      const [sessions, inputEvents] = await Promise.all([
-        env.DB.prepare(
-          `SELECT id, title, status, native_status, created_at, updated_at, last_activity_at,
-            last_message_preview, parent_session_id, can_send_message
-           FROM agent_sessions
-           WHERE user_id = ?1 AND connector_id = ?2
-           ORDER BY last_activity_at DESC
-           LIMIT 500`,
-        )
-          .bind(session.userId, connector.id)
-          .all<{
-            id: string;
-            title: string | null;
-            status: string;
-            native_status: string | null;
-            created_at: string;
-            updated_at: string;
-            last_activity_at: string;
-            last_message_preview: string | null;
-            parent_session_id: string | null;
-            can_send_message: number;
-          }>(),
-        env.DB.prepare(
-          `SELECT session_id, role, content, data_json
-           FROM agent_session_events
-           WHERE user_id = ?1 AND connector_id = ?2
-             AND data_json IS NOT NULL
-             AND json_extract(data_json, '$.inputRequestId') IS NOT NULL
-           ORDER BY session_id, sequence DESC`,
-        )
-          .bind(session.userId, connector.id)
-          .all<InputRequestEventRow>(),
-      ]);
+      const paged = url.searchParams.get("paged") === "1";
+      const cursor = url.searchParams.get("cursor");
+      if (cursor !== null && (!paged || !sessionIdSchema.safeParse(cursor).success)) {
+        return response(request, env, { error: "invalid-session-cursor" }, { status: 400 });
+      }
+      const sessions = await env.DB.prepare(
+        `SELECT id, title, status, native_status, created_at, updated_at, last_activity_at,
+          last_message_preview, parent_session_id, can_send_message,
+          confirmed_connection_id, execution_state_known, capability_confirmed
+         FROM agent_sessions
+         WHERE user_id = ?1 AND connector_id = ?2
+           AND (?3 IS NULL OR id > ?3)
+         ORDER BY ${paged ? "id" : "last_activity_at DESC"}
+         LIMIT ?4`,
+      )
+        .bind(session.userId, connector.id, paged ? cursor : null, paged ? 501 : 500)
+        .all<{
+          id: string;
+          title: string | null;
+          status: string;
+          native_status: string | null;
+          created_at: string;
+          updated_at: string;
+          last_activity_at: string;
+          last_message_preview: string | null;
+          parent_session_id: string | null;
+          can_send_message: number;
+          confirmed_connection_id: string | null;
+          execution_state_known: number;
+          capability_confirmed: number;
+        }>();
+      const items = paged ? sessions.results.slice(0, 500) : sessions.results;
+      const inputEvents = await env.DB.prepare(
+        `SELECT session_id, role, content, data_json
+         FROM agent_session_events
+         WHERE user_id = ?1 AND connector_id = ?2
+           AND data_json IS NOT NULL
+           AND json_extract(data_json, '$.inputRequestId') IS NOT NULL
+           AND (?3 IS NULL OR session_id > ?3)
+           AND (?4 IS NULL OR session_id <= ?4)
+         ORDER BY session_id, sequence DESC`,
+      ).bind(
+        session.userId, connector.id, paged ? cursor : null,
+        paged ? items.at(-1)?.id ?? null : null,
+      ).all<InputRequestEventRow>();
       const requests = pendingInputRequests(inputEvents.results);
-      return response(request, env, sessions.results.map((item) => ({
+      const serialized = items.map((item) => ({
         id: item.id,
         connectorId: connector.id,
         title: item.title,
@@ -437,7 +470,14 @@ export async function handleApi(
         parentSessionId: item.parent_session_id,
         canSendMessage: item.can_send_message !== 0,
         pendingInputRequest: requests.get(item.id) ?? null,
-      })));
+        confirmedConnectionId: item.confirmed_connection_id,
+        executionStateKnown: item.execution_state_known === 1,
+        capabilityConfirmed: item.capability_confirmed === 1,
+      }));
+      return response(request, env, paged ? {
+        sessions: serialized,
+        nextCursor: sessions.results.length > 500 ? items.at(-1)?.id ?? null : null,
+      } : serialized);
     }
 
     if (request.method === "POST") {
@@ -477,6 +517,58 @@ export async function handleApi(
         { status: delivered ? 202 : 409 },
       );
     }
+  }
+
+  const sessionSyncMatch = /^\/api\/connectors\/([^/]+)\/sessions\/sync$/u.exec(path);
+  if (request.method === "POST" && sessionSyncMatch) {
+    const parsed = connectorIdSchema.safeParse(pathValue(sessionSyncMatch[1]));
+    if (!parsed.success) {
+      return response(request, env, { error: "invalid-connector-id" }, { status: 400 });
+    }
+    const connector = await connectorForUser(env, session.userId, parsed.data);
+    if (!connector) return response(request, env, { error: "connector-not-found" }, { status: 404 });
+    if (
+      connector.status !== "online"
+      || !connector.connection_id
+      || connector.session_sync_state === "unsupported"
+      || !connectorCapabilitiesSchema.parse(JSON.parse(connector.capabilities_json)).listSessions
+    ) {
+      return response(request, env, { error: "session-sync-unavailable" }, { status: 409 });
+    }
+    const pending = await env.DB.prepare(
+      `SELECT id, status FROM connector_commands
+       WHERE user_id = ?1 AND connector_id = ?2 AND connection_id = ?3
+         AND type = 'sessions.list' AND status IN ('queued', 'sent', 'accepted')
+         AND result_uncertain_at IS NULL ORDER BY created_at DESC LIMIT 1`,
+    ).bind(session.userId, connector.id, connector.connection_id)
+      .first<{ id: string; status: string }>();
+    if (pending) {
+      return response(request, env, {
+        command: { id: pending.id, type: "sessions.list", status: pending.status },
+      }, { status: 202 });
+    }
+    await env.DB.prepare(
+      `UPDATE connectors SET session_sync_state = 'pending', session_sync_error = NULL
+       WHERE user_id = ?1 AND id = ?2 AND connection_id = ?3`,
+    ).bind(session.userId, connector.id, connector.connection_id).run();
+    const command = listSessionsCommandSchema.parse({
+      protocolVersion: PROTOCOL_VERSION,
+      type: "sessions.list",
+      commandId: crypto.randomUUID(),
+      connectionId: connector.connection_id,
+    });
+    const delivered = await dispatchCommand(env, session.userId, connector.id, command);
+    if (!delivered) {
+      await env.DB.prepare(
+        `UPDATE connectors SET session_sync_state = 'failed',
+          session_sync_error = 'The Device could not receive the sync request.'
+         WHERE user_id = ?1 AND id = ?2 AND connection_id = ?3`,
+      ).bind(session.userId, connector.id, connector.connection_id).run();
+    }
+    return response(request, env, {
+      command: { id: command.commandId, type: command.type, status: delivered ? "sent" : "failed" },
+      ...(delivered ? {} : { error: "session-sync-unavailable" }),
+    }, { status: delivered ? 202 : 409 });
   }
 
   const sessionHistorySyncMatch =
@@ -536,6 +628,7 @@ export async function handleApi(
        WHERE user_id = ?1 AND connector_id = ?2 AND session_id = ?3
          AND type = 'session.history'
          AND status IN ('queued', 'sent', 'accepted')
+         AND result_uncertain_at IS NULL
        ORDER BY created_at DESC
        LIMIT 1`,
     )
@@ -688,15 +781,24 @@ export async function handleApi(
       );
     }
     const owned = await env.DB.prepare(
-      `SELECT can_send_message FROM agent_sessions
-       WHERE user_id = ?1 AND connector_id = ?2 AND id = ?3`,
+      `SELECT s.can_send_message, s.capability_confirmed, s.confirmed_connection_id,
+          c.connection_id, c.status, c.capabilities_json
+       FROM agent_sessions s JOIN connectors c ON c.user_id = s.user_id AND c.id = s.connector_id
+       WHERE s.user_id = ?1 AND s.connector_id = ?2 AND s.id = ?3`,
     )
       .bind(
         session.userId,
         parsedConnectorId.data,
         parsedSessionId.data,
       )
-      .first<{ can_send_message: number }>();
+      .first<{
+        can_send_message: number;
+        capability_confirmed: number;
+        confirmed_connection_id: string | null;
+        connection_id: string | null;
+        status: string;
+        capabilities_json: string;
+      }>();
     if (!owned) {
       return response(
         request,
@@ -705,21 +807,27 @@ export async function handleApi(
         { status: 404 },
       );
     }
-    if (owned.can_send_message === 0) {
-      return response(
-        request,
-        env,
-        { error: "session-read-only" },
-        { status: 409 },
-      );
-    }
     const body = await requestBody(request);
+    if (
+      owned.status !== "online"
+      || !owned.connection_id
+      || owned.confirmed_connection_id !== owned.connection_id
+      || owned.capability_confirmed !== 1
+      || body.connectionId !== owned.connection_id
+      || !connectorCapabilitiesSchema.parse(JSON.parse(owned.capabilities_json)).sendMessage
+    ) {
+      return response(request, env, { error: "session-state-unconfirmed" }, { status: 409 });
+    }
+    if (owned.can_send_message === 0) {
+      return response(request, env, { error: "session-read-only" }, { status: 409 });
+    }
     const command = sendSessionMessageCommandSchema.safeParse({
       type: "session.message",
       protocolVersion: PROTOCOL_VERSION,
       commandId: crypto.randomUUID(),
       sessionId: parsedSessionId.data,
       message: body.message,
+      connectionId: owned.connection_id,
     });
     if (!command.success) {
       return response(
@@ -755,7 +863,7 @@ export async function handleApi(
     const command = await env.DB.prepare(
       `SELECT id, connector_id, type, session_id, status, error_code,
         error_message, created_at, updated_at, sent_at, accepted_at,
-        completed_at
+        completed_at, result_uncertain_at
        FROM connector_commands WHERE id = ?1 AND user_id = ?2`,
     )
       .bind(commandMatch[1], session.userId)
@@ -772,6 +880,7 @@ export async function handleApi(
         sent_at: string | null;
         accepted_at: string | null;
         completed_at: string | null;
+        result_uncertain_at: string | null;
       }>();
     if (!command) {
       return response(
@@ -786,7 +895,8 @@ export async function handleApi(
       connectorId: command.connector_id,
       type: command.type,
       sessionId: command.session_id,
-      status: command.status,
+      status: command.result_uncertain_at && ["sent", "accepted"].includes(command.status)
+        ? "unknown" : command.status,
       error: command.error_code
         ? {
             code: command.error_code,

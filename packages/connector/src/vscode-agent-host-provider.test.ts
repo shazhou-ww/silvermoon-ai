@@ -95,6 +95,7 @@ describe("VS Code Agent Host mapping", () => {
       title: "Active work",
       status: "waiting",
       nativeStatus: String(SessionStatus.InputNeeded | SessionStatus.IsRead),
+      executionStateKnown: true,
       createdAt: "2026-10-10T00:00:00.000Z",
       updatedAt: "2026-10-10T00:01:00.000Z",
       lastMessagePreview: "Waiting for approval",
@@ -147,6 +148,7 @@ describe("VS Code Agent Host mapping", () => {
           title: "Investigate tests",
           status: "running",
           nativeStatus: String(SessionStatus.InProgress),
+          executionStateKnown: true,
           createdAt: "2026-10-10T00:00:00.000Z",
           updatedAt: "2026-10-10T00:01:00.000Z",
           lastMessagePreview: null,
@@ -160,6 +162,7 @@ describe("VS Code Agent Host mapping", () => {
           parentSessionId: "session-parent",
           title: "Archived worker",
           status: "closed",
+          executionStateKnown: true,
           nativeStatus: String(
             SessionStatus.Idle | SessionStatus.IsArchived,
           ),

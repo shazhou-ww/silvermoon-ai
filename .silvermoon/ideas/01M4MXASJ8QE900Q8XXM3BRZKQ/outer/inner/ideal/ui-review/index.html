@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>总评审：Settings 工作区与独立草稿</title>
+  <style>
+    :root { color-scheme: light; --canvas: #f4f5f6; --surface: #fff; --ink: #1b1d1f; --muted: #62686e; --border: #d8dcdf; --accent: #176b62; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--canvas); font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+    a { color: var(--accent); }
+    a:focus-visible, iframe:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .skip-link { position: fixed; top: 8px; left: 8px; padding: 8px; background: white; transform: translateY(-150%); }
+    .skip-link:focus { transform: none; }
+    header, main, footer { width: min(1480px, calc(100% - 40px)); margin-inline: auto; }
+    header { display: flex; justify-content: space-between; gap: 20px; padding: 24px 0 16px; border-bottom: 1px solid var(--border); }
+    h1 { margin: 0; font-size: 26px; }
+    h2 { margin: 0; font-size: 18px; }
+    p { margin: 6px 0; }
+    header p, .status, footer { color: var(--muted); }
+    .status { flex-shrink: 0; }
+    main { padding: 18px 0; }
+    .decision { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+    .eyebrow { color: var(--muted); font-size: 12px; margin: 0 0 4px; }
+    .deltas { margin: 0; padding-left: 20px; }
+    .scenarios { margin-top: 16px; }
+    nav { display: flex; flex-wrap: wrap; gap: 8px; }
+    .scenario-link { display: inline-block; padding: 7px 12px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); text-decoration: none; font-weight: 600; }
+    .scenario-link[aria-current="true"] { color: #125d55; background: #e8f3f1; border-color: #8abdb7; }
+    .frame-shell { margin-top: 12px; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+    iframe { display: block; width: 100%; height: 900px; border: 0; }
+    .review-end { margin-top: 18px; }
+    .choices { margin-top: 14px; padding: 12px 16px; border-left: 3px solid #a86618; background: #fff9ef; }
+    .choices ul { margin: 6px 0 0; padding-left: 20px; }
+    .approval { display: block; margin-top: 12px; }
+    footer { padding-bottom: 24px; }
+    @media (max-width: 720px) {
+      header, main, footer { width: calc(100% - 24px); }
+      header { display: block; }
+      h1 { font-size: 22px; }
+      .decision { grid-template-columns: 1fr; gap: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#review">跳至评审</a>
+  <header>
+    <div>
+      <h1>总评审：Settings 工作区与独立草稿</h1>
+      <p>用完整右侧页面承载配置；账户入口简化；切换右侧内容不丢失各 Session 输入。</p>
+    </div>
+    <span class="status">说明性设计稿 · 非生产界面</span>
+  </header>
+  <main id="review">
+    <section class="decision" aria-labelledby="decision-title">
+      <div>
+        <p class="eyebrow">设计历史参考 · 已授权实施，候选待验收</p>
+        <h2 id="decision-title">是否批准右侧 Settings、图标账户入口及标签页内独立草稿的完整导航方案？</h2>
+      </div>
+      <ul class="deltas" aria-label="关键差异">
+        <li>两个单列模块；条目内横向分配信息与操作。</li>
+        <li>移除 Browser sessions 管理，仅保留账户菜单 Sign out。</li>
+        <li>保留同级按需创建、头像菜单、窄屏抽屉与独立草稿。</li>
+      </ul>
+    </section>
+    <section class="scenarios" aria-label="评审场景">
+      <nav aria-label="选择场景">
+        <a class="scenario-link" href="scenarios/01-settings-page.html" target="scenario-frame" aria-current="true" data-title="配置弹窗与右侧页面对比">1 · Settings 与设备创建</a>
+        <a class="scenario-link" href="scenarios/02-account-menu.html" target="scenario-frame" data-title="账户入口与菜单对比">2 · 账户菜单</a>
+        <a class="scenario-link" href="scenarios/03-session-drafts.html" target="scenario-frame" data-title="Session 草稿切换对比">3 · 独立输入草稿</a>
+        <a class="scenario-link" href="scenarios/04-mobile-navigation.html" target="scenario-frame" data-title="窄屏 Session 导航抽屉对比">4 · 窄屏导航抽屉</a>
+      </nav>
+      <div class="frame-shell">
+        <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-settings-page.html" title="配置弹窗与右侧页面对比"></iframe>
+      </div>
+    </section>
+    <section class="choices" aria-labelledby="choices-title">
+      <h2 id="choices-title">建议一并批准的边界</h2>
+      <ul>
+        <li>阅读位置只恢复原会话暂离 Settings 的情况；不同会话切换和刷新仍按现有策略打开最新。</li>
+        <li>sessionStorage 遵循浏览器标签页生命周期；恢复关闭标签页可能恢复草稿，不保证严格关闭即销毁。</li>
+        <li>完整 connector profile 离页或刷新即清除，需要先复制；迟到响应不重新披露。</li>
+        <li>删除浏览器管理 UI，不更改现有 30 天有效期和 20 个有效登录上限，也不自动退出其他浏览器。</li>
+      </ul>
+    </section>
+    <section class="review-end" aria-label="评审结论">
+      <p>说明性评审材料，不是生产 UI 或规范性行为契约。
+        <a href="../Idea.md">已确认方向与待批准建议</a> ·
+        <a href="../Settings-Navigation-Contract.md">待批准行为依据与实施验收</a>
+      </p>
+      <strong class="approval">设计已授权实施；正式 revision 的方向与实施验收由 Silvermoon 报告指定，本说明性页面不代替该关口。</strong>
+    </section>
+  </main>
+  <footer>Before 基于实施前快照 5d0956b。设备创建只演示展开 / Cancel 收起，草稿仅切换预设数据，抽屉为静态示意，不实现实际路由、存储、发送或认证。实施代码与证据在主体世界中维护；未部署。Needs Input 与离线列表策略不在本主题范围内。</footer>
+  <script>
+    const frame = document.querySelector("#scenario-frame");
+    const links = [...document.querySelectorAll(".scenario-link")];
+    links.forEach((link) => {
+      link.addEventListener("click", () => {
+        links.forEach((candidate) => {
+          if (candidate === link) candidate.setAttribute("aria-current", "true");
+          else candidate.removeAttribute("aria-current");
+        });
+        frame.title = link.dataset.title;
+      });
+    });
+    function requestHeight() {
+      frame.contentWindow.postMessage({ type: "ui-review:measure" }, "*");
+    }
+    frame.addEventListener("load", requestHeight);
+    new ResizeObserver(requestHeight).observe(document.querySelector(".frame-shell"));
+    window.addEventListener("message", (event) => {
+      if (event.source !== frame.contentWindow || event.data?.type !== "ui-review:height") return;
+      const height = Number(event.data.height);
+      if (Number.isFinite(height) && height > 0) frame.style.height = `${Math.max(320, height)}px`;
+    });
+  </script>
+</body>
+</html>

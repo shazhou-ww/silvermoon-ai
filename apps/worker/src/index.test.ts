@@ -105,6 +105,9 @@ async function createSchema(): Promise<void> {
       connected_at TEXT,
       disconnected_at TEXT,
       last_seen_at TEXT,
+      connection_id TEXT,
+      session_sync_state TEXT NOT NULL DEFAULT 'unsupported',
+      session_sync_error TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (user_id, id)
     )`,
@@ -122,6 +125,10 @@ async function createSchema(): Promise<void> {
       parent_session_id TEXT,
       can_send_message INTEGER NOT NULL DEFAULT 1,
       history_synced_at TEXT,
+      confirmed_connection_id TEXT,
+      observation_sequence INTEGER NOT NULL DEFAULT 0,
+      execution_state_known INTEGER NOT NULL DEFAULT 0,
+      capability_confirmed INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (user_id, connector_id, id)
     )`,
     `CREATE TABLE agent_session_events (
@@ -152,7 +159,9 @@ async function createSchema(): Promise<void> {
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       sent_at TEXT,
       accepted_at TEXT,
-      completed_at TEXT
+      completed_at TEXT,
+      connection_id TEXT,
+      result_uncertain_at TEXT
     )`,
   ];
   for (const statement of statements) {
@@ -689,12 +698,27 @@ describe("relay identity and token service", () => {
     socket.addEventListener("message", (event) => {
       frames.push(JSON.parse(String(event.data)) as TrpcFrame);
     });
+    let currentConnectionId = "";
+    let observationSequence = 0;
+    const observation = () => ({
+      connectionId: currentConnectionId,
+      sequence: ++observationSequence,
+    });
     const sendRpc = (
       id: number,
       method: "mutation" | "subscription",
       path: string,
       input: unknown,
     ) => {
+      if (input && typeof input === "object") {
+        if (path === "syncSessions" || (path === "commandCompleted" && "session" in input)) {
+          input = { ...input, observation: observation() };
+        } else if (path === "sessionEvents") {
+          input = { ...input, connectionId: currentConnectionId };
+        } else if (path === "sessionEvent") {
+          input = { event: input, connectionId: currentConnectionId };
+        }
+      }
       socket.send(JSON.stringify({
         id,
         method,
@@ -729,6 +753,7 @@ describe("relay identity and token service", () => {
       .bind(staleCommandId, connectorId)
       .run();
     sendRpc(1, "mutation", "register", {
+      confirmationVersion: 1,
       agent: { name: "Test agent", version: "1.0.0" },
       capabilities: {
         listSessions: true,
@@ -737,7 +762,11 @@ describe("relay identity and token service", () => {
         streamEvents: true,
       },
     });
-    await waitForData(1);
+    const welcome = await waitForData(1);
+    if (!welcome || typeof welcome !== "object" || !("connectionId" in welcome) || typeof welcome.connectionId !== "string") {
+      throw new Error("Expected a Relay connection identity.");
+    }
+    currentConnectionId = welcome.connectionId;
     await expect.poll(async () =>
       env.DB.prepare(
         `SELECT status, error_code FROM connector_commands WHERE id = ?1`,
@@ -745,8 +774,8 @@ describe("relay identity and token service", () => {
         .bind(staleCommandId)
         .first()
     ).toMatchObject({
-      status: "failed",
-      error_code: "connector-reconnected",
+      status: "accepted",
+      error_code: "command-result-unconfirmed",
     });
     sendRpc(2, "mutation", "syncSessions", {
       sessions: [{
@@ -754,6 +783,7 @@ describe("relay identity and token service", () => {
         parentSessionId: "session-existing",
         title: "Read-only child",
         status: "running",
+        executionStateKnown: true,
         createdAt: now,
         updatedAt: now,
         lastMessagePreview: null,
@@ -762,6 +792,8 @@ describe("relay identity and token service", () => {
         id: "session-existing",
         title: "Existing session",
         status: "waiting",
+        executionStateKnown: true,
+        canSendMessage: true,
         createdAt: now,
         updatedAt: now,
         lastMessagePreview: "Ready to continue",
@@ -802,7 +834,7 @@ describe("relay identity and token service", () => {
       {
         method: "POST",
         headers: sessionHeaders(session),
-        body: JSON.stringify({ message: "Can I change this?" }),
+        body: JSON.stringify({ message: "Can I change this?", connectionId: currentConnectionId }),
       },
     );
     expect(readOnlyMessage.status).toBe(409);
@@ -1115,6 +1147,8 @@ describe("relay identity and token service", () => {
         id: "session-new",
         title: "Investigate CI",
         status: "running",
+        executionStateKnown: true,
+        canSendMessage: true,
         createdAt: now,
         updatedAt: now,
         lastMessagePreview: "Find the failing check and fix it.",
@@ -1135,7 +1169,7 @@ describe("relay identity and token service", () => {
       {
         method: "POST",
         headers: sessionHeaders(session),
-        body: JSON.stringify({ message: "Show me the test output." }),
+        body: JSON.stringify({ message: "Show me the test output.", connectionId: currentConnectionId }),
       },
     );
     expect(continued.status).toBe(202);
@@ -1172,6 +1206,251 @@ describe("relay identity and token service", () => {
       return body.events;
     }).toContainEqual(expect.objectContaining({ id: "event-1" }));
 
+    sendRpc(11, "mutation", "sessionUpdated", {
+      observation: { connectionId: currentConnectionId, sequence: 100 },
+      session: {
+        id: "session-new", title: "Investigate CI", status: "running",
+        createdAt: now, updatedAt: now, lastMessagePreview: "Current observation",
+        executionStateKnown: true, canSendMessage: true,
+      },
+    });
+    await waitForData(11);
+    sendRpc(12, "mutation", "sessionUpdated", {
+      observation: { connectionId: currentConnectionId, sequence: 99 },
+      session: {
+        id: "session-new", title: "Old snapshot", status: "waiting",
+        createdAt: now, updatedAt: now, lastMessagePreview: null,
+        executionStateKnown: true, canSendMessage: false,
+      },
+    });
+    await expect.poll(() => frames.find((frame) => frame.id === 12 && frame.error)).toBeDefined();
+    expect(await env.DB.prepare(
+      `SELECT status, can_send_message, observation_sequence FROM agent_sessions
+       WHERE user_id = 'user-01' AND connector_id = ?1 AND id = 'session-new'`,
+    ).bind(connectorId).first()).toMatchObject({
+      status: "running", can_send_message: 1, observation_sequence: 100,
+    });
+    socket.send(JSON.stringify({
+      id: 13, method: "mutation", params: {
+        path: "syncSessions", input: {
+          observation: { connectionId: currentConnectionId, sequence: 98 },
+          sessions: [{
+            id: "session-new", title: "Inventory overtaken by a live update", status: "waiting",
+            executionStateKnown: true, canSendMessage: false, createdAt: now, updatedAt: now,
+          }],
+        },
+      },
+    }));
+    await waitForData(13);
+    expect(await env.DB.prepare(
+      `SELECT status, can_send_message, observation_sequence FROM agent_sessions
+       WHERE user_id = 'user-01' AND connector_id = ?1 AND id = 'session-new'`,
+    ).bind(connectorId).first()).toMatchObject({
+      status: "running", can_send_message: 1, observation_sequence: 100,
+    });
+    const staleMessage = await SELF.fetch(
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-new/messages`,
+      {
+        method: "POST", headers: sessionHeaders(session),
+        body: JSON.stringify({ message: "Do not deliver", connectionId: crypto.randomUUID() }),
+      },
+    );
+    expect(staleMessage.status).toBe(409);
+    expect(await staleMessage.json()).toEqual({ error: "session-state-unconfirmed" });
+
+    for (let offset = 0; offset < 501; offset += 100) {
+      await env.DB.batch(Array.from({ length: Math.min(100, 501 - offset) }, (_, index) =>
+        env.DB.prepare(
+          `INSERT INTO agent_sessions (user_id, connector_id, id, status, created_at, updated_at, last_activity_at)
+           VALUES ('user-01', ?1, ?2, 'idle', ?3, ?3, ?3)`,
+        ).bind(connectorId, `pagination-${String(offset + index).padStart(3, "0")}`, now),
+      ));
+    }
+    const firstPage = await (await SELF.fetch(
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions?paged=1`,
+      { headers: sessionHeaders(session) },
+    )).json<{ sessions: Array<{ id: string }>; nextCursor: string }>();
+    expect(firstPage.sessions).toHaveLength(500);
+    expect(firstPage.nextCursor).toBe(firstPage.sessions.at(-1)?.id);
+    const nextPage = await (await SELF.fetch(
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions?paged=1&cursor=${encodeURIComponent(firstPage.nextCursor)}`,
+      { headers: sessionHeaders(session) },
+    )).json<{ sessions: Array<{ id: string }>; nextCursor: null }>();
+    expect(nextPage.sessions).toHaveLength(4);
+    expect(nextPage.nextCursor).toBeNull();
+    expect(new Set([...firstPage.sessions, ...nextPage.sessions].map((item) => item.id)).size).toBe(504);
+
+    const pendingHistoryId = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO connector_commands
+       (id, user_id, connector_id, session_id, type, payload_json, status, connection_id)
+       VALUES (?1, 'user-01', ?2, 'session-new', 'session.history', '{}', 'accepted', ?3)`,
+    ).bind(pendingHistoryId, connectorId, currentConnectionId).run();
     socket.close(1000, "test complete");
+    await expect.poll(async () => env.DB.prepare(
+      "SELECT status FROM connectors WHERE user_id = 'user-01' AND id = ?1",
+    ).bind(connectorId).first<string>("status")).toBe("offline");
+    const reconnected = await SELF.fetch("https://relay.silvermoon.work/v1/connect", {
+      headers: { upgrade: "websocket", authorization: `Bearer ${connectorToken.token}` },
+    });
+    expect(reconnected.status).toBe(101);
+    const nextSocket = reconnected.webSocket!;
+    nextSocket.accept();
+    nextSocket.addEventListener("message", (event) => {
+      frames.push(...(Array.isArray(JSON.parse(String(event.data)))
+        ? JSON.parse(String(event.data)) : [JSON.parse(String(event.data))]));
+    });
+    nextSocket.send(JSON.stringify({
+      id: 20, method: "mutation", params: {
+        path: "register", input: {
+          confirmationVersion: 1, agent: { name: "Test agent" },
+          capabilities: { listSessions: true, createSession: true, sendMessage: true, streamEvents: true },
+        },
+      },
+    }));
+    const nextWelcome = await waitForData(20);
+    if (!nextWelcome || typeof nextWelcome !== "object" || !("connectionId" in nextWelcome) || typeof nextWelcome.connectionId !== "string") {
+      throw new Error("Expected the new connection identity.");
+    }
+    expect(nextWelcome.connectionId).not.toBe(currentConnectionId);
+    const messageCommandId = String(messageCommand.commandId);
+    const unknownResult = await SELF.fetch(
+      `https://relay.silvermoon.work/api/commands/${messageCommandId}`,
+      { headers: sessionHeaders(session) },
+    );
+    expect(await unknownResult.json()).toMatchObject({
+      status: "unknown", error: { code: "command-result-unconfirmed" },
+    });
+    const beforeConfirmation = await SELF.fetch(
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-new/messages`,
+      {
+        method: "POST", headers: sessionHeaders(session),
+        body: JSON.stringify({ message: "Wait for sync", connectionId: nextWelcome.connectionId }),
+      },
+    );
+    expect(beforeConfirmation.status).toBe(409);
+    nextSocket.send(JSON.stringify({
+      id: 22, method: "mutation", params: {
+        path: "sessionUpdated", input: {
+          observation: { connectionId: currentConnectionId, sequence: 101 },
+          session: {
+            id: "session-new", title: "Obsolete connection", status: "running",
+            executionStateKnown: true, canSendMessage: true, createdAt: now, updatedAt: now,
+          },
+        },
+      },
+    }));
+    await expect.poll(() => frames.find((frame) => frame.id === 22 && frame.error)).toBeDefined();
+    nextSocket.send(JSON.stringify({
+      id: 23, method: "mutation", params: {
+        path: "commandCompleted", input: { commandId: messageCommandId, outcome: "succeeded" },
+      },
+    }));
+    await expect.poll(() => frames.find((frame) => frame.id === 23 && frame.error)).toBeDefined();
+    nextSocket.send(JSON.stringify({
+      id: 21, method: "mutation", params: {
+        path: "syncSessions", input: {
+          observation: { connectionId: nextWelcome.connectionId, sequence: 1 },
+          sessions: [{
+            id: "session-new", title: "Persisted Session", status: "unknown",
+            executionStateKnown: false, canSendMessage: true,
+            createdAt: now, updatedAt: now,
+          }],
+        },
+      },
+    }));
+    await waitForData(21);
+    expect(await env.DB.prepare(
+      `SELECT confirmed_connection_id, execution_state_known, capability_confirmed
+       FROM agent_sessions WHERE user_id = 'user-01' AND connector_id = ?1 AND id = 'session-new'`,
+    ).bind(connectorId).first()).toMatchObject({
+      confirmed_connection_id: nextWelcome.connectionId,
+      execution_state_known: 0, capability_confirmed: 1,
+    });
+    expect(await env.DB.prepare(
+      `SELECT confirmed_connection_id FROM agent_sessions
+       WHERE user_id = 'user-01' AND connector_id = ?1 AND id = 'session-child'`,
+    ).bind(connectorId).first<string>("confirmed_connection_id")).toBe(currentConnectionId);
+    nextSocket.send(JSON.stringify({
+      id: 24, method: "subscription", params: { path: "commands", input: null },
+    }));
+    await expect.poll(() => frames.some((frame) => frame.id === 24 && frame.result?.type === "started")).toBe(true);
+    const metadataContinuation = await SELF.fetch(
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-new/messages`,
+      {
+        method: "POST", headers: sessionHeaders(session),
+        body: JSON.stringify({ message: "Explicitly continue saved work", connectionId: nextWelcome.connectionId }),
+      },
+    );
+    expect(metadataContinuation.status).toBe(202);
+    const continuedMetadata = await waitForData(24);
+    expect(continuedMetadata).toMatchObject({
+      type: "session.message", connectionId: nextWelcome.connectionId,
+      message: "Explicitly continue saved work",
+    });
+    expect(await (await SELF.fetch(
+      `https://relay.silvermoon.work/api/commands/${messageCommandId}`,
+      { headers: sessionHeaders(session) },
+    )).json()).toMatchObject({ status: "unknown" });
+    nextSocket.send(JSON.stringify({
+      id: 25, method: "mutation", params: {
+        path: "commandCompleted", input: {
+          commandId: messageCommandId, commandConnectionId: currentConnectionId, outcome: "succeeded",
+        },
+      },
+    }));
+    await waitForData(25);
+    expect(await (await SELF.fetch(
+      `https://relay.silvermoon.work/api/commands/${messageCommandId}`,
+      { headers: sessionHeaders(session) },
+    )).json()).toMatchObject({ status: "succeeded", error: null });
+    const retriedHistory = await SELF.fetch(
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-new/events/sync`,
+      { method: "POST", headers: sessionHeaders(session) },
+    );
+    expect(retriedHistory.status).toBe(202);
+    const retryResponse = await retriedHistory.json<{ command: { id: string } }>();
+    expect(retryResponse.command.id).not.toBe(pendingHistoryId);
+    expect(await waitForData(24, (value) =>
+      !!value && typeof value === "object" && "type" in value && value.type === "session.history",
+    )).toMatchObject({ connectionId: nextWelcome.connectionId, commandId: retryResponse.command.id });
+    expect(await (await SELF.fetch(
+      `https://relay.silvermoon.work/api/commands/${pendingHistoryId}`,
+      { headers: sessionHeaders(session) },
+    )).json()).toMatchObject({ status: "unknown" });
+    const stateSync = await SELF.fetch(
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/sync`,
+      { method: "POST", headers: sessionHeaders(session), body: "{}" },
+    );
+    expect(stateSync.status).toBe(202);
+    const stateSyncResponse = await stateSync.json<{ command: { id: string } }>();
+    const stateCommand = await waitForData(24, (value) =>
+      !!value && typeof value === "object" && "type" in value && value.type === "sessions.list",
+    );
+    expect(stateCommand).toMatchObject({
+      commandId: stateSyncResponse.command.id, connectionId: nextWelcome.connectionId,
+    });
+    expect(await env.DB.prepare(
+      "SELECT session_sync_state FROM connectors WHERE user_id = 'user-01' AND id = ?1",
+    ).bind(connectorId).first<string>("session_sync_state")).toBe("pending");
+    const coalescedSync = await SELF.fetch(
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/sync`,
+      { method: "POST", headers: sessionHeaders(session), body: "{}" },
+    );
+    expect(await coalescedSync.json()).toMatchObject({ command: { id: stateSyncResponse.command.id } });
+    nextSocket.send(JSON.stringify({
+      id: 26, method: "mutation", params: {
+        path: "syncSessions", input: {
+          commandId: stateSyncResponse.command.id,
+          observation: { connectionId: nextWelcome.connectionId, sequence: 2 },
+          sessions: [],
+        },
+      },
+    }));
+    await waitForData(26);
+    expect(await env.DB.prepare(
+      "SELECT session_sync_state FROM connectors WHERE user_id = 'user-01' AND id = ?1",
+    ).bind(connectorId).first<string>("session_sync_state")).toBe("ready");
+    nextSocket.close(1000, "reconnect test complete");
   });
 });

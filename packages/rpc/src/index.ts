@@ -19,19 +19,42 @@ export const connectorRegistrationSchema = z.object({
     version: z.string().trim().min(1).max(64).optional(),
   }),
   capabilities: connectorCapabilitiesSchema,
+  confirmationVersion: z.literal(1).optional(),
 });
+
+export const sessionObservationSchema = z.object({
+  connectionId: z.uuid(),
+  sequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+});
+export type SessionObservation = z.infer<typeof sessionObservationSchema>;
 
 export const sessionSyncSchema = z.object({
   commandId: requestIdSchema.optional(),
+  observation: sessionObservationSchema.optional(),
   sessions: z.array(agentSessionSchema).max(10_000),
 });
 
 export const sessionEventBatchSchema = z.object({
   events: z.array(agentSessionEventSchema).min(1).max(50),
+  connectionId: z.uuid().optional(),
 });
 
+const sessionUpdateSchema = z.union([
+  z.object({ session: agentSessionSchema, observation: sessionObservationSchema }),
+  agentSessionSchema,
+]);
+const sessionEventInputSchema = z.union([
+  z.object({
+    event: agentSessionEventSchema,
+    connectionId: z.uuid(),
+    historical: z.boolean().default(false),
+  }),
+  agentSessionEventSchema,
+]);
 export const commandCompletedInputSchema = z.object({
   commandId: requestIdSchema,
+  commandConnectionId: z.uuid().optional(),
+  observation: sessionObservationSchema.optional(),
   outcome: z.enum(["succeeded", "failed"]),
   session: agentSessionSchema.optional(),
   error: z.object({
@@ -61,14 +84,16 @@ export interface ConnectorRpcContext {
   syncSessions(
     sessions: AgentSession[],
     commandId?: string,
+    observation?: SessionObservation,
   ): Promise<void>;
+  syncFailed(connectionId: string, message: string): Promise<void>;
   commandAccepted(commandId: string): Promise<void>;
   commandCompleted(
     input: z.infer<typeof commandCompletedInputSchema>,
   ): Promise<void>;
-  sessionUpdated(session: AgentSession): Promise<void>;
-  sessionEvent(event: AgentSessionEvent): Promise<void>;
-  sessionEvents(events: AgentSessionEvent[]): Promise<void>;
+  sessionUpdated(session: AgentSession, observation?: SessionObservation): Promise<void>;
+  sessionEvent(event: AgentSessionEvent, connectionId?: string, historical?: boolean): Promise<void>;
+  sessionEvents(events: AgentSessionEvent[], connectionId?: string): Promise<void>;
   commands(signal: AbortSignal): AsyncIterable<ConnectorCommand>;
 }
 
@@ -88,7 +113,16 @@ export const connectorRouter = t.router({
   syncSessions: procedure
     .input(sessionSyncSchema)
     .mutation(async ({ ctx, input }) => {
-      await ctx.syncSessions(input.sessions, input.commandId);
+      await ctx.syncSessions(input.sessions, input.commandId, input.observation);
+      return { ok: true as const };
+    }),
+  syncFailed: procedure
+    .input(z.object({
+      connectionId: z.uuid(),
+      message: z.string().min(1).max(2_048),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await ctx.syncFailed(input.connectionId, input.message);
       return { ok: true as const };
     }),
   commandAccepted: procedure
@@ -104,21 +138,23 @@ export const connectorRouter = t.router({
       return { ok: true as const };
     }),
   sessionUpdated: procedure
-    .input(agentSessionSchema)
+    .input(sessionUpdateSchema)
     .mutation(async ({ ctx, input }) => {
-      await ctx.sessionUpdated(input);
+      if ("session" in input) await ctx.sessionUpdated(input.session, input.observation);
+      else await ctx.sessionUpdated(input);
       return { ok: true as const };
     }),
   sessionEvent: procedure
-    .input(agentSessionEventSchema)
+    .input(sessionEventInputSchema)
     .mutation(async ({ ctx, input }) => {
-      await ctx.sessionEvent(input);
+      if ("event" in input) await ctx.sessionEvent(input.event, input.connectionId, input.historical);
+      else await ctx.sessionEvent(input);
       return { ok: true as const };
     }),
   sessionEvents: procedure
     .input(sessionEventBatchSchema)
     .mutation(async ({ ctx, input }) => {
-      await ctx.sessionEvents(input.events);
+      await ctx.sessionEvents(input.events, input.connectionId);
       return { ok: true as const };
     }),
   commands: procedure.subscription(({ ctx, signal }) =>

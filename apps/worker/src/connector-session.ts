@@ -11,7 +11,9 @@ import {
 import {
   connectorRouter,
   type ConnectorRpcContext,
+  type SessionObservation,
 } from "@silvermoon-ai/rpc";
+import { TRPCError } from "@trpc/server";
 import { acceptTRPCWebSocket } from "./trpc-websocket";
 
 interface ConnectionAttachment {
@@ -21,6 +23,8 @@ interface ConnectionAttachment {
   userId: string;
   socket: WebSocket;
   leaseExpiresAt: number;
+  confirmationEnabled: boolean;
+  registered: boolean;
 }
 
 interface CommandWaiter {
@@ -91,8 +95,19 @@ export class ConnectorSession extends DurableObject<Env> {
       userId,
       socket: server,
       leaseExpiresAt: now + CONNECTION_LEASE_MS,
+      confirmationEnabled: false,
+      registered: false,
     };
     this.connections.add(attachment);
+    const bound = await this.env.DB.prepare(
+      `UPDATE connectors SET connection_id = ?1, session_sync_state = 'pending',
+        session_sync_error = NULL
+       WHERE user_id = ?2 AND id = ?3 AND connection_token_id = ?4`,
+    ).bind(attachment.connectionId, userId, attachment.connectorId, tokenId).run();
+    if (bound.meta.changes !== 1) {
+      this.connections.delete(attachment);
+      return Response.json({ error: "device-connection-replaced" }, { status: 409 });
+    }
     server.addEventListener("close", () => {
       void this.connectionClosed(attachment);
     });
@@ -120,6 +135,36 @@ export class ConnectorSession extends DurableObject<Env> {
     const command = connectorCommandSchema.parse(value);
     const waiter = [...this.commandWaiters].at(-1);
     if (!waiter) return { delivered: false };
+    const connection = [...this.connections].find(
+      (item) => item.connectionId === waiter.connectionId,
+    );
+    if (
+      !connection
+      || !connection.registered
+      || !connectionLeaseIsActive(connection.leaseExpiresAt)
+      || (command.connectionId && command.connectionId !== connection.connectionId)
+    ) return { delivered: false };
+    this.commandWaiters.delete(waiter);
+    const sent = await this.env.DB.prepare(
+      `UPDATE connector_commands SET status = 'sent', sent_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP, connection_id = ?2
+       WHERE id = ?1 AND status = 'queued'
+         AND user_id = ?3 AND connector_id = ?4
+         AND EXISTS (SELECT 1 FROM connectors
+           WHERE user_id = ?3 AND id = ?4 AND connection_id = ?2 AND status = 'online'
+             AND (?5 <> 'session.create' OR json_extract(capabilities_json, '$.createSession') = 1)
+             AND (?5 <> 'session.message' OR json_extract(capabilities_json, '$.sendMessage') = 1))
+         AND (?5 <> 'session.message' OR EXISTS (
+           SELECT 1 FROM agent_sessions WHERE user_id = ?3 AND connector_id = ?4 AND id = ?6
+             AND confirmed_connection_id = ?2 AND capability_confirmed = 1 AND can_send_message = 1))`,
+    ).bind(
+      command.commandId, connection.connectionId, connection.userId, connection.connectorId,
+      command.type, command.type === "session.message" ? command.sessionId : null,
+    ).run();
+    if (sent.meta.changes !== 1) {
+      waiter.resolve(null);
+      return { delivered: false };
+    }
     waiter.resolve(command);
     return { delivered: true };
   }
@@ -141,10 +186,17 @@ export class ConnectorSession extends DurableObject<Env> {
       connectorId: attachment.connectorId,
       register: (input) => this.register(attachment, input),
       heartbeat: () => this.touchConnector(attachment),
-      syncSessions: async (sessions, commandId) => {
+      syncSessions: async (sessions, commandId, observation) => {
+        await this.validateObservation(attachment, observation);
         await Promise.all(
-          sessions.map((session) => this.upsertSession(attachment, session)),
+          sessions.map((session) => this.upsertSession(attachment, session, observation, true)),
         );
+        if (observation) {
+          await this.env.DB.prepare(
+            `UPDATE connectors SET session_sync_state = 'ready', session_sync_error = NULL
+             WHERE user_id = ?1 AND id = ?2 AND connection_id = ?3`,
+          ).bind(attachment.userId, attachment.connectorId, attachment.connectionId).run();
+        }
         if (commandId) {
           await this.completeCommand(
             attachment,
@@ -153,23 +205,40 @@ export class ConnectorSession extends DurableObject<Env> {
           );
         }
       },
+      syncFailed: async (connectionId, message) => {
+        await this.ensureCurrentConnection(attachment);
+        if (connectionId !== attachment.connectionId) {
+          throw new TRPCError({ code: "CONFLICT", message: "Obsolete Session sync connection." });
+        }
+        await this.env.DB.prepare(
+          `UPDATE connectors SET session_sync_state = 'failed', session_sync_error = ?1
+           WHERE user_id = ?2 AND id = ?3 AND connection_id = ?4`,
+        ).bind(message, attachment.userId, attachment.connectorId, connectionId).run();
+      },
       commandAccepted: (commandId) =>
         this.commandAccepted(attachment, commandId),
       commandCompleted: async (input) => {
         if (input.session) {
-          await this.upsertSession(attachment, input.session);
+          await this.upsertSession(attachment, input.session, input.observation);
         }
         await this.completeCommand(
           attachment,
           input.commandId,
           input.outcome,
           input.error,
+          input.commandConnectionId,
         );
       },
-      sessionUpdated: (session) =>
-        this.upsertSession(attachment, session),
-      sessionEvent: (event) => this.storeEvent(attachment, event),
-      sessionEvents: (events) => this.storeEvents(attachment, events),
+      sessionUpdated: (session, observation) =>
+        this.upsertSession(attachment, session, observation),
+      sessionEvent: async (event, connectionId, historical) => {
+        await this.validateEventConnection(attachment, connectionId);
+        await this.storeEvent(attachment, event, historical);
+      },
+      sessionEvents: async (events, connectionId) => {
+        await this.validateEventConnection(attachment, connectionId);
+        await this.storeEvents(attachment, events);
+      },
       commands: (signal) => this.commandStream(attachment, signal),
     };
   }
@@ -178,29 +247,47 @@ export class ConnectorSession extends DurableObject<Env> {
     attachment: ConnectionAttachment,
     input: RegistrationInput,
   ): ReturnType<ConnectorRpcContext["register"]> {
-    await this.env.DB.batch([
+    attachment.confirmationEnabled = input.confirmationVersion === 1;
+    await this.ensureCurrentConnection(attachment);
+    const registered = await this.env.DB.batch([
       this.env.DB.prepare(
         `UPDATE connector_commands SET status = 'failed',
-          error_code = 'connector-reconnected',
-          error_message = 'The connector reconnected before this command completed.',
+          error_code = 'command-not-delivered',
+          error_message = 'The command was not delivered before the connector reconnected.',
           completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
          WHERE user_id = ?1 AND connector_id = ?2
-           AND status IN ('queued', 'sent', 'accepted')`,
-      ).bind(attachment.userId, attachment.connectorId),
+           AND status = 'queued'
+           AND EXISTS (SELECT 1 FROM connectors WHERE user_id = ?1 AND id = ?2 AND connection_id = ?3)`,
+      ).bind(attachment.userId, attachment.connectorId, attachment.connectionId),
+      this.env.DB.prepare(
+        `UPDATE connector_commands SET result_uncertain_at = CURRENT_TIMESTAMP,
+          error_code = 'command-result-unconfirmed',
+          error_message = 'The connector reconnected; the command result is not yet confirmed.',
+          updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = ?1 AND connector_id = ?2 AND status IN ('sent', 'accepted')
+           AND EXISTS (SELECT 1 FROM connectors WHERE user_id = ?1 AND id = ?2 AND connection_id = ?3)`,
+      ).bind(attachment.userId, attachment.connectorId, attachment.connectionId),
       this.env.DB.prepare(
         `UPDATE connectors SET agent_name = ?1,
           agent_version = ?2, capabilities_json = ?3, status = 'online',
           connected_at = CURRENT_TIMESTAMP, disconnected_at = NULL,
-          last_seen_at = CURRENT_TIMESTAMP
-         WHERE user_id = ?4 AND id = ?5`,
+          last_seen_at = CURRENT_TIMESTAMP, connection_id = ?6,
+          session_sync_state = ?7, session_sync_error = NULL
+         WHERE user_id = ?4 AND id = ?5 AND connection_id = ?6`,
       ).bind(
         input.agent.name,
         input.agent.version ?? null,
         JSON.stringify(input.capabilities),
         attachment.userId,
         attachment.connectorId,
+        attachment.connectionId,
+        attachment.confirmationEnabled ? "pending" : "unsupported",
       ),
     ]);
+    if (registered[2].meta.changes !== 1) {
+      throw new TRPCError({ code: "CONFLICT", message: "Registration belongs to an obsolete connection." });
+    }
+    attachment.registered = true;
     return {
       protocolVersion: PROTOCOL_VERSION,
       connectionId: attachment.connectionId,
@@ -208,15 +295,56 @@ export class ConnectorSession extends DurableObject<Env> {
     };
   }
 
+  private async ensureCurrentConnection(attachment: ConnectionAttachment): Promise<void> {
+    const current = await this.env.DB.prepare(
+      `SELECT connection_id FROM connectors WHERE user_id = ?1 AND id = ?2`,
+    ).bind(attachment.userId, attachment.connectorId).first<string>("connection_id");
+    if (
+      current !== attachment.connectionId
+      || !this.connections.has(attachment)
+      || !connectionLeaseIsActive(attachment.leaseExpiresAt)
+    ) {
+      throw new TRPCError({ code: "CONFLICT", message: "Obsolete Relay connection." });
+    }
+  }
+
+  private async validateObservation(
+    attachment: ConnectionAttachment,
+    observation?: SessionObservation,
+  ): Promise<void> {
+    await this.ensureCurrentConnection(attachment);
+    if (
+      (attachment.confirmationEnabled && !observation)
+      || (observation && observation.connectionId !== attachment.connectionId)
+    ) {
+      throw new TRPCError({ code: "CONFLICT", message: "Session confirmation belongs to another connection." });
+    }
+  }
+
+  private async validateEventConnection(
+    attachment: ConnectionAttachment,
+    connectionId?: string,
+  ): Promise<void> {
+    await this.ensureCurrentConnection(attachment);
+    if (
+      (attachment.confirmationEnabled && !connectionId)
+      || (connectionId && connectionId !== attachment.connectionId)
+    ) {
+      throw new TRPCError({ code: "CONFLICT", message: "Event belongs to an obsolete connection." });
+    }
+  }
+
   private async touchConnector(
     attachment: ConnectionAttachment,
   ): Promise<void> {
     attachment.leaseExpiresAt = Date.now() + CONNECTION_LEASE_MS;
+    if (!attachment.registered) return;
+    await this.ensureCurrentConnection(attachment);
     await this.env.DB.prepare(
       `UPDATE connectors SET last_seen_at = CURRENT_TIMESTAMP, status = 'online'
-       WHERE user_id = ?1 AND id = ?2`,
+       WHERE user_id = ?1 AND id = ?2 AND connection_id = ?3`,
     )
-      .bind(attachment.userId, attachment.connectorId)
+      .bind(attachment.userId, attachment.connectorId, attachment.connectionId)
       .run();
   }
 
@@ -224,13 +352,15 @@ export class ConnectorSession extends DurableObject<Env> {
     attachment: ConnectionAttachment,
     commandId: string,
   ): Promise<void> {
+    await this.ensureCurrentConnection(attachment);
     await this.env.DB.prepare(
       `UPDATE connector_commands SET status = 'accepted',
         accepted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?1 AND user_id = ?2 AND connector_id = ?3
-         AND status IN ('queued', 'sent')`,
+         AND status IN ('queued', 'sent')
+         AND (connection_id IS NULL OR connection_id = ?4)`,
     )
-      .bind(commandId, attachment.userId, attachment.connectorId)
+      .bind(commandId, attachment.userId, attachment.connectorId, attachment.connectionId)
       .run();
   }
 
@@ -253,43 +383,45 @@ export class ConnectorSession extends DurableObject<Env> {
         signal.addEventListener("abort", aborted, { once: true });
       });
       if (!command) return;
-      await this.markCommandSent(command.commandId);
       yield command;
     }
-  }
-
-  private async markCommandSent(commandId: string): Promise<void> {
-    await this.env.DB.prepare(
-      `UPDATE connector_commands SET status = 'sent',
-        sent_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?1 AND status = 'queued'`,
-    )
-      .bind(commandId)
-      .run();
   }
 
   private async upsertSession(
     attachment: ConnectionAttachment,
     session: AgentSession,
+    observation?: SessionObservation,
+    allowSuperseded = false,
   ): Promise<void> {
-    await this.env.DB.prepare(
+    await this.validateObservation(attachment, observation);
+    const result = await this.env.DB.prepare(
       `INSERT INTO agent_sessions
         (user_id, connector_id, id, title, status, native_status, created_at, updated_at,
          last_activity_at, last_message_preview, parent_session_id,
-         can_send_message)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11)
+         can_send_message, confirmed_connection_id, observation_sequence,
+         execution_state_known, capability_confirmed)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
+       WHERE EXISTS (SELECT 1 FROM connectors WHERE user_id = ?1 AND id = ?2 AND connection_id = ?16)
        ON CONFLICT (user_id, connector_id, id) DO UPDATE SET
          title = excluded.title,
          status = excluded.status,
          native_status = excluded.native_status,
          updated_at = excluded.updated_at,
-         last_activity_at = excluded.last_activity_at,
+         last_activity_at = CASE
+           WHEN julianday(excluded.last_activity_at) > julianday(agent_sessions.last_activity_at)
+           THEN excluded.last_activity_at ELSE agent_sessions.last_activity_at END,
          parent_session_id = excluded.parent_session_id,
          can_send_message = excluded.can_send_message,
-         last_message_preview = COALESCE(
-           excluded.last_message_preview,
-           agent_sessions.last_message_preview
-         )`,
+         confirmed_connection_id = excluded.confirmed_connection_id,
+         observation_sequence = excluded.observation_sequence,
+         execution_state_known = excluded.execution_state_known,
+         capability_confirmed = excluded.capability_confirmed,
+         last_message_preview = CASE
+           WHEN julianday(excluded.last_activity_at) >= julianday(agent_sessions.last_activity_at)
+           THEN COALESCE(excluded.last_message_preview, agent_sessions.last_message_preview)
+           ELSE agent_sessions.last_message_preview END
+       WHERE agent_sessions.confirmed_connection_id IS NOT excluded.confirmed_connection_id
+          OR agent_sessions.observation_sequence <= excluded.observation_sequence`,
     )
       .bind(
         attachment.userId,
@@ -303,33 +435,59 @@ export class ConnectorSession extends DurableObject<Env> {
         session.lastMessagePreview,
         session.parentSessionId ?? null,
         session.canSendMessage === false ? 0 : 1,
+        observation?.connectionId ?? null,
+        observation?.sequence ?? 0,
+        observation && session.executionStateKnown === true ? 1 : 0,
+        observation && session.canSendMessage !== undefined ? 1 : 0,
+        attachment.connectionId,
       )
       .run();
+    if (result.meta.changes === 0) {
+      if (allowSuperseded && observation) {
+        const newer = await this.env.DB.prepare(
+          `SELECT 1 FROM agent_sessions AS s JOIN connectors AS c
+             ON c.user_id = s.user_id AND c.id = s.connector_id
+           WHERE s.user_id = ?1 AND s.connector_id = ?2 AND s.id = ?3
+             AND c.connection_id = ?4 AND s.confirmed_connection_id = ?4
+             AND s.observation_sequence > ?5`,
+        ).bind(attachment.userId, attachment.connectorId, session.id, observation.connectionId, observation.sequence)
+          .first();
+        if (newer) return;
+      }
+      throw new TRPCError({ code: "CONFLICT", message: "A newer Session observation is already stored." });
+    }
   }
 
   private async storeEvent(
     attachment: ConnectionAttachment,
     event: AgentSessionEvent,
+    historical = false,
   ): Promise<void> {
+    const observedStatus = attachment.confirmationEnabled || historical ? null : event.status ?? null;
     await this.env.DB.batch([
       this.env.DB.prepare(
         `INSERT INTO agent_sessions
           (user_id, connector_id, id, title, status, native_status, created_at, updated_at,
            last_activity_at, last_message_preview)
-         VALUES (?1, ?2, ?3, NULL, ?4, NULL, ?5, ?5, ?5, ?6)
+         SELECT ?1, ?2, ?3, NULL, ?4, NULL, ?5, ?5, ?5, ?6
+         WHERE EXISTS (SELECT 1 FROM connectors WHERE user_id = ?1 AND id = ?2 AND connection_id = ?8)
          ON CONFLICT (user_id, connector_id, id) DO UPDATE SET
            status = COALESCE(?7, agent_sessions.status),
-           updated_at = ?5,
-           last_activity_at = ?5,
-           last_message_preview = COALESCE(?6, agent_sessions.last_message_preview)`,
+           updated_at = CASE WHEN julianday(?5) > julianday(agent_sessions.updated_at) THEN ?5 ELSE agent_sessions.updated_at END,
+           last_activity_at = CASE WHEN julianday(?5) > julianday(agent_sessions.last_activity_at) THEN ?5 ELSE agent_sessions.last_activity_at END,
+           last_message_preview = CASE
+             WHEN julianday(?5) >= julianday(agent_sessions.last_activity_at)
+             THEN COALESCE(?6, agent_sessions.last_message_preview)
+             ELSE agent_sessions.last_message_preview END`,
       ).bind(
         attachment.userId,
         attachment.connectorId,
         event.sessionId,
-        event.status ?? "unknown",
+        observedStatus ?? "unknown",
         event.createdAt,
         eventPreview(event),
-        event.status ?? null,
+        observedStatus,
+        attachment.connectionId,
       ),
       this.eventInsert(attachment, event),
     ]);
@@ -383,13 +541,23 @@ export class ConnectorSession extends DurableObject<Env> {
     commandId: string,
     outcome: "succeeded" | "failed",
     error?: CommandCompletion["error"],
+    commandConnectionId = attachment.connectionId,
   ): Promise<void> {
+    const command = await this.env.DB.prepare(
+      `SELECT connection_id FROM connector_commands
+       WHERE id = ?1 AND user_id = ?2 AND connector_id = ?3`,
+    ).bind(commandId, attachment.userId, attachment.connectorId)
+      .first<{ connection_id: string | null }>();
+    if (!command || !command.connection_id || command.connection_id !== commandConnectionId) {
+      throw new TRPCError({ code: "CONFLICT", message: "Command result belongs to another connection." });
+    }
     const completion = this.env.DB.prepare(
       `UPDATE connector_commands SET status = ?1, error_code = ?2,
         error_message = ?3, completed_at = CURRENT_TIMESTAMP,
-        updated_at = CURRENT_TIMESTAMP
+        updated_at = CURRENT_TIMESTAMP, result_uncertain_at = NULL
        WHERE id = ?4 AND user_id = ?5 AND connector_id = ?6
-         AND status IN ('queued', 'sent', 'accepted')`,
+         AND status IN ('queued', 'sent', 'accepted')
+         AND (connection_id IS NULL OR connection_id = ?7)`,
     )
       .bind(
         outcome,
@@ -398,6 +566,7 @@ export class ConnectorSession extends DurableObject<Env> {
         commandId,
         attachment.userId,
         attachment.connectorId,
+        commandConnectionId,
       );
     if (outcome === "failed") {
       await completion.run();
@@ -439,9 +608,9 @@ export class ConnectorSession extends DurableObject<Env> {
       `UPDATE connectors SET status = 'offline',
         disconnected_at = CURRENT_TIMESTAMP,
         last_seen_at = CURRENT_TIMESTAMP
-       WHERE user_id = ?1 AND id = ?2`,
+       WHERE user_id = ?1 AND id = ?2 AND connection_id = ?3`,
     )
-      .bind(attachment.userId, attachment.connectorId)
+      .bind(attachment.userId, attachment.connectorId, attachment.connectionId)
       .run();
   }
 
