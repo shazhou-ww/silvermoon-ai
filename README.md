@@ -287,6 +287,16 @@ push produced by merging into `release` runs deployment:
 2. deploy the Worker and Durable Object;
 3. deploy `apps/web/dist` to the `silvermoon-work` Pages project.
 
+The Web build relies on [Cloudflare Pages' native SPA fallback](https://developers.cloudflare.com/pages/configuration/serving-pages/#single-page-application-spa-rendering)
+for `/settings`. Keep the output free of a top-level `404.html` and explicit
+`/settings` rewrites to `/index.html`: the latter triggered a production
+canonical redirect to `/`, losing the Settings route on direct access or
+refresh. Unknown routes still render the application's explicit not-found
+view. Vite's local fallback does not validate Cloudflare routing; after an
+authorized release, verify that production `/settings` returns HTTP 200
+without redirecting, preserves its Session query parameters, and remains on
+Settings after refresh.
+
 The repository must provide `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` as GitHub Actions secrets. Scope the token only to the
 target account's Workers Scripts, D1, and Pages edit operations.

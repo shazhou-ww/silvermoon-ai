@@ -2493,28 +2493,31 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
-@media (max-width: 900px) {
+@media (min-width: 761px) and (max-width: 1000px) {
   .login-body {
-    grid-template-columns: 1fr;
-    gap: 1.5rem;
+    min-height: 24rem;
+    grid-template-columns: minmax(17rem, 1.05fr) minmax(15rem, 0.95fr);
+    align-items: center;
+    gap: 1rem;
   }
 
   .login-card {
-    width: min(100%, 34rem);
-    align-self: start;
-    transform: none;
+    width: 100%;
+    transform: translateX(1%);
   }
 
   .login-mascot-stage {
-    min-height: 16rem;
+    min-height: 24rem;
   }
 
   .login-mascot {
+    top: 50%;
     right: 0;
+    bottom: auto;
     left: 0;
     width: 100%;
-    height: 16rem;
-    transform: none;
+    height: 24rem;
+    transform: translate(-8%, -50%) scale(1.02);
   }
 }
 
@@ -2555,21 +2558,21 @@ textarea:focus-visible {
   }
 
   .login-body {
+    grid-template-columns: 1fr;
+    gap: 0;
     min-height: 0;
     margin-top: 1.75rem;
   }
 
   .login-card {
+    width: 100%;
+    align-self: start;
     padding: 1.35rem;
+    transform: none;
   }
 
   .login-mascot-stage {
-    min-height: 13rem;
-  }
-
-  .login-mascot {
-    width: 100%;
-    height: 13rem;
+    display: none;
   }
 
   .login-capabilities {

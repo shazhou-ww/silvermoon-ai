@@ -7,7 +7,7 @@
 - [workspace-state.ts](../../../../../apps/web/src/workspace-state.ts) 按账户、设备及会话存储标签页草稿；提交请求和命令回执绑定源草稿版本，失败、结果不确认或后续编辑都不丢失输入。
 - 移除浏览器管理 UI 及其 `/api/sessions` 加载；当前浏览器仍通过原 logout API 退出，不改变后端登录有效期、上限或鉴权。
 - 完整 connector profile 不放入 URL、历史或草稿缓存；离页清除，迟到响应不重新披露。
-- [静态路由规则](../../../../../apps/web/public/_redirects) 随构建输出；本地生产预览 `/settings` 返回 HTTP 200。线上平台规则和真实 OAuth 返回仍属于部署验证，不宣称已完成。
+- 原候选包含显式 `/settings /index.html 200` 规则，本地生产预览返回 HTTP 200；生产验证随后发现此规则会重定向至 `/`，修正见下文。真实 OAuth 返回仍属于部署验证，不宣称已完成。
 
 ## 兼容上游
 
@@ -25,7 +25,7 @@
 | Web typecheck | 通过 |
 | Web 单元测试 | 22 项通过，覆盖路由、账户 / 设备草稿隔离、刷新恢复、版本清理、缓存故障及主线消息 / 列表逻辑 |
 | 定向 lint | 修改的源码及测试通过，无新增诊断 |
-| Web 生产构建 | 通过，生成 `/settings` 路由回退规则 |
+| 原候选 Web 生产构建 | 通过，但本地规则验证未能发现生产 canonical redirect，修正见下文 |
 | 上游兼容目标回归 | 15 项通过：桌面、手机、320px 窄屏的离线重连、Needs Input、草稿刷新、导航及实际网格布局 |
 | 完整 Web 浏览器回归 | 124 项通过，2 项仅桌面不适用而跳过；覆盖登录、消息流、Needs Input、离线确认、列表与 Settings |
 | 最后登录资源更新后的定向回归 | 15 项通过：三个视口的登录加载 / provider / OAuth 错误，以及 Settings 布局和登录返回地址 |
@@ -33,6 +33,12 @@
 完整回归在主线 `ffb37e6` 上适配的候选通过；随后保留主线 `a15ae34` 的最终登录插画与相关样式，补跑全部受影响的登录和配置布局用例并重新执行类型、lint、单元测试与构建。此前失败定位为测试加载等待、样式优先级和抽屉继承页面网格定位，均已修正并增加直接断言。
 
 浏览器 fixture 使用虚构身份和 token，不读生产凭据。布局检查验证实际 `display: grid`、单列模块、创建 / 设备行同父级同宽同左边界、无额外 panel、抽屉顶部和左侧不留隐式空白，不只检查 CSS 声明。
+
+## 主线持续集成
+
+- [Settings 代码候选 CI](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38144832397) 在 `0e8f3d85b7a8` 上成功。
+- [最新同代码快照 CI](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38145346155) 在 `061e13ebb0fb` 上成功；其后的构想接受仅追加事件，没有修改应用代码。
+- 这些主线运行验证仓库检查、浏览器回归及本地 D1 迁移；不代表本主题已经执行 release 部署或真实账户验证。
 
 ## 真实渲染
 
@@ -45,6 +51,14 @@
 - [320px 窄屏创建](./evidence/settings-narrow-create.png)
 
 确认模块单列、名称 / 状态 / 操作横向组织、创建无嵌套 panel、抽屉复用列表且填满高度。键盘打开、Escape 关闭、焦点恢复、Cancel 和前进 / 后退由浏览器测试验证。
+
+## 生产路由修正
+
+用户授权修复后，移除显式 `/settings /index.html 200` 规则，保留既有规范路径及客户端 not-found 行为。Cloudflare Pages [Serving Pages](https://developers.cloudflare.com/pages/configuration/serving-pages/) 说明 HTML canonical redirect 及无顶层 `404.html` 时的原生 SPA fallback；本应用不需要额外 rewrite。生产已观测到旧规则 `/settings` 返回 308、`Location: /`，不是客户端导航造成。
+
+新增 [发布路由配置测试](../../../../../apps/web/tests/pages-routing.test.ts)，防止公共产物引入 `_redirects`、顶层 `404.html` 或 Settings HTML 静态路由；[Settings 浏览器测试](../../../../../apps/web/tests/settings.browser.ts) 增加 HTTP 200、无重定向、规范路径与 Session query 在刷新前后保留的断言。实际 Cloudflare 修复结果须在单独授权发布后证明，不用本地开发服务器成功替代。
+
+修正候选验证：发布配置与 workspace-state 单测共 7 项通过；三视口规范 URL / 刷新 / 登录返回 / 显式 not-found 回归共 6 项通过；Web 类型检查及生产构建、修改测试的 lint 和 whitespace 检查通过。实际 `dist` 未包含 `_redirects`、`404.html`、`settings.html` 或 `settings/index.html`。首次浏览器回归中旧测试预期未包含新增 Session query，修正预期后全部通过；应用原有 OAuth returnTo 正确保留上下文，无须修改。
 
 ## 尚未执行
 

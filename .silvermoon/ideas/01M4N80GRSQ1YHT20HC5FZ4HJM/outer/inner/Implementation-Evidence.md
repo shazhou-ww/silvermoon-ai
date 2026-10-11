@@ -18,6 +18,7 @@
 - 三个官方图标全部加载完成且具有有效自然宽度；
 - 桌面统一 panel 的中心与视口中心一致，登录卡位于人物左侧，且登录卡、贯通标题均不遮挡人物；
 - 自动化断言线图加载成功、宽度不低于登录卡、二者不重叠，并验证 desktop、mobile、narrow 三个视口无横向溢出；
+- 独立 1000、900、761px 检查均保持两栏，登录卡与线图中心线偏差约 0.008px；760px 和共享页面的 553px 视口均隐藏线图区且高度为 0。
 - 价值点与 panel 底部保留稳定内边距，三个视口均无文档级横向溢出；
 - 移动端登录先于人物，OAuth 错误可理解且不移除任何入口。
 
@@ -26,5 +27,5 @@
 - `pnpm --filter @silvermoon-ai/web lint`：通过；仅有两个既有 UI 组件的 Fast Refresh 警告。
 - `pnpm --filter @silvermoon-ai/web typecheck`：通过。
 - `pnpm --filter @silvermoon-ai/web test:browser tests/login-page.browser.ts`：9 项通过。
-- `pnpm --filter @silvermoon-ai/web test:browser`：59 项通过，1 项按既有条件跳过。
+- `pnpm --filter @silvermoon-ai/web test:browser`：124 项通过，2 项按既有条件跳过。
 - `pnpm --filter @silvermoon-ai/web build`：通过；保留既有 bundle 大小警告。
