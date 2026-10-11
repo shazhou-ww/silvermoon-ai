@@ -153,7 +153,10 @@ async function select(page: Page, title: string) {
 
 test("Settings is a route with two modules and icon-only account controls", async ({ page }) => {
   const state = await fixture(page)
-  await page.goto("/settings")
+  const response = await page.goto("/settings?connector=one&session=same")
+  expect(response?.status()).toBe(200)
+  expect(response?.request().redirectedFrom()).toBeNull()
+  await expect(page).toHaveURL(/\/settings\?connector=one&session=same$/)
   await expect(settings(page)).toBeVisible()
   await expect(settings(page).getByRole("heading", { name: "Devices", exact: true })).toBeVisible()
   await expect(settings(page).getByRole("heading", { name: "Linked identities" })).toBeVisible()
@@ -166,8 +169,10 @@ test("Settings is a route with two modules and icon-only account controls", asyn
   await expect(page.getByRole("menuitem", { name: "Sign out" })).toBeVisible()
   await page.keyboard.press("Escape")
   const link = settings(page).getByRole("link", { name: "Link Google" })
-  expect(new URL((await link.getAttribute("href"))!).searchParams.get("returnTo")).toBe("/settings")
+  expect(new URL((await link.getAttribute("href"))!).searchParams.get("returnTo"))
+    .toBe("/settings?connector=one&session=same")
   await page.reload()
+  await expect(page).toHaveURL(/\/settings\?connector=one&session=same$/)
   await expect(settings(page)).toBeVisible()
   expect(state.requests).not.toContain("GET /api/sessions")
 })
