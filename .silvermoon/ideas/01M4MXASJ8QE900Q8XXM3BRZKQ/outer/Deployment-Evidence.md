@@ -58,3 +58,9 @@
 - 生产窄屏下 Settings 无水平溢出，Open Sessions 打开抽屉、Escape 关闭后仍在 Settings。请求视口为 390px，但集成浏览器测得实际宽度为 487 CSS px；证据按实际宽度记录，不称作精确 390px 手机验证。检查后恢复检查前视口。
 - 临时测试设备仍显示无有效连接 token，未再次创建或修改凭据。
 - 未重复退出、未绑定或解绑身份、未编辑或发送 Session 草稿。真实 OAuth 返回、身份绑定返回及真实草稿恢复仍待验证，D-AC01 / D-AC02 不勾选，不提交部署验收。
+
+## 真实 OAuth 首次返回确认
+
+2026-10-12 00:32，用户明确允许再次退出并确认无须保留草稿；从 `/settings?settings-return-check=20261012` 退出后，由用户手动登录且不选择 Session。用户确认登录后直接进入 Settings，Agent 同时核对实际页面：路径 `/settings`、测试 marker 保留、`auth=signed-in`、Settings region 可见且账户菜单存在。真实登录返回 Settings 通过；此前无法确认第一屏的记录不再作为登录返回阻塞。
+
+身份绑定模式的真实返回与生产 Session 草稿恢复仍未验证，不把登录模式成功扩大为所有 OAuth 模式成功。

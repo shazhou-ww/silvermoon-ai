@@ -18,7 +18,7 @@
 
 ### Deployment steps
 
-- [ ] **D-S01:** 确认生产构建包含接受的实现
+- [x] **D-S01:** 确认生产构建包含接受的实现
 - [ ] **D-S02:** 验证生产导航与配置
 
 ### Deployment acceptance criteria
