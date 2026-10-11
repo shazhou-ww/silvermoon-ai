@@ -16,6 +16,7 @@ import {
   chatReducer,
   sessionReducer,
   type ChatAction,
+  type ChatInputAnswerValue,
   type ChatState,
   type SessionAction,
   type SessionChatSummary,
@@ -745,7 +746,7 @@ export function createAgentHostMessageAction(
       );
     }
     const question = questions[0];
-    let value;
+    let value: ChatInputAnswerValue;
     if (question.kind === ChatInputQuestionKind.Text) {
       if (
         (question.min !== undefined && message.length < question.min)
@@ -776,15 +777,30 @@ export function createAgentHostMessageAction(
         option.id.toLowerCase() === normalized
         || option.label.toLowerCase() === normalized
       );
-      if (!selected) {
+      if (selected) {
+        value = {
+          kind: ChatInputAnswerValueKind.Selected,
+          value: selected.id,
+        } as const;
+      } else if (question.allowFreeformInput) {
+        value = {
+          kind: ChatInputAnswerValueKind.Text,
+          value: message,
+        } as const;
+      } else {
         throw new Error(
           "Follow-up message must match one of the Agent Host input options.",
         );
       }
+    } else if (
+      question.kind === ChatInputQuestionKind.MultiSelect
+      && question.allowFreeformInput
+    ) {
       value = {
-        kind: ChatInputAnswerValueKind.Selected,
-        value: selected.id,
-      } as const;
+        kind: ChatInputAnswerValueKind.SelectedMany,
+        value: [],
+        freeformValues: [message],
+      };
     } else {
       throw new Error(
         "Agent Host session requires structured input that cannot be answered with a follow-up message.",

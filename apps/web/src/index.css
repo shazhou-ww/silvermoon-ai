@@ -1719,7 +1719,7 @@ textarea:focus-visible {
   line-height: 1.45;
 }
 
-.pending-input-options small:first-of-type {
+.pending-input-options .pending-input-recommended {
   color: var(--warning);
   font-weight: 700;
 }

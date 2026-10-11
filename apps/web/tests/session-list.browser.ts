@@ -20,6 +20,7 @@ const optionInputRequest: AgentInputRequest = {
     title: "Signing certificate",
     message: "Which identity should be used?",
     required: true,
+    allowFreeformInput: true,
     options: [{
       id: "distribution",
       label: "Apple Distribution",
@@ -286,6 +287,9 @@ test("waiting sessions show the original request and selectable options", async 
   await expect(page.getByText("Agent is waiting for your input")).toBeVisible()
   await expect(page.getByText("Which identity should be used?")).toBeVisible()
   await expect(page.getByText("Recommended")).toBeVisible()
+  await expect(page.getByRole("button", {
+    name: /Enter custom answer/,
+  })).toBeVisible()
   const composer = page.locator(".session-composer")
   const composerFrame = page.locator(".composer-frame")
   await expect(composer.locator(":scope > .pending-input")).toBeVisible()
@@ -311,6 +315,13 @@ test("waiting sessions show the original request and selectable options", async 
   await page.getByRole("button", { name: /Apple Distribution/ }).click()
   await expect(page.getByRole("textbox", { name: "Follow-up message" }))
     .toHaveValue("Apple Distribution")
+  await expect(page.getByRole("textbox", { name: "Follow-up message" }))
+    .toBeFocused()
+  await page.getByRole("button", { name: /Enter custom answer/ }).click()
+  await expect(page.getByRole("textbox", { name: "Follow-up message" }))
+    .toHaveValue("")
+  await expect(page.getByRole("textbox", { name: "Follow-up message" }))
+    .toHaveAttribute("placeholder", /Enter a custom answer/)
   await expect(page.getByRole("textbox", { name: "Follow-up message" }))
     .toBeFocused()
 })

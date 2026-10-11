@@ -480,6 +480,67 @@ describe("VS Code Agent Host mapping", () => {
     });
   });
 
+  it("submits custom answers when a choice question allows freeform input", () => {
+    const state = chatState(true);
+    state.activeTurn!.responseParts = [{
+      kind: ResponsePartKind.InputRequest,
+      request: {
+        id: "input-1",
+        questions: [{
+          id: "answer-1",
+          kind: ChatInputQuestionKind.SingleSelect,
+          message: "Target?",
+          options: [{ id: "staging", label: "Staging" }],
+          allowFreeformInput: true,
+        }],
+      },
+    }];
+
+    expect(createAgentHostMessageAction(
+      state,
+      "Use the HOME PC environment",
+    )).toMatchObject({
+      type: ActionType.ChatInputCompleted,
+      answers: {
+        "answer-1": {
+          value: {
+            kind: ChatInputAnswerValueKind.Text,
+            value: "Use the HOME PC environment",
+          },
+        },
+      },
+    });
+
+    state.activeTurn!.responseParts = [{
+      kind: ResponsePartKind.InputRequest,
+      request: {
+        id: "input-2",
+        questions: [{
+          id: "answer-2",
+          kind: ChatInputQuestionKind.MultiSelect,
+          message: "Targets?",
+          options: [{ id: "staging", label: "Staging" }],
+          allowFreeformInput: true,
+        }],
+      },
+    }];
+    expect(createAgentHostMessageAction(
+      state,
+      "Use the HOME PC and laptop environments",
+    )).toMatchObject({
+      type: ActionType.ChatInputCompleted,
+      answers: {
+        "answer-2": {
+          value: {
+            kind: ChatInputAnswerValueKind.SelectedMany,
+            value: [],
+            freeformValues: ["Use the HOME PC and laptop environments"],
+          },
+        },
+      },
+    });
+  });
+
   it("rejects follow-ups that cannot satisfy structured input", () => {
     const state = chatState(true);
     state.activeTurn!.responseParts = [{
@@ -562,6 +623,7 @@ describe("VS Code Agent Host mapping", () => {
           title: "Target",
           message: "Where should I deploy?",
           required: true,
+          allowFreeformInput: true,
           options: [{
             id: "staging",
             label: "Staging",
@@ -591,6 +653,7 @@ describe("VS Code Agent Host mapping", () => {
               title: "Target",
               message: "Where should I deploy?",
               required: true,
+              allowFreeformInput: true,
               options: [{
                 id: "staging",
                 label: "Staging",
