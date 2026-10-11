@@ -4,11 +4,11 @@
 
 ### D-S01: 验证真实 Done 生命周期
 
-在受支持的 VS Code 与 Agent Host 版本中验证 Done、恢复和真实删除所产生的事件及历史读取能力。
+在真实 VS Code Agent Host 中对测试 Session 执行 Done 与恢复，核对同一 Session ID 的 native status、发送能力和历史内容稳定性。
 
 ### D-S02: 验证生产链路兼容性
 
-在 Connector、Worker 与 Web 的实际部署组合中验证已有 events、首次补同步和失败重试，不改变既有 Session 身份键。
+在已部署 Worker/Web 与最新 main connector 组合中验证已有 events、首次补同步和失败重试；使用受控 adapter 制造 history loader 失败，不直接修改生产数据库。
 
 ## Acceptance criteria
 
@@ -19,3 +19,5 @@
 ### D-AC02: 失败状态可诊断
 
 断开 connector 或制造 history command 失败时，已存 events 仍显示，界面给出明确失败状态和有效重试路径。
+
+外部验证记录见 [Deployment-Evidence.md](./Deployment-Evidence.md)。
