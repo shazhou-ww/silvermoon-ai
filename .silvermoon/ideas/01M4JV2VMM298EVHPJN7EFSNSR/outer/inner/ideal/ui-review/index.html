@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="data:,">
-  <title>消息流滚动行为评审</title>
+  <title>返回最新消息控件密度评审</title>
   <style>
     :root {
       color-scheme: light;
@@ -115,7 +115,7 @@
       .deltas { justify-content: flex-start; }
       .tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); overflow: visible; }
       .tab { min-width: 0; overflow-wrap: anywhere; text-align: center; }
-      iframe { min-height: 1040px; }
+      iframe { min-height: 1300px; }
     }
   </style>
 </head>
@@ -123,8 +123,8 @@
   <a class="skip-link" href="#review">跳到评审内容</a>
   <header>
     <div>
-      <h1>消息流滚动行为评审</h1>
-      <p>比较长 Session 当前的初始位置与历史浏览体验，以及自动显示最新内容并提供返回入口后的状态。</p>
+      <h1>返回最新消息控件密度评审</h1>
+      <p>比较当前占用消息列表底部整行的文字按钮，与右下角圆形 icon 浮动按钮。</p>
     </div>
     <span class="status">说明性评审材料</span>
   </header>
@@ -133,31 +133,30 @@
     <section class="decision" aria-labelledby="decision-title">
       <div>
         <p class="eyebrow">待决定</p>
-        <h2 id="decision-title">是否采用“默认跟随最新、离开底部后由用户主动返回”的消息流交互？</h2>
+        <h2 id="decision-title">是否将返回最新消息控件改为消息列表右下角的圆形向下箭头按钮？</h2>
       </div>
       <ul class="deltas" aria-label="关键变化">
-        <li>打开与底部停留时自动跟随最新消息</li>
-        <li>浏览历史时显示浮动返回按钮</li>
+        <li>释放固定 4rem 控件行</li>
+        <li>保留 44×44 点击区域和无障碍名称</li>
       </ul>
     </section>
 
     <section class="scenarios" aria-label="评审场景">
       <nav class="tabs" role="tablist" aria-label="选择场景">
-        <a class="tab" id="tab-open" role="tab" aria-selected="true" href="scenarios/01-open-session.html" target="scenario-frame">打开长 Session</a>
-        <a class="tab" id="tab-history" role="tab" aria-selected="false" href="scenarios/02-browse-history.html" target="scenario-frame">浏览历史后返回</a>
+        <a class="tab" id="tab-control" role="tab" aria-selected="true" href="scenarios/01-control-density.html" target="scenario-frame">浏览历史时的返回控件</a>
       </nav>
       <div class="frame-shell">
-        <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-open-session.html" title="打开长 Session 对比"></iframe>
+        <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-control-density.html" title="浏览历史时的返回控件对比"></iframe>
       </div>
     </section>
 
     <section class="review-end" aria-label="评审结论">
       <p>此材料仅用于说明视觉与交互方向，不是生产 UI 或规范性行为契约。<a class="source" href="../Idea.md">规范来源</a></p>
-      <strong>是否同意以此消息流定位与返回交互作为实现方向？</strong>
+      <strong>是否同意用右下角圆形 icon 按钮替代当前独占一行的文字按钮？</strong>
     </section>
   </main>
 
-  <footer>需在实现中校准“接近底部”的容差，并在系统启用减少动态效果时改为即时定位，避免滚动抖动。</footer>
+  <footer>按钮会覆盖消息列表右下角的一小块区域；实现需保留足够内边距，避免遮住最后一条消息，同时不得重新引入永久占位行。</footer>
 
   <script>
     const frame = document.querySelector("#scenario-frame");
