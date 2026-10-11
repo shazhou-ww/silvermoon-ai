@@ -18,3 +18,15 @@
 - 补取发布日志时 GitHub API 返回 EOF；已取得的运行状态仍可作为发布观察，但未取得最终产物 URL。
 
 这些结果不能判定是站点故障还是当前环境的网络问题。待生产地址可访问后，先针对已同步部署契约重新检查路由、刷新、登录返回和受控账户界面；副作用流程继续按授权边界逐项确认。所有 Deployment 清单项暂保留未完成，不提请部署验收。
+
+## 登录后的生产检查
+
+2026-10-11 22:32 后用户共享已登录的生产页面，连接恢复，按现有授权执行只读检查；没有发送消息、编辑草稿或操作真实设备与身份。不保存账户信息、Session 内容或未脱敏截图。
+
+- 键盘打开账户菜单后可见 Settings 和 Sign out；进入 Settings 后路径为 `/settings`，保留原 Session query 上下文。
+- 实际页面仅包含 Devices 与 Linked identities，未出现 Browser sessions；971 CSS px 的集成视口无水平溢出，六个设备行均为 grid，宽度一致（587 CSS px）。这个视口不代替手机验证。
+- 刷新 Settings 后实际回到 `/`，未保留 Settings 页面。浏览器只读 fetch `/settings` 也观测到重定向后 HTTP 200，最终路径为 `/`。
+- 独立 curl 响应确认 `/settings` 返回 HTTP 308、`Location: /`；`/settings/` 返回 HTTP 200。问题已从连接失败明确为生产平台路由重定向，不是应用内 Settings 无法打开。
+- 账户菜单自动化点击及后续一次键盘重入发生超时，未完成 inline 创建 / Cancel 或窄屏验证，不据此宣称通过或判定新的应用缺陷。
+
+**D-AC01 未通过：** 当前规范路径 `/settings` 的直达与刷新会丢失 Settings 位置；`/settings/` 的 HTTP 200 不是规范路径通过的替代证据。需要在后续修复中核对 Cloudflare Pages 对 `/index.html` rewrite 目标的 canonical redirect 行为，并用生产规范 URL 验证，而不能仅依赖本地 preview HTTP 200。本部署阶段不修改已接受的应用实现，不重复发布；修复及其发布须另行授权。其余尚未验证的 D 项保持未完成，不提交 submitOuter。
