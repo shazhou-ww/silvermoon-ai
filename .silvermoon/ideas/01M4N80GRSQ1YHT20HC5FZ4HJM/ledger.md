@@ -18,10 +18,10 @@
 
 ### Deployment steps
 
-- [x] **D-S01:** 发布登录页变更
-- [x] **D-S02:** 验证公开登录流程
+- [ ] **D-S01:** 发布登录页变更
+- [ ] **D-S02:** 验证公开登录流程
 
 ### Deployment acceptance criteria
 
-- [x] **D-AC01:** 公开页面呈现正确
-- [x] **D-AC02:** 三种 OAuth 入口可用
+- [ ] **D-AC01:** 公开页面呈现正确
+- [ ] **D-AC02:** 三种 OAuth 入口可用

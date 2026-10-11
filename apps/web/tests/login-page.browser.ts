@@ -46,9 +46,14 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
         )
       )
   ).toBe(true)
-  await expect(page.getByRole("img", {
+  const lineArt = page.getByRole("img", {
     name: "Silvermoon seen from behind, with long hair flowing across the ground",
-  })).toBeVisible()
+  })
+  if (page.viewportSize()!.width > 760) {
+    await expect(lineArt).toBeVisible()
+  } else {
+    await expect(lineArt).toBeHidden()
+  }
 
   const providers = ["google", "microsoft", "github"] as const
   for (const provider of providers) {
@@ -90,6 +95,9 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
         (login.top + login.bottom) / 2 - (mascot.top + mascot.bottom) / 2,
       ),
       mascotAtLeastAsWideAsLogin: mascot.width >= login.width,
+      artDisplay: getComputedStyle(
+        document.querySelector(".login-mascot-stage")!,
+      ).display,
       horizontalOverflow:
         document.documentElement.scrollWidth
         > document.documentElement.clientWidth,
@@ -104,8 +112,34 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
     expect(layout.capabilityPanelGap).toBeGreaterThan(0)
     expect(layout.loginMascotCenterOffset).toBeLessThanOrEqual(64)
     expect(layout.mascotAtLeastAsWideAsLogin).toBe(true)
+
+    for (const width of [1000, 900, 761]) {
+      await page.setViewportSize({ width, height: 900 })
+      const transition = await page.evaluate(() => {
+        const login = document.querySelector(".login-card")!
+          .getBoundingClientRect()
+        const art = document.querySelector(".login-mascot")!
+          .getBoundingClientRect()
+        return {
+          columns: getComputedStyle(document.querySelector(".login-body")!)
+            .gridTemplateColumns.split(" ").length,
+          centerOffset: Math.abs(
+            (login.top + login.bottom) / 2 - (art.top + art.bottom) / 2,
+          ),
+          artDisplay: getComputedStyle(
+            document.querySelector(".login-mascot-stage")!,
+          ).display,
+        }
+      })
+      expect(transition.columns).toBe(2)
+      expect(transition.centerOffset).toBeLessThanOrEqual(8)
+      expect(transition.artDisplay).not.toBe("none")
+    }
+
+    await page.setViewportSize({ width: 760, height: 900 })
+    await expect(page.locator(".login-mascot-stage")).toBeHidden()
   } else {
-    expect(layout.loginBeforeMascot).toBe(true)
+    expect(layout.artDisplay).toBe("none")
   }
 })
 
