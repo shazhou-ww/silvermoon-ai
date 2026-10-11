@@ -40,3 +40,28 @@
 4. 桌面和约 320px 窄屏均通过初始定位、历史阅读保护和返回最新消息操作。
 
 上述生产观察完成 D-S02，并为 D-AC01 与 D-AC02 提供带时间的外部证据；实现阶段的本地/CI 浏览器回归仅作为发布前补充，不替代本次生产人工观察。
+
+## 2026-10-11 圆形控件增量发布
+
+### D-S01：发布完成
+
+- 已验收的 `implementationRevision=496141607d56397c7ae5be51b570d38298a07e03` 位于 primary `3d1e47696937c4c1a53ed1b4c7d87775882092d5`，对应的 `acceptInner#12` 已同步到 primary `312919b4bf637216de9027dd2498ff53a0fcd459`。
+- 使用现有 release 普通合并流程晋级为 release commit `ca297f0ffc90cd526ea31ff962e3e1eb5628b033`，没有重写 release 历史。
+- [Check and deploy run 38131555026](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38131555026) 的 check 与 deploy jobs 均成功。
+  - check：冻结 lockfile 安装、完整 `pnpm check`、真实 Chromium 浏览器回归及本地 D1 migration 均成功。
+  - deploy：完整 `pnpm check`、远端 D1 migration 检查、Worker 与 Pages 发布均成功。
+  - Worker version：`b761c8cf-402e-41f5-a14c-c165ac5b0b4b`。
+  - Pages deployment：[c066d344](https://c066d344.silvermoon-work.pages.dev)。
+  - 发布任务完成时间：2026-10-11T10:22:30Z（北京时间 18:22:30）。
+
+### 发布后生产资源检查
+
+2026-10-11T10:22:46.403Z（北京时间 18:22:46）完成以下外部检查：
+
+- `https://relay.silvermoon.work/health` 与 `https://silvermoon.work/` 均返回 HTTP 200。
+- 生产首页引用 JavaScript `/assets/index-bZPCNRkn.js` 与 CSS `/assets/index-Cg9jXfiL.css`，两项资源均返回 HTTP 200，文件名与当前 implementation 的 production build 输出完全一致。
+- 生产 JavaScript 包含无障碍名称 `Jump to latest`，CSS 包含 `transcript-jump`；不可变 Pages deployment 可访问。这证明圆形控件候选资源已发布，但不替代登录后的生产交互检查。
+
+### D-S02 / D-AC01 / D-AC02：等待当前 revision 的生产体验
+
+先前的登录后 smoke 属于旧 deploymentRevision，不能替代圆形控件与紧凑底部间距的当前验证。需要在已登录的生产长 Session 中确认桌面和窄屏的默认最新位置、历史阅读保护、右下角 44×44 圆形按钮、1rem 消息底部间距、返回交互及无遮挡表现。

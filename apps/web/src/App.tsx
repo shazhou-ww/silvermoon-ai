@@ -65,6 +65,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { TranscriptScroll } from "@/components/transcript-scroll"
 import {
   buildTranscript,
+  groupTurnSegments,
   segmentTurnParts,
   transcriptItemIsVisible,
   transcriptToolCount,
@@ -545,6 +546,7 @@ function ToolGroup({ parts }: { parts: TranscriptPart[] }) {
 
 function StructuredPart({ part }: { part: TranscriptPart }) {
   const body = eventBody(part.event)
+  if (part.kind === "input") return null
   if (part.kind === "markdown") {
     return (
       <article
@@ -595,7 +597,12 @@ function TranscriptTurnView({
   turn: TranscriptTurn
   showTools: boolean
 }) {
-  const segments = segmentTurnParts(turn.parts)
+  const blocks = groupTurnSegments(segmentTurnParts(turn.parts))
+  const visibleBlocks = blocks.filter((block) =>
+    block.kind === "answer"
+    || showTools
+    || block.segments.some((segment) => segment.kind !== "tools")
+  )
   const lastEvent = turn.parts.at(-1)?.event ?? turn.request
   return (
     <article
@@ -614,24 +621,47 @@ function TranscriptTurnView({
           <p>{turn.request.text}</p>
         </div>
       )}
-      <div className="turn-response">
-        <strong className="turn-response-label">Copilot</strong>
-        {segments.map((segment, index) =>
-          segment.kind === "tools"
-            ? showTools && (
-                <ToolGroup
-                  key={`tools:${segment.parts[0]?.id ?? index}`}
-                  parts={segment.parts}
-                />
-              )
-            : (
-                <StructuredPart
-                  key={`${segment.part.kind}:${segment.part.id}`}
-                  part={segment.part}
-                />
-              )
-        )}
-      </div>
+      {visibleBlocks.map((block, blockIndex) =>
+        block.kind === "answer"
+          ? (
+              <div
+                key={`answer:${block.part.id}`}
+                className="turn-request is-user turn-input-answer"
+                aria-label={`${eventLabel(block.part.event)} message sent ${
+                  formatTime(block.part.event.createdAt)
+                }`}
+              >
+                <p>{eventBody(block.part.event)}</p>
+              </div>
+            )
+          : (
+              <div
+                className="turn-response"
+                key={`response:${
+                  block.segments[0]?.kind === "tools"
+                    ? block.segments[0].parts[0]?.id
+                    : block.segments[0]?.part.id
+                }:${blockIndex}`}
+              >
+                <strong className="turn-response-label">Copilot</strong>
+                {block.segments.map((segment, index) =>
+                  segment.kind === "tools"
+                    ? showTools && (
+                        <ToolGroup
+                          key={`tools:${segment.parts[0]?.id ?? index}`}
+                          parts={segment.parts}
+                        />
+                      )
+                    : (
+                        <StructuredPart
+                          key={`${segment.part.kind}:${segment.part.id}`}
+                          part={segment.part}
+                        />
+                      )
+                )}
+              </div>
+            )
+      )}
       {lastEvent && (
         <time className="turn-time" dateTime={lastEvent.createdAt}>
           {formatTime(lastEvent.createdAt)}

@@ -14,9 +14,14 @@ function message(sequence: number, text = `Message ${sequence}`): AgentSessionEv
   }
 }
 
-async function fixture(page: Page, initialEvents = 40) {
+async function fixture(
+  page: Page,
+  initialEvents: number | AgentSessionEvent[] = 40,
+) {
   const state = {
-    events: Array.from({ length: initialEvents }, (_, index) => message(index)),
+    events: Array.isArray(initialEvents)
+      ? initialEvents
+      : Array.from({ length: initialEvents }, (_, index) => message(index)),
     status: "online",
     delaySecondSession: false,
     eventPolls: 0,
@@ -104,6 +109,86 @@ async function fixture(page: Page, initialEvents = 40) {
 
 const scrollRegion = (page: Page) => page.getByRole("region", { name: "Session messages" })
 const jumpButton = (page: Page) => page.getByRole("button", { name: "Jump to latest" })
+
+test("input answers render after the waiting message", async ({ page }) => {
+  const structuredEvent = (
+    id: string,
+    sequence: number,
+    role: AgentSessionEvent["role"],
+    text: string,
+    partId: string,
+    partIndex: number,
+    partKind: "request" | "markdown",
+    inputRequestId?: string,
+  ): AgentSessionEvent => ({
+    id,
+    sessionId: "session-1",
+    sequence,
+    type: "message",
+    role,
+    text,
+    data: {
+      turnId: "turn-1",
+      partId,
+      partIndex,
+      partKind,
+      ...(inputRequestId
+        ? {
+            inputRequestId,
+            inputRequestResolved: true,
+          }
+        : {}),
+    },
+    createdAt: `2026-10-10T00:00:0${sequence}.000Z`,
+  })
+  await fixture(page, [
+    structuredEvent(
+      "request",
+      1,
+      "user",
+      "Deploy the release.",
+      "request",
+      0,
+      "request",
+    ),
+    structuredEvent(
+      "waiting-message",
+      2,
+      "assistant",
+      "I need one confirmation first.",
+      "markdown-1",
+      0,
+      "markdown",
+    ),
+    structuredEvent(
+      "input-answer",
+      3,
+      "user",
+      "Pause until I return.",
+      "input-1",
+      1,
+      "request",
+      "input-1",
+    ),
+    structuredEvent(
+      "continuation",
+      4,
+      "assistant",
+      "Okay, I will pause here.",
+      "markdown-2",
+      2,
+      "markdown",
+    ),
+  ])
+
+  const blocks = page.locator(".transcript-turn").locator(
+    ":scope > .turn-response, :scope > .turn-input-answer",
+  )
+  await expect(blocks).toHaveCount(3)
+  await expect(blocks.nth(0)).toContainText("I need one confirmation first.")
+  await expect(blocks.nth(1)).toContainText("Pause until I return.")
+  await expect(blocks.nth(2)).toContainText("Okay, I will pause here.")
+})
 
 test("device settings use one add flow and unified device cards", async ({ page }) => {
   await fixture(page)
