@@ -761,7 +761,7 @@ describe("relay identity and token service", () => {
       }, {
         id: "session-existing",
         title: "Existing session",
-        status: "idle",
+        status: "waiting",
         createdAt: now,
         updatedAt: now,
         lastMessagePreview: "Ready to continue",
@@ -876,6 +876,22 @@ describe("relay identity and token service", () => {
           update: "snapshot",
         },
         createdAt: now,
+      }, {
+        id: "history-event-3",
+        sessionId: "session-existing",
+        sequence: 3,
+        type: "message",
+        role: "assistant",
+        text: "Choose a deployment target.",
+        data: {
+          turnId: "turn-history-1",
+          partId: "input-1",
+          partIndex: 1,
+          partKind: "request",
+          update: "snapshot",
+          inputRequestId: "input-1",
+        },
+        createdAt: now,
       }],
     });
     await waitForData(5);
@@ -884,6 +900,68 @@ describe("relay identity and token service", () => {
       outcome: "succeeded",
     });
     await waitForData(6);
+    const repairHistorySync = await SELF.fetch(
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-existing/events/sync`,
+      {
+        method: "POST",
+        headers: sessionHeaders(session),
+      },
+    );
+    expect(repairHistorySync.status).toBe(202);
+    const repairCommand = await waitForData(
+      3,
+      (value) =>
+        !!value
+        && typeof value === "object"
+        && "type" in value
+        && value.type === "session.history"
+        && "commandId" in value
+        && value.commandId !== historyCommandId,
+    ) as Record<string, unknown>;
+    const repairCommandId = String(repairCommand.commandId);
+    sendRpc(7, "mutation", "commandAccepted", {
+      commandId: repairCommandId,
+    });
+    sendRpc(8, "mutation", "sessionEvents", {
+      events: [{
+        id: "history-event-3",
+        sessionId: "session-existing",
+        sequence: 3,
+        type: "message",
+        role: "assistant",
+        text: "Choose a deployment target.",
+        data: {
+          turnId: "turn-history-1",
+          partId: "input-1",
+          partIndex: 1,
+          partKind: "request",
+          update: "snapshot",
+          inputRequestId: "input-1",
+          inputRequestResolved: false,
+          inputRequest: {
+            id: "input-1",
+            message: "Choose a deployment target.",
+            url: null,
+            questions: [{
+              id: "target",
+              kind: "single-select",
+              message: "Where should I deploy?",
+              options: [
+                { id: "staging", label: "Staging", recommended: true },
+                { id: "production", label: "Production" },
+              ],
+            }],
+          },
+        },
+        createdAt: now,
+      }],
+    });
+    await waitForData(8);
+    sendRpc(9, "mutation", "commandCompleted", {
+      commandId: repairCommandId,
+      outcome: "succeeded",
+    });
+    await waitForData(9);
     const historyEvents = await SELF.fetch(
       `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-existing/events`,
       { headers: sessionHeaders(session) },
@@ -903,8 +981,47 @@ describe("relay identity and token service", () => {
             update: "snapshot",
           },
         }),
+        expect.objectContaining({
+          id: "history-event-3",
+          data: expect.objectContaining({
+            inputRequestId: "input-1",
+            inputRequestResolved: false,
+            inputRequest: expect.objectContaining({
+              id: "input-1",
+              questions: [
+                expect.objectContaining({
+                  kind: "single-select",
+                  options: [
+                    expect.objectContaining({ label: "Staging" }),
+                    expect.objectContaining({ label: "Production" }),
+                  ],
+                }),
+              ],
+            }),
+          }),
+        }),
       ],
     });
+    const sessionsAfterHistory = await SELF.fetch(
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions`,
+      { headers: sessionHeaders(session) },
+    );
+    expect(await sessionsAfterHistory.json()).toContainEqual(
+      expect.objectContaining({
+        id: "session-existing",
+        pendingInputRequest: expect.objectContaining({
+          id: "input-1",
+          questions: [
+            expect.objectContaining({
+              options: [
+                expect.objectContaining({ label: "Staging" }),
+                expect.objectContaining({ label: "Production" }),
+              ],
+            }),
+          ],
+        }),
+      }),
+    );
     sendRpc(10, "mutation", "syncSessions", {
       sessions: [{
         id: "session-existing",
@@ -927,6 +1044,7 @@ describe("relay identity and token service", () => {
       events: [
         expect.objectContaining({ id: "history-event-1" }),
         expect.objectContaining({ id: "history-event-2" }),
+        expect.objectContaining({ id: "history-event-3" }),
       ],
     });
     const currentHistorySync = await SELF.fetch(
@@ -960,7 +1078,7 @@ describe("relay identity and token service", () => {
          WHERE user_id = 'user-01' AND connector_id = ?1
            AND session_id = 'session-existing' AND type = 'session.history'`,
       ).bind(connectorId).first<{ count: number }>(),
-    ).toMatchObject({ count: 1 });
+    ).toMatchObject({ count: 2 });
 
     const create = await SELF.fetch(
       `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions`,

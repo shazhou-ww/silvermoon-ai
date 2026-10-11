@@ -354,7 +354,15 @@ export class ConnectorSession extends DurableObject<Env> {
          content, data_json, created_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
        ON CONFLICT (user_id, connector_id, session_id, event_id)
-       DO NOTHING`,
+       DO UPDATE SET
+         type = excluded.type,
+         role = COALESCE(excluded.role, agent_session_events.role),
+         content = COALESCE(excluded.content, agent_session_events.content),
+         data_json = CASE
+           WHEN agent_session_events.data_json IS NULL THEN excluded.data_json
+           WHEN excluded.data_json IS NULL THEN agent_session_events.data_json
+           ELSE json_patch(agent_session_events.data_json, excluded.data_json)
+         END`,
     ).bind(
       attachment.userId,
       attachment.connectorId,
