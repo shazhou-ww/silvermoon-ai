@@ -3,7 +3,7 @@
 ## 交付范围
 
 - 未登录与加载状态使用同一套明亮月色布局；大屏以统一 panel 将整组内容垂直居中，主副标题横跨登录区和人物区。
-- 桌面端登录卡位于左侧，复用既有银月全身图并完整显示在右侧；移动端按登录、人物、能力介绍排序。
+- 桌面端登录卡位于左侧；银月相对前一版放大约 15% 并向 panel 中部移动，人物框高 440px、登录卡高约 397px，中心线偏差约 21px；移动端按登录、人物、能力介绍排序。
 - Google、Microsoft、GitHub 入口使用各品牌官方资源的本地图标并保持原 OAuth start 地址；来源记录在 `apps/web/public/provider-icons/SOURCES.md`。
 - 三个价值点位于统一 panel 内部并紧跟主体内容，不再通过 `margin-top: auto` 贴到视口底部。
 - OAuth 回调错误显示为可操作的登录卡内提示，三个入口保持可用。
@@ -16,6 +16,7 @@
 - 三个 OAuth 入口的标签和目标地址正确；
 - 三个官方图标全部加载完成且具有有效自然宽度；
 - 桌面统一 panel 的中心与视口中心一致，登录卡位于人物左侧，且登录卡、贯通标题均不遮挡人物；
+- 自动化断言人物框不低于登录卡，二者中心线偏差不超过 32px；
 - 价值点与 panel 底部保留稳定内边距，三个视口均无文档级横向溢出；
 - 移动端登录先于人物，OAuth 错误可理解且不移除任何入口。
 
@@ -24,4 +25,5 @@
 - `pnpm --filter @silvermoon-ai/web lint`：通过；仅有两个既有 UI 组件的 Fast Refresh 警告。
 - `pnpm --filter @silvermoon-ai/web typecheck`：通过。
 - `pnpm --filter @silvermoon-ai/web test:browser tests/login-page.browser.ts`：9 项通过。
+- `pnpm --filter @silvermoon-ai/web test:browser`：59 项通过，1 项按既有条件跳过。
 - `pnpm --filter @silvermoon-ai/web build`：通过；保留既有 bundle 大小警告。

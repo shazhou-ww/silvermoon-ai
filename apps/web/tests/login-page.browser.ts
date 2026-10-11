@@ -93,6 +93,10 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
         (panel.top + panel.bottom) / 2 - window.innerHeight / 2,
       ),
       capabilityPanelGap: panel.bottom - capabilities.bottom,
+      loginMascotCenterOffset: Math.abs(
+        (login.top + login.bottom) / 2 - (mascot.top + mascot.bottom) / 2,
+      ),
+      mascotAtLeastAsTallAsLogin: mascot.height >= login.height,
       horizontalOverflow:
         document.documentElement.scrollWidth
         > document.documentElement.clientWidth,
@@ -106,6 +110,8 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
     expect(layout.heroMascotOverlap).toBe(false)
     expect(layout.panelCenterOffset).toBeLessThanOrEqual(1)
     expect(layout.capabilityPanelGap).toBeGreaterThan(0)
+    expect(layout.loginMascotCenterOffset).toBeLessThanOrEqual(32)
+    expect(layout.mascotAtLeastAsTallAsLogin).toBe(true)
   } else {
     expect(layout.loginBeforeMascot).toBe(true)
   }
