@@ -30,3 +30,12 @@
 - 账户菜单自动化点击及后续一次键盘重入发生超时，未完成 inline 创建 / Cancel 或窄屏验证，不据此宣称通过或判定新的应用缺陷。
 
 **D-AC01 未通过：** 当前规范路径 `/settings` 的直达与刷新会丢失 Settings 位置；`/settings/` 的 HTTP 200 不是规范路径通过的替代证据。需要在后续修复中核对 Cloudflare Pages 对 `/index.html` rewrite 目标的 canonical redirect 行为，并用生产规范 URL 验证，而不能仅依赖本地 preview HTTP 200。本部署阶段不修改已接受的应用实现，不重复发布；修复及其发布须另行授权。其余尚未验证的 D 项保持未完成，不提交 submitOuter。
+
+## 路由修正接受后的复验
+
+用户接受路由修正 `0b6f5f91a78d` 后，本 session 仅同步接受事件，没有触发发布。核对发现其他主题的 [成功 release](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38149527216) `220af0adf498` 已包含路由修正提交 `c0ffe5195594`；check 与 deploy 均成功，无需重复发布。
+
+- 当前 curl 对规范 `/settings` 返回 HTTP 200，无 Location 重定向。
+- 共享浏览器先访问此前使用过的带 Session query 地址时仍回到首页，可能涉及缓存，原因未确认，不隐去该失败观察。
+- 换用未访问过的 `/settings?settings-route-check=20261011` 后，生产直达 HTTP 200、无重定向；刷新同样 HTTP 200 且保留 `/settings`，实际呈现 Devices 与 Linked identities。该结果证明新请求的规范路径生效，不代替旧链接缓存及 Session query 的复验。
+- 未执行创建、身份绑定或退出；窄屏及真实草稿验证仍待完成。D-AC01 的真实身份绑定返回与旧链接复验尚未完成，不提交部署验收。

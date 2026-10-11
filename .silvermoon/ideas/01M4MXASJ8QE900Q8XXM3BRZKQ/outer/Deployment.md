@@ -1,6 +1,6 @@
 # Deployment
 
-实施 revision `601b5e0e6a22` 已接受。用户于 2026-10-11 授权生产验证，创建设备、身份绑定和退出等副作用操作须另行确认；不授权重复部署。现有成功 release 已包含本主题代码，先核对发布证据并执行只读检查。当前验证结果见 [Deployment-Evidence.md](./Deployment-Evidence.md)。
+路由修正实施 revision `0b6f5f91a78d` 已接受。用户于 2026-10-11 授权生产验证，创建设备、身份绑定和退出等副作用操作须另行确认；不授权重复部署。其他主题的成功 release 已包含本主题及路由修正代码，先核对发布证据并执行只读检查。当前验证结果见 [Deployment-Evidence.md](./Deployment-Evidence.md)。
 
 ## Steps
 
