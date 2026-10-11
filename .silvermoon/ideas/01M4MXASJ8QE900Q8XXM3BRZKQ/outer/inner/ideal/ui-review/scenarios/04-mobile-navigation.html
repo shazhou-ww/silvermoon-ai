@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>窄屏：从配置切到 Session</title>
+  <style>
+    :root { color-scheme: light; --ink: #17212b; --muted: #687487; --border: #d8dfe8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 18px; color: var(--ink); background: white; font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+    h1 { margin: 0; font-size: 20px; }
+    .scenario-heading { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px; }
+    .scenario-heading p { margin: 4px 0 0; color: var(--muted); }
+    .callouts { display: flex; flex-wrap: wrap; justify-content: flex-end; align-content: start; gap: 6px; list-style: none; margin: 0; padding: 0; }
+    .callouts li { padding: 5px 8px; color: #125d55; background: #e8f3f1; border-radius: 5px; font-size: 12px; }
+    .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+    .state { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 7px; }
+    .state-label { padding: 10px 12px; border-bottom: 1px solid var(--border); background: #f4f5f6; }
+    .state-label strong { display: block; }
+    .state-label span { font-size: 12px; color: var(--muted); }
+    .product-surface { position: relative; width: min(390px, 100%); height: 560px; margin-inline: auto; background: #f4f6f8; overflow: hidden; font-size: 12px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; min-height: 60px; background: #f8f9fb; border-bottom: 1px solid var(--border); }
+    .context { display: flex; align-items: center; gap: 12px; }
+    .topbar strong { font-size: 16px; }
+    .icon { font-size: 20px; }
+    .avatar { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: white; background: #142033; font-weight: 750; }
+    .content { padding: 12px; }
+    .card { margin-bottom: 12px; border: 1px solid var(--border); border-radius: 12px; background: #fbfcfd; overflow: hidden; }
+    .card h3 { padding: 12px; margin: 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .card h3 { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .card h3 .control { margin: 0; font-size: 12px; font-weight: 400; }
+    .card-body { padding: 12px; color: var(--muted); }
+    .field { margin-top: 6px; padding: 8px; color: var(--ink); background: white; border: 1px solid #c8d1dc; border-radius: 5px; }
+    .control { display: inline-block; margin-top: 10px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 5px; background: white; color: var(--ink); }
+    .primary { color: white; background: #3454d1; border-color: #3454d1; }
+    .shade { position: absolute; inset: 0; background: rgb(0 0 0 / 10%); backdrop-filter: blur(2px); }
+    .dialog { position: absolute; inset: 16px; border-radius: 12px; background: white; overflow: hidden; }
+    .dialog-header { display: flex; justify-content: space-between; gap: 10px; padding: 16px; border-bottom: 1px solid var(--border); }
+    .dialog-header h2 { font-size: 18px; margin: 0; }
+    .dialog-header p { color: var(--muted); margin: 6px 0 0; }
+    .dialog .content { height: 445px; overflow-y: auto; background: #f4f6f8; }
+    .drawer-shade { position: absolute; inset: 0; background: rgb(0 0 0 / 10%); }
+    .drawer { position: absolute; inset: 0 auto 0 0; width: 85%; background: #f8f9fb; border-right: 1px solid var(--border); box-shadow: 4px 0 12px rgb(23 33 43 / 10%); }
+    .drawer-heading { display: flex; justify-content: space-between; align-items: center; min-height: 60px; padding: 12px; border-bottom: 1px solid var(--border); }
+    .drawer-heading h2 { font-size: 16px; margin: 0; }
+    .drawer-body { padding: 14px 12px; }
+    .search { padding: 8px; background: white; color: var(--muted); border: 1px solid var(--border); border-radius: 7px; }
+    .filters { display: flex; gap: 6px; margin: 10px 0 16px; color: var(--muted); }
+    .filters span { padding: 4px 7px; border: 1px solid var(--border); border-radius: 5px; }
+    .session { padding: 10px; margin-bottom: 10px; background: white; border: 1px solid var(--border); border-radius: 7px; }
+    .session strong, .session span { display: block; }
+    .session span { margin-top: 4px; color: var(--muted); }
+    .caption { margin: 0; padding: 10px 12px; color: var(--muted); border-top: 1px solid var(--border); font-size: 12px; }
+    .notes { color: var(--muted); font-size: 12px; }
+    @media (max-width: 1000px) { .comparison { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) {
+      body { padding: 12px; }
+      .scenario-heading { grid-template-columns: 1fr; }
+      .callouts { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header class="scenario-heading">
+    <div><h1>窄屏：查看配置时切换会话</h1><p>同一组会话与配置样例；聚焦导航入口，不重画完整配置表单。</p></div>
+    <ul class="callouts" aria-label="可见差异"><li>已确认：顶部列表图标</li><li>已确认：Session 导航抽屉</li><li>建议：关闭不离开 Settings</li></ul>
+  </header>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before · 配置弹窗阻断列表导航</strong><span>窄屏 · 相同虚构数据</span></header>
+      <div class="product-surface">
+        <div class="topbar"><span class="context"><span class="icon" aria-hidden="true">←</span><strong>Session</strong></span><span class="avatar" aria-hidden="true">DA</span></div>
+        <div class="content"><p>Workspace discussion</p><p>Discuss the workspace layout.</p></div>
+        <div class="shade"></div>
+        <section class="dialog" aria-label="当前配置弹窗的静态示意">
+          <div class="dialog-header"><div><h2>Devices</h2><p>Add and manage devices that can connect to this account.</p></div><span class="icon" aria-hidden="true">×</span></div>
+          <div class="content" data-config></div>
+        </section>
+      </div>
+      <p class="caption">从会话中打开配置时，先关闭弹窗，再用原会话页返回列表，才能选择另一会话。</p>
+    </section>
+    <section class="state" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After · 列表图标展开 Session 导航</strong><span>同等窄屏 · 相同虚构数据</span></header>
+      <div class="product-surface">
+        <div class="topbar"><span class="context"><span class="icon" aria-label="列表图标示意">☰</span><strong>Settings</strong></span><span class="avatar" aria-hidden="true">DA</span></div>
+        <div class="content" data-config></div>
+        <div class="drawer-shade"></div>
+        <section class="drawer" aria-label="拟议 Session 导航抽屉的静态展开示意">
+          <div class="drawer-heading"><h2>Sessions</h2><span class="icon" aria-hidden="true">×</span></div>
+          <div class="drawer-body">
+            <div class="search">Search Sessions, Agents, Devices</div>
+            <div class="filters"><span>All</span><span>Active 2</span></div>
+            <div class="session"><strong>Workspace discussion</strong><span>Active · Development Mac</span></div>
+            <div class="session"><strong>Documentation review</strong><span>Active · Development Mac</span></div>
+          </div>
+        </section>
+      </div>
+      <p class="caption">建议：复用现有列表；选择会话后关闭抽屉并导航。关闭、Escape 或遮罩只收起抽屉，仍停留在 Settings。</p>
+    </section>
+  </main>
+  <p class="notes">说明性静态评审，不是生产 UI 或行为契约。After 展示抽屉已展开状态，不模拟开合；Before 当前流程基于 App.tsx。两侧视口与数据相同，配置只展示导航判断所需的局部。桌面始终使用左侧列表，不显示这个抽屉。生产键盘操作、焦点约束与恢复需在实施后验证。</p>
+  <template id="config">
+    <section class="card"><h3>Add device</h3><div class="card-body">Device name<div class="field">Development Mac</div><span class="control primary">Add device</span></div></section>
+    <section class="card"><h3>Devices</h3><div class="card-body">Development Mac · online<br>Copilot · 2 Sessions<div><span class="control">Rotate token</span></div></div></section>
+  </template>
+  <script>
+    const config = document.querySelector("#config");
+    document.querySelector(".state:first-child [data-config]").append(config.content.cloneNode(true));
+    const device = config.content.children[1].cloneNode(true);
+    const add = document.createElement("span");
+    add.className = "control";
+    add.textContent = "Add device";
+    device.querySelector("h3").append(add);
+    document.querySelector(".state:last-child [data-config]").append(device);
+    function reportHeight() {
+      window.parent.postMessage({ type: "ui-review:height", height: Math.ceil(document.body.getBoundingClientRect().height) }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.body);
+    window.addEventListener("load", reportHeight);
+    window.addEventListener("resize", reportHeight);
+    window.addEventListener("message", (event) => {
+      if (event.source === window.parent && event.data?.type === "ui-review:measure") reportHeight();
+    });
+  </script>
+</body>
+</html>

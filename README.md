@@ -72,6 +72,28 @@ while within 64 CSS pixels of the bottom. Scrolling farther up preserves the
 reading position; **Jump to latest** returns to the bottom and resumes following.
 The control supports keyboard activation and respects reduced-motion preferences.
 
+Choose **Settings** from the avatar menu to open the right-side configuration
+page at `/settings`. It contains Devices and Linked identities; browser login
+management is no longer shown. **Sign out** in the avatar menu signs out only
+the current browser. On narrow screens, the list icon opens the existing
+Session navigation in a drawer.
+
+Devices has an **Add device** action that expands the device name and expiry
+inputs inline; **Cancel** discards the unsubmitted form. Copy generated
+connector profiles before leaving Settings or refreshing: complete tokens are
+not cached or redisplayed after navigation.
+
+Each account, Device, and Session has its own follow-up draft in tab-local
+`sessionStorage`. Switching Sessions or opening Settings preserves drafts, and
+refreshing restores them. Browser tab restoration may also restore this
+storage; there is no cross-tab synchronization. Storage failures are reported
+explicitly. Sign out or confirmed authentication expiry clears the account's
+draft cache. Failed deliveries retain the input; a successful command clears
+only the submitted version, not newer edits or another Session's draft.
+Returning to the same Session after temporarily viewing Settings preserves its
+reading position and follow intent; opening a different Session or refreshing
+still opens the latest activity.
+
 Run the Web browser regressions (mocked relay API, no production credentials):
 
 ```powershell
@@ -80,7 +102,8 @@ pnpm --filter @silvermoon-ai/web test:browser
 ```
 
 These cover desktop and narrow-screen positioning, history protection, Session
-switching, filtering, reconnects, layout changes, and accessible return controls.
+switching, filtering, reconnects, layout changes, Settings routes and drawers,
+independent drafts, asynchronous delivery, and accessible return controls.
 
 ### Offline Sessions and current state
 

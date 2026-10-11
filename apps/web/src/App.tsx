@@ -12,18 +12,15 @@ import {
   ChevronDown,
   ChevronRight,
   CircleAlert,
-  Copy,
   Laptop,
-  Link2,
   LoaderCircle,
   LogOut,
+  Menu,
   MoreHorizontal,
   Plus,
   Search,
   Send,
   Settings,
-  ShieldCheck,
-  UserRound,
   WifiOff,
   Wrench,
   X,
@@ -34,17 +31,10 @@ import type {
   AgentInputQuestion,
   AgentInputRequest,
 } from "@silvermoon-ai/protocol"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -63,6 +53,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { TranscriptScroll } from "@/components/transcript-scroll"
+import { SettingsPage } from "@/components/settings-page"
 import {
   buildTranscript,
   groupTurnSegments,
@@ -85,6 +76,13 @@ import {
   type SessionStatusView,
   type SessionSource,
 } from "@/session-list"
+import {
+  SessionDrafts,
+  workspaceRoute,
+  workspaceUrl,
+  type SessionSelection,
+  type WorkspaceView,
+} from "@/workspace-state"
 
 const relayOrigin =
   import.meta.env.VITE_RELAY_ORIGIN ?? "https://relay.silvermoon.work"
@@ -117,15 +115,6 @@ interface ConnectionToken {
   expiresAt: string | null
   lastUsedAt: string | null
   revokedAt: string | null
-}
-
-interface BrowserSession {
-  id: string
-  current: boolean
-  createdAt: string
-  expiresAt: string
-  revokedAt: string | null
-  userAgent: string | null
 }
 
 interface Connector {
@@ -206,11 +195,6 @@ interface TrackedCommand {
   historyRequestKey?: string
 }
 
-interface SessionSelection {
-  connectorId: string
-  sessionId: string
-}
-
 const providerLabels: Record<Provider, string> = {
   google: "Google",
   microsoft: "Microsoft",
@@ -241,6 +225,9 @@ async function api<T>(
   })
   const value = await response.json() as T & { error?: string }
   if (!response.ok) {
+    if (response.status === 401 && value.error === "authentication-required") {
+      window.dispatchEvent(new Event("relay:authentication-required"))
+    }
     throw new Error(value.error ?? `Request failed: ${response.status}`)
   }
   return value
@@ -734,28 +721,62 @@ function initials(value: string | null): string {
 }
 
 function selectionFromLocation(): SessionSelection | null {
-  const params = new URLSearchParams(window.location.search)
-  const connectorId = params.get("connector")
-  const sessionId = params.get("session")
-  return connectorId && sessionId ? { connectorId, sessionId } : null
+  return workspaceRoute(window.location).selection
 }
 
 function updateLocationSelection(
   selection: SessionSelection | null,
   mode: "push" | "replace",
 ) {
-  const url = new URL(window.location.href)
-  if (selection) {
-    url.searchParams.set("connector", selection.connectorId)
-    url.searchParams.set("session", selection.sessionId)
-  } else {
-    url.searchParams.delete("connector")
-    url.searchParams.delete("session")
-  }
   window.history[mode === "push" ? "pushState" : "replaceState"](
     {},
     "",
-    `${url.pathname}${url.search}${url.hash}`,
+    workspaceUrl(window.location.href, "session", selection),
+  )
+}
+
+function SessionNavigation({
+  inDrawer,
+  open,
+  onOpenChange,
+  restoreFocus,
+  children,
+}: {
+  inDrawer: boolean
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  restoreFocus: () => void
+  children: React.ReactNode
+}) {
+  if (!inDrawer) return <>{children}</>
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="session-navigation-drawer"
+        showCloseButton={false}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          restoreFocus()
+        }}
+      >
+        <DialogTitle className="sr-only">Sessions</DialogTitle>
+        <DialogDescription className="sr-only">
+          Choose a Session to leave Settings.
+        </DialogDescription>
+        <DialogClose asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="session-navigation-close"
+            aria-label="Close Sessions"
+          >
+            <X aria-hidden="true" />
+          </Button>
+        </DialogClose>
+        {children}
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -780,9 +801,13 @@ function ProviderIcon({ provider }: { provider: Provider }) {
 function LoginPage({
   error,
   loading,
+  returnTo,
+  draftWarning,
 }: {
   error: string | null
   loading: boolean
+  returnTo?: string
+  draftWarning?: string | null
 }) {
   return (
     <main className="login-page">
@@ -823,6 +848,9 @@ function LoginPage({
                     <span>{error}</span>
                   </p>
                 )}
+                {draftWarning && (
+                  <p role="alert" className="login-error">{draftWarning}</p>
+                )}
                 <div className="login-providers">
                   {(["google", "microsoft", "github"] as const).map(
                     (provider) => (
@@ -832,7 +860,7 @@ function LoginPage({
                         variant="outline"
                         className="login-provider"
                       >
-                        <a href={`${relayOrigin}/auth/${provider}/start`}>
+                        <a href={`${relayOrigin}/auth/${provider}/start${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`}>
                           <ProviderIcon provider={provider} />
                           <span>Continue with {providerLabels[provider]}</span>
                           <span aria-hidden="true" />
@@ -877,7 +905,6 @@ function LoginPage({
 function App() {
   const [account, setAccount] = useState<Account | null>(null)
   const [tokens, setTokens] = useState<ConnectionToken[]>([])
-  const [browserSessions, setBrowserSessions] = useState<BrowserSession[]>([])
   const [connectors, setConnectors] = useState<Connector[]>([])
   const [agentSessions, setAgentSessions] = useState<AgentSession[]>([])
   const [history, setHistory] = useState<{
@@ -905,8 +932,24 @@ function App() {
   const [revealedToken, setRevealedToken] = useState<string | null>(null)
   const [sessionTitle, setSessionTitle] = useState("")
   const [sessionPrompt, setSessionPrompt] = useState("")
-  const [followUps, setFollowUps] = useState<Record<string, string>>({})
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>(
+    () => workspaceRoute(window.location).view,
+  )
+  const [deviceFormOpen, setDeviceFormOpen] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [navigationRevision, setNavigationRevision] = useState(0)
+  const [narrowViewport, setNarrowViewport] = useState(
+    () => window.matchMedia("(max-width: 760px)").matches,
+  )
+  const [draftWarning, setDraftWarning] = useState<string | null>(null)
+  const [, setDraftRevision] = useState(0)
+  const [drafts] = useState(() => new SessionDrafts(
+    () => window.sessionStorage,
+    (message) => {
+      console.error(JSON.stringify({ event: "draft-cache-error", message }))
+      setDraftWarning(message)
+    },
+  ))
   const [newSessionOpen, setNewSessionOpen] = useState(false)
   const [newSessionConnectorId, setNewSessionConnectorId] = useState<
     string | null
@@ -935,19 +978,122 @@ function App() {
   const [historySyncAttempt, setHistorySyncAttempt] = useState(0)
   const historyRequests = useRef(new Set<string>())
   const followUpInputRef = useRef<HTMLTextAreaElement>(null)
+  const accountRef = useRef<Account | null>(null)
+  const authEpoch = useRef(0)
+  const settingsVisit = useRef(0)
+  const routeRef = useRef(workspaceView)
+  const focusDestination = useRef(false)
+  const restoreAddDeviceFocus = useRef(false)
+  const accountMenuNavigated = useRef(false)
+  const settingsPageRef = useRef<HTMLElement>(null)
+  const desktopHeadingRef = useRef<HTMLHeadingElement>(null)
+  const mobileHeadingRef = useRef<HTMLHeadingElement>(null)
+  const openSessionsRef = useRef<HTMLButtonElement>(null)
+  const addDeviceRef = useRef<HTMLButtonElement>(null)
+  const deviceNameRef = useRef<HTMLInputElement>(null)
   const selectedConnectorId = selection?.connectorId ?? null
   const selectedSessionId = selection?.sessionId ?? null
   const selectionKey = JSON.stringify([selectedConnectorId, selectedSessionId])
-  const followUp = followUps[selectionKey] ?? ""
-  const setFollowUp = useCallback((message: string) => {
-    setFollowUps((current) => ({ ...current, [selectionKey]: message }))
-  }, [selectionKey])
   const events = history?.key === selectionKey ? history.events : emptyEvents
   const accountSessionId = account?.sessionId
+  const accountId = account?.user.id ?? null
+  const isSettings = workspaceView === "settings"
+  const currentDraft = accountId && selection ? drafts.read(accountId, selection) : null
+  const followUp = currentDraft?.text ?? ""
+  const pendingFollowUps = accountId ? drafts.pending(accountId) : []
+  const pendingFollowUp = pendingFollowUps.find((draft) =>
+    draft.pending?.commandId || draft.pending?.status !== "unknown",
+  )
+  const activeCommand = pendingFollowUp?.pending
+    ? { label: "Follow-up", status: pendingFollowUp.pending.status }
+    : trackedCommand
+  const pendingCommandKey = JSON.stringify(
+    pendingFollowUps.filter((draft) => draft.pending?.commandId)
+      .map((draft) => [draft.selection, draft.pending?.commandId]),
+  )
   const connectorIdKey = useMemo(
     () => connectors.map((connector) => connector.id).sort().join("|"),
     [connectors],
   )
+
+  const clearAuthenticatedState = useCallback(() => {
+    const previous = accountRef.current
+    authEpoch.current++
+    settingsVisit.current++
+    accountRef.current = null
+    if (previous) drafts.clear(previous.user.id)
+    setAccount(null)
+    setTokens([])
+    setConnectors([])
+    setAgentSessions([])
+    setSessionsLoadedForKey(null)
+    setDevicesRefreshFailed(false)
+    setSessionsRefreshFailed(false)
+    selectionUnavailable.current = false
+    setHistory(null)
+    historyRequests.current.clear()
+    setShowToolEvents(false)
+    setSelection(null)
+    setTrackedCommand(null)
+    setRevealedToken(null)
+    setDeviceFormOpen(false)
+    setDeviceName("My device")
+    setExpiresInDays("90")
+    setNewSessionOpen(false)
+    setSessionTitle("")
+    setSessionPrompt("")
+    setHistorySyncFailure(null)
+    setDrawerOpen(false)
+    setBusyAction(null)
+    setNotice(null)
+    setMobileView("list")
+    const view = routeRef.current === "settings" ? "settings" : "session"
+    routeRef.current = view
+    setWorkspaceView(view)
+    window.history.replaceState({}, "", workspaceUrl(window.location.href, view, null))
+  }, [drafts])
+
+  useEffect(() => {
+    window.addEventListener("relay:authentication-required", clearAuthenticatedState)
+    return () => window.removeEventListener("relay:authentication-required", clearAuthenticatedState)
+  }, [clearAuthenticatedState])
+
+  useEffect(() => {
+    if (!accountId) return
+    drafts.load(accountId)
+    // oxlint-disable-next-line react/set-state-in-effect -- Hydrate the authenticated account's tab-local drafts.
+    setDraftRevision((revision) => revision + 1)
+  }, [accountId, drafts])
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 760px)")
+    const change = () => {
+      setNarrowViewport(media.matches)
+      if (!media.matches) setDrawerOpen(false)
+    }
+    media.addEventListener("change", change)
+    return () => media.removeEventListener("change", change)
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!focusDestination.current || loading || !account) return
+    focusDestination.current = false
+    if (isSettings && window.location.hash === "#devices") {
+      settingsPageRef.current?.querySelector<HTMLElement>("#settings-devices")?.focus()
+      settingsPageRef.current?.querySelector("#settings-devices")?.scrollIntoView()
+    } else {
+      const heading = narrowViewport ? mobileHeadingRef.current : desktopHeadingRef.current
+      heading?.focus({ preventScroll: true })
+    }
+  }, [account, isSettings, loading, mobileView, narrowViewport, selectionKey, workspaceView, navigationRevision])
+
+  useLayoutEffect(() => {
+    if (deviceFormOpen) deviceNameRef.current?.focus()
+    else if (restoreAddDeviceFocus.current && busyAction === null) {
+      restoreAddDeviceFocus.current = false
+      addDeviceRef.current?.focus()
+    }
+  }, [busyAction, deviceFormOpen])
 
   const resizeFollowUpInput = useCallback(() => {
     const input = followUpInputRef.current
@@ -969,7 +1115,7 @@ function App() {
 
   useLayoutEffect(() => {
     resizeFollowUpInput()
-  }, [followUp, mobileView, resizeFollowUpInput, selectedSessionId])
+  }, [followUp, mobileView, resizeFollowUpInput, selectedSessionId, workspaceView])
 
   useEffect(() => {
     window.addEventListener("resize", resizeFollowUpInput)
@@ -978,29 +1124,31 @@ function App() {
 
   const refresh = useCallback(async () => {
     const request = ++deviceRefreshRequest.current
+    const epoch = authEpoch.current
     try {
       const current = await api<Account>("/api/me")
-      const [tokenItems, sessionItems, connectorItems] = await Promise.all([
+      if (epoch !== authEpoch.current) return
+      const [tokenItems, connectorItems] = await Promise.all([
         api<ConnectionToken[]>("/api/tokens"),
-        api<BrowserSession[]>("/api/sessions"),
         api<Connector[]>("/api/connectors"),
       ])
-      if (request !== deviceRefreshRequest.current) return
+      if (epoch !== authEpoch.current || request !== deviceRefreshRequest.current) return
+      if (accountRef.current && accountRef.current.user.id !== current.user.id) {
+        clearAuthenticatedState()
+      }
+      accountRef.current = current
       setAccount(current)
       setTokens(tokenItems)
-      setBrowserSessions(sessionItems)
-      if (request === deviceRefreshRequest.current) {
-        setConnectors(connectorItems)
-        setDevicesRefreshFailed(false)
-      }
-      if (request === deviceRefreshRequest.current) setError(null)
+      setConnectors(connectorItems)
+      setDevicesRefreshFailed(false)
+      setError(null)
     } catch (caught) {
-      if (request !== deviceRefreshRequest.current) return
+      if (request !== deviceRefreshRequest.current || epoch !== authEpoch.current) return
       if (
         caught instanceof Error
         && caught.message === "authentication-required"
       ) {
-        setAccount(null)
+        clearAuthenticatedState()
       } else if (caught instanceof Error) {
         if (request === deviceRefreshRequest.current) setDevicesRefreshFailed(true)
         setError(caught.message)
@@ -1008,7 +1156,7 @@ function App() {
     } finally {
       if (request === deviceRefreshRequest.current) setLoading(false)
     }
-  }, [])
+  }, [clearAuthenticatedState])
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- Initial remote state loads after mount.
@@ -1118,6 +1266,7 @@ function App() {
     if (
       !account
       || loading
+      || workspaceView !== "session"
       || sessionsLoading
       || sessionsLoadedForKey !== connectorIdKey
     ) {
@@ -1173,19 +1322,58 @@ function App() {
     selection,
     sessionsLoadedForKey,
     sessionsLoading,
+    workspaceView,
   ])
+
+  const applyRoute = useCallback((
+    view: WorkspaceView,
+    nextSelection: SessionSelection | null,
+  ) => {
+    if (routeRef.current !== view) {
+      settingsVisit.current++
+      setRevealedToken(null)
+      setDeviceFormOpen(false)
+      setDeviceName("My device")
+      setExpiresInDays("90")
+    }
+    const sameSession = selection?.connectorId === nextSelection?.connectorId
+      && selection?.sessionId === nextSelection?.sessionId
+    if (!sameSession) setShowToolEvents(false)
+    routeRef.current = view
+    focusDestination.current = true
+    setWorkspaceView(view)
+    setNavigationRevision((revision) => revision + 1)
+    setSelection(nextSelection)
+    setMobileView(nextSelection ? "session" : "list")
+    setDrawerOpen(false)
+  }, [selection])
+
+  const navigate = useCallback((
+    view: Exclude<WorkspaceView, "not-found">,
+    nextSelection: SessionSelection | null,
+    hash = "",
+  ) => {
+    const url = workspaceUrl(window.location.href, view, nextSelection, hash)
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== url) {
+      window.history.pushState({}, "", url)
+    }
+    applyRoute(view, nextSelection)
+  }, [applyRoute])
+
+  const openSettings = useCallback((devices = false) => {
+    navigate("settings", selection, devices ? "devices" : "")
+    if (!devices) settingsPageRef.current?.scrollTo({ top: 0 })
+  }, [navigate, selection])
 
   useEffect(() => {
     const handlePopState = () => {
       selectionUnavailable.current = false
-      const nextSelection = selectionFromLocation()
-      setShowToolEvents(false)
-      setSelection(nextSelection)
-      setMobileView(nextSelection ? "session" : "list")
+      const next = workspaceRoute(window.location)
+      applyRoute(next.view, next.selection)
     }
     window.addEventListener("popstate", handlePopState)
     return () => window.removeEventListener("popstate", handlePopState)
-  }, [])
+  }, [applyRoute])
 
   const selectAgentSession = useCallback((session: AgentSession) => {
     selectionUnavailable.current = false
@@ -1193,16 +1381,17 @@ function App() {
       connectorId: session.connectorId,
       sessionId: session.id,
     }
-    setShowToolEvents(false)
-    setSelection(nextSelection)
-    setMobileView("session")
-    updateLocationSelection(nextSelection, "push")
-  }, [])
+    navigate("session", nextSelection)
+  }, [navigate])
 
   const openSessionList = useCallback(() => {
+    if (routeRef.current !== "session") {
+      navigate("session", null)
+      return
+    }
     setMobileView("list")
     updateLocationSelection(null, "push")
-  }, [])
+  }, [navigate])
 
   const selectedSessionAvailable = Boolean(
     selectedConnectorId
@@ -1489,6 +1678,63 @@ function App() {
     : null
   const pendingInputAllowsCustomAnswer =
     pendingInputRequest?.questions.some(allowsCustomAnswer) ?? false
+
+  useEffect(() => {
+    if (!accountId) return
+    const owner = accountId
+    let active = true
+    let polling = false
+    const poll = async () => {
+      if (polling) return
+      polling = true
+      try {
+        await Promise.all(drafts.pending(owner).map(async (draft) => {
+          const commandId = draft.pending?.commandId
+          if (!commandId) return
+          try {
+            const result = await api<CommandStatus>(
+              `/api/commands/${encodeURIComponent(commandId)}`,
+            )
+            if (!active || accountRef.current?.user.id !== owner) return
+            if (
+              result.connectorId !== draft.selection.connectorId
+              || result.sessionId !== draft.selection.sessionId
+              || result.type !== "session.message"
+            ) {
+              throw new Error("The follow-up receipt does not match its Session.")
+            }
+            if (result.status === "succeeded" || result.status === "failed") {
+              drafts.finish(owner, draft.selection, commandId, result.status === "succeeded")
+              setDraftRevision((revision) => revision + 1)
+              if (result.status === "failed") {
+                setError(result.error?.message ?? result.error?.code ?? "Follow-up failed.")
+                setNotice(null)
+              } else {
+                setNotice("Follow-up completed.")
+              }
+            } else {
+              if (result.status === "unknown") setNotice(null)
+              if (drafts.status(owner, draft.selection, commandId, result.status)) {
+                setDraftRevision((revision) => revision + 1)
+              }
+            }
+          } catch (caught) {
+            if (active && accountRef.current?.user.id === owner) {
+              setError(caught instanceof Error ? caught.message : "Follow-up status could not be checked.")
+            }
+          }
+        }))
+      } finally {
+        polling = false
+      }
+    }
+    void poll()
+    const timer = window.setInterval(() => void poll(), 1_000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [accountId, drafts, pendingCommandKey])
   const trackedCommandId = trackedCommand?.id ?? null
   const trackedCommandLabel = trackedCommand?.label ?? null
   const trackedHistoryRequestKey = trackedCommand?.historyRequestKey ?? null
@@ -1571,10 +1817,11 @@ function App() {
 
   async function createAgentSession(event: React.FormEvent) {
     event.preventDefault()
-    if (!newSessionConnector || !sessionPrompt.trim() || trackedCommand) return
+    if (!newSessionConnector || !sessionPrompt.trim() || activeCommand) return
     setBusyAction("create-session")
     setNotice(null)
     setError(null)
+    const epoch = authEpoch.current
     try {
       const connectorId = encodeURIComponent(newSessionConnector.id)
       const result = await api<CommandResponse>(
@@ -1587,6 +1834,7 @@ function App() {
           }),
         },
       )
+      if (epoch !== authEpoch.current) return
       setSessionTitle("")
       setSessionPrompt("")
       setNewSessionOpen(false)
@@ -1597,11 +1845,11 @@ function App() {
       })
       setNotice(`Starting a Session on ${newSessionConnector.displayName}...`)
     } catch (caught) {
-      setError(
+      if (epoch === authEpoch.current) setError(
         caught instanceof Error ? caught.message : "Session creation failed",
       )
     } finally {
-      setBusyAction(null)
+      if (epoch === authEpoch.current) setBusyAction(null)
     }
   }
 
@@ -1612,13 +1860,21 @@ function App() {
       || !selectedAgentSession
       || !canSendFollowUp
       || !followUp.trim()
-      || trackedCommand
+      || !accountId
+      || !selection
+      || activeCommand
+      || busyAction === "send-message"
     ) {
       return
     }
     setBusyAction("send-message")
     setNotice(null)
     setError(null)
+    const owner = accountId
+    const source = selection
+    const epoch = authEpoch.current
+    const submitted = drafts.begin(owner, source)
+    setDraftRevision((revision) => revision + 1)
     try {
       const connectorId = encodeURIComponent(selectedConnector.id)
       const sessionId = encodeURIComponent(selectedAgentSession.id)
@@ -1632,24 +1888,25 @@ function App() {
           }),
         },
       )
-      setFollowUp("")
-      setTrackedCommand({
-        id: result.command.id,
-        label: "Follow-up",
-        status: result.command.status,
-      })
+      if (epoch !== authEpoch.current) return
+      drafts.accept(owner, source, submitted.version, result.command.id, result.command.status)
+      setDraftRevision((revision) => revision + 1)
       setNotice("Delivering your follow-up...")
     } catch (caught) {
+      if (epoch !== authEpoch.current) return
+      drafts.failRequest(owner, source, submitted.version)
+      setDraftRevision((revision) => revision + 1)
       setError(
         caught instanceof Error ? caught.message : "Message delivery failed",
       )
     } finally {
-      setBusyAction(null)
+      if (epoch === authEpoch.current) setBusyAction(null)
     }
   }
 
   async function retrySessionState() {
     if (!selectedConnectorId) return
+    const epoch = authEpoch.current
     setBusyAction("sync-state")
     setError(null)
     try {
@@ -1657,16 +1914,33 @@ function App() {
         `/api/connectors/${encodeURIComponent(selectedConnectorId)}/sessions/sync`,
         { method: "POST", body: "{}" },
       )
+      if (epoch !== authEpoch.current) return
       setTrackedCommand({ id: result.command.id, label: "Session state sync", status: result.command.status })
       setNotice("Confirming current Session state and capabilities.")
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Session state sync failed.")
+      if (epoch === authEpoch.current) {
+        setError(caught instanceof Error ? caught.message : "Session state sync failed.")
+      }
     } finally {
-      setBusyAction(null)
+      if (epoch === authEpoch.current) setBusyAction(null)
     }
   }
 
-  async function createConnectionToken() {
+  function cancelDeviceForm() {
+    restoreAddDeviceFocus.current = true
+    setDeviceFormOpen(false)
+    setDeviceName("My device")
+    setExpiresInDays("90")
+  }
+
+  async function createConnectionToken(event: React.FormEvent) {
+    event.preventDefault()
+    if (!deviceName.trim()) {
+      setError("Enter a device name.")
+      return
+    }
+    const epoch = authEpoch.current
+    const visit = settingsVisit.current
     setBusyAction("create-token")
     setError(null)
     try {
@@ -1680,109 +1954,104 @@ function App() {
           }),
         },
       )
-      setRevealedToken(
-        `version: 1\nrelay: ${relayOrigin}\ntoken: ${result.token}\n`,
-      )
+      if (epoch !== authEpoch.current) return
+      if (visit === settingsVisit.current && routeRef.current === "settings") {
+        setRevealedToken(
+          `version: 1\nrelay: ${relayOrigin}\ntoken: ${result.token}\n`,
+        )
+        cancelDeviceForm()
+      } else {
+        setNotice("Device created. Return to Settings to rotate its token if you did not copy the profile.")
+      }
       await refresh()
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Token creation failed")
+      if (epoch === authEpoch.current) {
+        setError(caught instanceof Error ? caught.message : "Token creation failed")
+      }
     } finally {
-      setBusyAction(null)
+      if (epoch === authEpoch.current) setBusyAction(null)
     }
   }
 
   async function revokeConnectionToken(id: string) {
+    const epoch = authEpoch.current
     setError(null)
     try {
       await api(`/api/tokens/${id}`, { method: "DELETE" })
+      if (epoch !== authEpoch.current) return
       await refresh()
     } catch (caught) {
-      setError(
+      if (epoch === authEpoch.current) setError(
         caught instanceof Error ? caught.message : "Token revocation failed",
       )
     }
   }
 
   async function rotateConnectionToken(id: string) {
+    const epoch = authEpoch.current
+    const visit = settingsVisit.current
+    setBusyAction(`rotate-token:${id}`)
     setError(null)
     try {
       const result = await api<{ token: string }>(
         `/api/tokens/${id}/rotate`,
         { method: "POST" },
       )
-      setRevealedToken(
-        `version: 1\nrelay: ${relayOrigin}\ntoken: ${result.token}\n`,
-      )
+      if (epoch !== authEpoch.current) return
+      if (visit === settingsVisit.current && routeRef.current === "settings") {
+        setRevealedToken(
+          `version: 1\nrelay: ${relayOrigin}\ntoken: ${result.token}\n`,
+        )
+      } else {
+        setNotice("Token rotated. Return to Settings to rotate again if you did not copy the profile.")
+      }
       await refresh()
     } catch (caught) {
-      setError(
+      if (epoch === authEpoch.current) setError(
         caught instanceof Error ? caught.message : "Token rotation failed",
       )
+    } finally {
+      if (epoch === authEpoch.current) setBusyAction(null)
     }
   }
 
   async function logout() {
+    const epoch = authEpoch.current
     setError(null)
     try {
       await api("/api/logout", { method: "POST" })
-      clearAuthenticatedState()
+      if (epoch === authEpoch.current) clearAuthenticatedState()
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Sign out failed")
+      if (epoch === authEpoch.current) {
+        setError(caught instanceof Error ? caught.message : "Sign out failed")
+      }
     }
-  }
-
-  function clearAuthenticatedState() {
-    setAccount(null)
-    setConnectors([])
-    setAgentSessions([])
-    setSessionsLoadedForKey(null)
-    setHistory(null)
-    setShowToolEvents(false)
-    setSelection(null)
-    setFollowUps({})
-    setTrackedCommand(null)
-    setSettingsOpen(false)
-    setMobileView("list")
-    updateLocationSelection(null, "replace")
   }
 
   async function copyRevealedToken() {
     if (!revealedToken) return
+    const epoch = authEpoch.current
     try {
       await navigator.clipboard.writeText(revealedToken)
+      if (epoch !== authEpoch.current) return
       setNotice("Connection token copied.")
       setError(null)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Copy failed")
-    }
-  }
-
-  async function revokeBrowserSession(id: string) {
-    setError(null)
-    try {
-      const revokingCurrent = browserSessions.some(
-        (session) => session.id === id && session.current,
-      )
-      await api(`/api/sessions/${id}`, { method: "DELETE" })
-      if (revokingCurrent) {
-        clearAuthenticatedState()
-      } else {
-        await refresh()
+      if (epoch === authEpoch.current) {
+        setError(caught instanceof Error ? caught.message : "Copy failed")
       }
-    } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "Session revocation failed",
-      )
     }
   }
 
   async function unlinkIdentity(provider: Provider) {
+    const epoch = authEpoch.current
     setError(null)
     try {
       await api(`/api/identities/${provider}`, { method: "DELETE" })
+      if (epoch !== authEpoch.current) return
       await refresh()
     } catch (caught) {
-      setError(
+      if (epoch === authEpoch.current) setError(
         caught instanceof Error ? caught.message : "Identity unlink failed",
       )
     }
@@ -1793,7 +2062,16 @@ function App() {
   }
 
   if (!account) {
-    return <LoginPage error={error} loading={false} />
+    return (
+      <LoginPage
+        error={error}
+        loading={false}
+        draftWarning={draftWarning}
+        returnTo={isSettings || selection
+          ? workspaceUrl(window.location.href, isSettings ? "settings" : "session", selection)
+          : undefined}
+      />
+    )
   }
 
   const accountName =
@@ -1818,7 +2096,8 @@ function App() {
     const executionStateCurrent = sessionConfirmationIsCurrent(session, connector)
       && session.executionStateKnown === true
     const isSelected =
-      session.connectorId === selectedConnectorId
+      !isSettings
+      && session.connectorId === selectedConnectorId
       && session.id === selectedSessionId
     const isCollapsed = collapsedSessionKeys.has(sessionKey(session))
     const preview = executionStateCurrent ? sessionPreview(session) : session.lastMessagePreview
@@ -1910,7 +2189,7 @@ function App() {
 
   return (
     <>
-      <main className={`relay-app mobile-view-${mobileView}`}>
+      <main className={`relay-app mobile-view-${mobileView} workspace-view-${workspaceView}`}>
         <header className="relay-brand">
           <RelayMark />
           <div className="brand-lockup">
@@ -1921,7 +2200,18 @@ function App() {
 
         <header className="session-topbar">
           <div className="mobile-topbar-context">
-            {mobileView === "session" && (
+            {isSettings ? (
+              <button
+                ref={openSessionsRef}
+                type="button"
+                className="mobile-back-button"
+                onClick={() => setDrawerOpen(true)}
+                aria-label="Open Sessions"
+                aria-expanded={drawerOpen}
+              >
+                <Menu aria-hidden="true" />
+              </button>
+            ) : mobileView === "session" && (
               <button
                 type="button"
                 className="mobile-back-button"
@@ -1932,15 +2222,19 @@ function App() {
               </button>
             )}
             <RelayMark compact />
-            <span>{mobileView === "session" ? "Session" : "Sessions"}</span>
+            <h1 ref={mobileHeadingRef} tabIndex={-1}>
+              {isSettings ? "Settings" : mobileView === "session" ? "Session" : "Sessions"}
+            </h1>
           </div>
 
           <div className="desktop-session-context">
-            {selectedAgentSession
+            {isSettings
+              ? <div className="session-heading-copy"><h1 ref={desktopHeadingRef} tabIndex={-1}>Settings</h1><span>Account and connections</span></div>
+              : selectedAgentSession
               ? (
                   <>
                     <div className="session-heading-copy">
-                      <h1>{sessionLabel(selectedAgentSession)}</h1>
+                      <h1 ref={desktopHeadingRef} tabIndex={-1}>{sessionLabel(selectedAgentSession)}</h1>
                       <span>
                         {selectedConnector?.displayName
                           ?? "Unknown device"}
@@ -1955,7 +2249,7 @@ function App() {
                 )
               : (
                   <div className="session-heading-copy">
-                    <h1>Select a Session</h1>
+                    <h1 ref={desktopHeadingRef} tabIndex={-1}>Select a Session</h1>
                     <span>Choose active work from the Session list</span>
                   </div>
                 )}
@@ -1973,22 +2267,29 @@ function App() {
                     ? <img src={account.user.avatarUrl} alt="" />
                     : initials(accountName)}
                 </span>
-                <span className="account-trigger-copy">
-                  <strong>{accountName}</strong>
-                  <span>{accountDetail}</span>
-                </span>
-                <ChevronDown aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="account-menu">
+            <DropdownMenuContent
+              align="end"
+              className="account-menu"
+              onCloseAutoFocus={(event) => {
+                if (accountMenuNavigated.current) {
+                  event.preventDefault()
+                  accountMenuNavigated.current = false
+                }
+              }}
+            >
               <DropdownMenuLabel>
                 <span className="account-menu-name">{accountName}</span>
                 <span className="account-menu-detail">{accountDetail}</span>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
+              <DropdownMenuItem onSelect={() => {
+                accountMenuNavigated.current = true
+                openSettings()
+              }}>
                 <Settings aria-hidden="true" />
-                Account and connections
+                Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -2002,6 +2303,17 @@ function App() {
           </DropdownMenu>
         </header>
 
+        <SessionNavigation
+          inDrawer={isSettings && narrowViewport}
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          restoreFocus={() => {
+            if (routeRef.current === "settings" && window.location.hash === "#devices") {
+              settingsPageRef.current?.querySelector<HTMLElement>("#settings-devices")?.focus()
+            } else if (routeRef.current === "settings") openSessionsRef.current?.focus()
+            else (narrowViewport ? mobileHeadingRef : desktopHeadingRef).current?.focus()
+          }}
+        >
         <aside className="session-rail" aria-label="Sessions">
           <div className="session-rail-heading">
             <div>
@@ -2252,16 +2564,51 @@ function App() {
               <span className="online-pin" aria-hidden="true" />
               {onlineConnectorCount} online
             </span>
-            <button type="button" onClick={() => setSettingsOpen(true)}>
+            <button type="button" onClick={() => openSettings(true)}>
               {connectors.length === 1
                 ? "1 Device"
                 : `${connectors.length} Devices`}
             </button>
           </div>
         </aside>
+        </SessionNavigation>
 
-        <section className="session-workspace" aria-label="Session workspace">
-          {!selectedAgentSession
+        {isSettings && (
+          <SettingsPage
+            pageRef={settingsPageRef}
+            deviceNameRef={deviceNameRef}
+            addDeviceRef={addDeviceRef}
+            devices={connectors}
+            tokens={activeTokenByDevice}
+            identities={account.identities}
+            providerLabels={providerLabels}
+            deviceFormOpen={deviceFormOpen}
+            setDeviceFormOpen={setDeviceFormOpen}
+            deviceName={deviceName}
+            setDeviceName={setDeviceName}
+            expiresInDays={expiresInDays}
+            setExpiresInDays={setExpiresInDays}
+            busyAction={busyAction}
+            revealedToken={revealedToken}
+            hideToken={() => setRevealedToken(null)}
+            createDevice={createConnectionToken}
+            cancelDevice={cancelDeviceForm}
+            rotateToken={rotateConnectionToken}
+            revokeToken={revokeConnectionToken}
+            unlinkIdentity={unlinkIdentity}
+            copyProfile={copyRevealedToken}
+            formatTime={formatTime}
+            identityLink={(provider) =>
+              `${relayOrigin}/auth/${provider}/start?mode=link&returnTo=${encodeURIComponent(
+                workspaceUrl(window.location.href, "settings", selection),
+              )}`}
+          />
+        )}
+
+        <section className="session-workspace" aria-label="Session workspace" hidden={isSettings}>
+          {workspaceView === "not-found"
+            ? <div className="workspace-empty"><h2>Page not found</h2><Button onClick={openSessionList}>Open Sessions</Button></div>
+            : !selectedAgentSession
             ? (
                 <div className="workspace-empty">
                   <RelayMark />
@@ -2320,6 +2667,20 @@ function App() {
                       <span>Reconnecting does not mean execution failed or succeeded. The command will not be resent automatically.</span>
                       <button type="button" onClick={() => {
                         setTrackedCommand(null)
+                        setNotice("Stopped watching this result; its command record remains unconfirmed. Nothing was resent.")
+                      }}>Stop watching this result</button>
+                    </div>
+                  )}
+                  {currentDraft?.pending?.commandId && (
+                    currentDraft.pending.status === "unknown" || selectedDisplayStatus === "offline"
+                  ) && (
+                    <div className="session-connection-notice" role="status">
+                      <strong>Command result not confirmed</strong>
+                      <span>Reconnecting does not mean execution failed or succeeded. The command will not be resent automatically.</span>
+                      <button type="button" onClick={() => {
+                        if (!accountId || !selection || !currentDraft.pending?.commandId) return
+                        drafts.finish(accountId, selection, currentDraft.pending.commandId, false)
+                        setDraftRevision((revision) => revision + 1)
                         setNotice("Stopped watching this result; its command record remains unconfirmed. Nothing was resent.")
                       }}>Stop watching this result</button>
                     </div>
@@ -2444,12 +2805,16 @@ function App() {
                           request={pendingInputRequest}
                           canReply={canSendFollowUp}
                           onChoose={(value) => {
-                            setFollowUp(value)
+                            if (!accountId || !selection) return
+                            drafts.write(accountId, selection, value)
+                            setDraftRevision((revision) => revision + 1)
                             window.requestAnimationFrame(() =>
                               followUpInputRef.current?.focus())
                           }}
                           onCustomAnswer={() => {
-                            setFollowUp("")
+                            if (!accountId || !selection) return
+                            drafts.write(accountId, selection, "")
+                            setDraftRevision((revision) => revision + 1)
                             window.requestAnimationFrame(() =>
                               followUpInputRef.current?.focus())
                           }}
@@ -2463,7 +2828,11 @@ function App() {
                           ref={followUpInputRef}
                           id="session-follow-up"
                           value={followUp}
-                          onChange={(event) => setFollowUp(event.target.value)}
+                          onChange={(event) => {
+                            if (!accountId || !selection) return
+                            drafts.write(accountId, selection, event.target.value)
+                            setDraftRevision((revision) => revision + 1)
+                          }}
                           onKeyDown={(event) => {
                             if (
                               event.key === "Enter"
@@ -2490,15 +2859,15 @@ function App() {
                         />
                         <div className="composer-toolbar">
                           <div className="composer-status" aria-live="polite">
-                            {trackedCommand
+                            {activeCommand
                               ? (
                                   <>
                                     <LoaderCircle
                                       className="animate-spin"
                                       aria-hidden="true"
                                     />
-                                    {trackedCommand.label}{" "}
-                                    {trackedCommand.status === "unknown" ? "result not confirmed" : trackedCommand.status}
+                                    {activeCommand.label}{" "}
+                                    {activeCommand.status === "unknown" ? "result not confirmed" : activeCommand.status}
                                   </>
                                 )
                               : selectedDisplayStatus === "offline"
@@ -2528,7 +2897,7 @@ function App() {
                               !followUp.trim()
                               || !canSendFollowUp
                               || busyAction === "send-message"
-                              || Boolean(trackedCommand)
+                              || Boolean(activeCommand)
                             }
                           >
                             {busyAction === "send-message"
@@ -2542,6 +2911,11 @@ function App() {
                             <span className="sr-only">Send follow-up</span>
                           </Button>
                         </div>
+                        {currentDraft?.pending?.status === "unknown" && !currentDraft.pending.commandId && (
+                          <div className="history-state-notice" role="status">
+                            Delivery could not be confirmed after refreshing. Check the message stream before sending again.
+                          </div>
+                        )}
                       </div>
                     </form>
                   </div>
@@ -2551,6 +2925,13 @@ function App() {
       </main>
 
       <div className="relay-notifications" aria-live="polite">
+        {draftWarning && (
+          <div className="relay-notice is-error" role="alert">
+            <CircleAlert aria-hidden="true" />
+            <span>{draftWarning}</span>
+            <button type="button" aria-label="Dismiss draft warning" onClick={() => setDraftWarning(null)}><X aria-hidden="true" /></button>
+          </div>
+        )}
         {error && (
           <div className="relay-notice is-error" role="alert">
             <CircleAlert aria-hidden="true" />
@@ -2646,7 +3027,7 @@ function App() {
                   !newSessionConnector
                   || !sessionPrompt.trim()
                   || busyAction === "create-session"
-                  || Boolean(trackedCommand)
+                  || Boolean(activeCommand)
                 }
               >
                 {busyAction === "create-session"
@@ -2664,268 +3045,6 @@ function App() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="settings-dialog">
-          <DialogHeader className="settings-dialog-header">
-            <DialogTitle>Devices</DialogTitle>
-            <DialogDescription>
-              Add and manage devices that can connect to this account.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="settings-scroll">
-            <Card className="settings-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Plus aria-hidden="true" />
-                  Add device
-                </CardTitle>
-                <CardDescription>
-                  Name the device once. Relay keeps this name with its token.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-5">
-                <div className="token-create-grid">
-                  <label className="field-stack">
-                    <span>Device name</span>
-                    <Input
-                      value={deviceName}
-                      onChange={(event) => setDeviceName(event.target.value)}
-                    />
-                  </label>
-                  <label className="field-stack">
-                    <span>Expires in days</span>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={expiresInDays}
-                      onChange={(event) => setExpiresInDays(event.target.value)}
-                    />
-                  </label>
-                  <Button
-                    type="button"
-                    onClick={() => void createConnectionToken()}
-                    disabled={busyAction === "create-token" || !deviceName.trim()}
-                  >
-                    {busyAction === "create-token"
-                      ? (
-                          <LoaderCircle
-                            className="animate-spin"
-                            aria-hidden="true"
-                          />
-                        )
-                      : <Plus aria-hidden="true" />}
-                    Add device
-                  </Button>
-                </div>
-
-                {revealedToken && (
-                  <div className="token-reveal">
-                    <div>
-                      <strong>Copy this connector profile now</strong>
-                      <span>
-                        Save it as ~/.silvermoon/connector.yaml. The token will
-                        not be shown again after you close it.
-                      </span>
-                    </div>
-                    <code>{revealedToken}</code>
-                    <div className="token-reveal-actions">
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => void copyRevealedToken()}
-                      >
-                        <Copy aria-hidden="true" />
-                        Copy profile
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setRevealedToken(null)}
-                      >
-                        Hide
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="settings-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Laptop aria-hidden="true" />
-                  Devices
-                </CardTitle>
-                <CardDescription>
-                  Each Agent Session and connection token belongs to one Device.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="settings-list">
-                {connectors.length === 0 && (
-                  <p className="settings-empty">
-                    No Device has been added to this account yet.
-                  </p>
-                )}
-                {connectors.map((connector) => {
-                  const token = activeTokenByDevice.get(connector.id)
-                  return (
-                    <div className="settings-list-row" key={connector.id}>
-                      <div className="settings-row-main">
-                        <span
-                          className="connector-status-dot"
-                          data-status={connector.status}
-                          aria-hidden="true"
-                        />
-                        <div>
-                          <strong>{connector.displayName}</strong>
-                          <span>
-                            {connector.agent
-                              ? `${connector.agent.name}${connector.agent.version ? ` ${connector.agent.version}` : ""}`
-                              : "Not connected yet"}
-                            {" · "}
-                            {connector.sessionCount}{" "}
-                            {connector.sessionCount === 1
-                              ? "Session"
-                              : "Sessions"}
-                          </span>
-                          <span>
-                            {token
-                              ? `${token.tokenHint} · Last used ${formatTime(token.lastUsedAt)}`
-                              : "No active connection token"}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="settings-row-actions">
-                        <Badge variant="outline">{connector.status}</Badge>
-                        {token && (
-                          <>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                void rotateConnectionToken(token.id)}
-                            >
-                              Rotate token
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() =>
-                                void revokeConnectionToken(token.id)}
-                            >
-                              Revoke
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </CardContent>
-            </Card>
-
-            <Card className="settings-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ShieldCheck aria-hidden="true" />
-                  Linked identities
-                </CardTitle>
-                <CardDescription>
-                  Keep at least one provider linked to sign in.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-4">
-                <div className="settings-list">
-                  {account.identities.map((identity) => (
-                    <div
-                      className="settings-list-row"
-                      key={identity.provider}
-                    >
-                      <div>
-                        <strong>{providerLabels[identity.provider]}</strong>
-                        <span>
-                          {identity.email
-                            ?? identity.displayName
-                            ?? "No profile email"}
-                        </span>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={account.identities.length <= 1}
-                        onClick={() => void unlinkIdentity(identity.provider)}
-                      >
-                        Unlink
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-                <div className="provider-links">
-                  {(["google", "microsoft", "github"] as const)
-                    .filter(
-                      (provider) =>
-                        !account.identities.some(
-                          (identity) => identity.provider === provider,
-                        ),
-                    )
-                    .map((provider) => (
-                      <Button key={provider} asChild variant="outline" size="sm">
-                        <a
-                          href={`${relayOrigin}/auth/${provider}/start?mode=link`}
-                        >
-                          <Link2 aria-hidden="true" />
-                          Link {providerLabels[provider]}
-                        </a>
-                      </Button>
-                    ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="settings-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <UserRound aria-hidden="true" />
-                  Browser sessions
-                </CardTitle>
-                <CardDescription>
-                  Revoke browsers that should no longer access the relay.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="settings-list">
-                {browserSessions
-                  .filter((session) => !session.revokedAt)
-                  .map((session) => (
-                    <div className="settings-list-row" key={session.id}>
-                      <div>
-                        <strong>
-                          {session.current ? "This browser" : "Signed-in browser"}
-                        </strong>
-                        <span>
-                          {session.userAgent ?? "Unknown browser"} · Expires{" "}
-                          {formatTime(session.expiresAt)}
-                        </span>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={session.current ? "destructive" : "outline"}
-                        onClick={() => void revokeBrowserSession(session.id)}
-                      >
-                        {session.current ? "Sign out here" : "Revoke"}
-                      </Button>
-                    </div>
-                  ))}
-              </CardContent>
-            </Card>
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   )
 }

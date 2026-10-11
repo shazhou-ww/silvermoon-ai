@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>账户入口与菜单：信息集中、图标化</title>
+  <style>
+    :root { color-scheme: light; --ink: #17212b; --muted: #687487; --border: #d8dfe8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 18px; color: var(--ink); background: white; font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+    h1 { margin: 0; font-size: 20px; }
+    .scenario-heading { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px; }
+    .scenario-heading p { margin: 4px 0 0; color: var(--muted); }
+    .callouts { display: flex; flex-wrap: wrap; justify-content: flex-end; align-content: start; gap: 6px; list-style: none; margin: 0; padding: 0; }
+    .callouts li { padding: 5px 8px; color: #125d55; background: #e8f3f1; border-radius: 5px; font-size: 12px; }
+    .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+    .state { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 7px; }
+    .state-label { padding: 10px 12px; border-bottom: 1px solid var(--border); background: #f4f5f6; }
+    .state-label strong { display: block; }
+    .state-label span { color: var(--muted); font-size: 12px; }
+    .product-surface { min-height: 340px; background: #fbfcfd; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; padding: 8px 14px; background: #f8f9fb; border-bottom: 1px solid var(--border); }
+    .context { min-width: 0; }
+    .context strong, .context span { display: block; }
+    .context strong { font-size: 14px; }
+    .context span { color: var(--muted); font-size: 11px; }
+    .account { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 5px 8px; border-radius: 11px; background: #edf0f3; }
+    .avatar { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 50%; background: #142033; color: white; font-size: 11px; font-weight: 750; }
+    .account-copy { display: grid; min-width: 0; }
+    .account-copy strong { font-size: 12.5px; }
+    .account-copy span { font-size: 11px; color: var(--muted); }
+    .chevron { color: var(--muted); }
+    .menu-area { display: flex; justify-content: flex-end; padding: 5px 14px 24px; }
+    .menu { width: 264px; max-width: 100%; padding: 6px; background: white; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 12px rgb(23 33 43 / 10%); }
+    .user-info { padding: 9px 10px; }
+    .user-info strong, .user-info span { display: block; overflow-wrap: anywhere; }
+    .user-info strong { font-size: 13px; }
+    .user-info span { margin-top: 2px; font-size: 11px; color: var(--muted); }
+    .separator { height: 1px; margin: 4px 0; background: var(--border); }
+    .item { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 6px 10px; font-size: 13px; }
+    .item svg { flex-shrink: 0; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+    .destructive { color: #bd3f4a; }
+    .caption { padding: 10px 12px; margin: 0; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+    .notes { color: var(--muted); font-size: 12px; margin: 14px 0 0; }
+    @media (max-width: 1000px) { .comparison { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) {
+      body { padding: 12px; }
+      .scenario-heading { grid-template-columns: 1fr; }
+      .callouts { justify-content: flex-start; }
+      .account-copy, .chevron { display: none; }
+      .account { padding: 4px; }
+      .topbar { padding-inline: 10px; }
+      .menu-area { padding-inline: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="scenario-heading">
+    <div>
+      <h1>右上角账户入口与下拉菜单</h1>
+      <p>同一用户、同一会话，菜单均处于展开状态。仅展示受影响的顶栏与菜单。</p>
+    </div>
+    <ul class="callouts" aria-label="可见差异">
+      <li>顶栏只留账户图标</li>
+      <li>用户信息集中在菜单顶部</li>
+      <li>Settings 指向总配置页</li>
+    </ul>
+  </header>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title">
+      <header class="state-label">
+        <strong id="before-title">Before · 桌面顶栏与菜单重复显示信息</strong>
+        <span>当前源码：头像、名称、邮箱、箭头</span>
+      </header>
+      <div class="product-surface">
+        <div class="topbar">
+          <div class="context"><strong>Workspace discussion</strong><span>Development Mac</span></div>
+          <div class="account" aria-label="当前账户入口的静态示意">
+            <span class="avatar" aria-hidden="true">DA</span>
+            <span class="account-copy"><strong>Demo account</strong><span>demo@example.test</span></span>
+            <span class="chevron" aria-hidden="true">⌄</span>
+          </div>
+        </div>
+        <div class="menu-area"><section class="menu" aria-label="当前账户下拉菜单的静态示意">
+          <div class="user-info"><strong>Demo account</strong><span>demo@example.test</span></div>
+          <div class="separator"></div>
+          <div class="item"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 3-1 3-3 1-2 3 2 2-1 3 3 2 3-1 2 2 3-1 1-3 3-1 2-3-2-2 1-3-3-2-3 1-2-2Z"/><circle cx="12" cy="12" r="3"/></svg><span>Account and connections</span></div>
+          <div class="separator"></div>
+          <div class="item destructive"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 4H4v16h5M9 12h12m-4-4 4 4-4 4"/></svg><span>Sign out</span></div>
+        </section></div>
+      </div>
+      <p class="caption">现有菜单顶部已展示详细信息。窄屏当前已经只显示头像，不虚构窄屏文字负担。</p>
+    </section>
+    <section class="state" aria-labelledby="after-title">
+      <header class="state-label">
+        <strong id="after-title">After · 图标入口，信息只在菜单内展示</strong>
+        <span>已确认：沿用头像，无头像时使用姓名缩写</span>
+      </header>
+      <div class="product-surface">
+        <div class="topbar">
+          <div class="context"><strong>Workspace discussion</strong><span>Development Mac</span></div>
+          <div class="account" aria-label="账户菜单图标的静态示意：Demo account">
+            <span class="avatar" aria-hidden="true">DA</span>
+          </div>
+        </div>
+        <div class="menu-area"><section class="menu" aria-label="拟议账户下拉菜单的静态示意">
+          <div class="user-info"><strong>Demo account</strong><span>demo@example.test</span></div>
+          <div class="separator"></div>
+          <div class="item"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 3-1 3-3 1-2 3 2 2-1 3 3 2 3-1 2 2 3-1 1-3 3-1 2-3-2-2 1-3-3-2-3 1-2-2Z"/><circle cx="12" cy="12" r="3"/></svg><span>Settings</span></div>
+          <div class="separator"></div>
+          <div class="item destructive"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 4H4v16h5M9 12h12m-4-4 4 4-4 4"/></svg><span>Sign out</span></div>
+        </section></div>
+      </div>
+      <p class="caption">点击 Settings 进入右侧总配置页；保留 Sign out。收敛展示，不增加用户资料功能。</p>
+    </section>
+  </main>
+  <p class="notes">基于当前 App.tsx 与 index.css 的说明性静态示意，不是生产 UI 或行为契约。样例身份为虚构数据；无头像示例沿用姓名缩写。没有邮箱时仍沿用 Signed in，不增加身份信息。实际菜单应保留账户可访问名称、键盘开合及关闭后的焦点恢复；这里不模拟菜单开合或路由。</p>
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({ type: "ui-review:height", height: Math.ceil(document.body.getBoundingClientRect().height) }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.body);
+    window.addEventListener("load", reportHeight);
+    window.addEventListener("resize", reportHeight);
+    window.addEventListener("message", (event) => {
+      if (event.source === window.parent && event.data?.type === "ui-review:measure") reportHeight();
+    });
+  </script>
+</body>
+</html>
