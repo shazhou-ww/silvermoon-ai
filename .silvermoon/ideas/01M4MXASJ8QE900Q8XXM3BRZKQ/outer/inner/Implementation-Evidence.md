@@ -34,6 +34,12 @@
 
 浏览器 fixture 使用虚构身份和 token，不读生产凭据。布局检查验证实际 `display: grid`、单列模块、创建 / 设备行同父级同宽同左边界、无额外 panel、抽屉顶部和左侧不留隐式空白，不只检查 CSS 声明。
 
+## 主线持续集成
+
+- [Settings 代码候选 CI](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38144832397) 在 `0e8f3d85b7a8` 上成功。
+- [最新同代码快照 CI](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38145346155) 在 `061e13ebb0fb` 上成功；其后的构想接受仅追加事件，没有修改应用代码。
+- 这些主线运行验证仓库检查、浏览器回归及本地 D1 迁移；不代表本主题已经执行 release 部署或真实账户验证。
+
 ## 真实渲染
 
 以下是现有 Playwright 在固定视口中渲染的实际应用，不是静态设计稿：

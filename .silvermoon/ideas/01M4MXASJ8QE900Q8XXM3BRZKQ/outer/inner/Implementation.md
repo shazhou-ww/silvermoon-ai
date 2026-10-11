@@ -1,6 +1,6 @@
 # Implementation
 
-用户于 2026-10-11 明确授权在独立 worktree 实施；此授权不等于 Silvermoon 精确 revision 的批准或实施验收。当前事件日志尚未记录任何提交或接受事件。
+用户于 2026-10-11 明确授权在独立 worktree 实施，并已接受 `idealRevision=aa8c087780c2`。实施候选已同步到 primary，等待精确实施 revision 的独立验收；尚未授权部署。
 
 ## Steps
 
@@ -30,4 +30,4 @@
 
 测试证明草稿隔离并跨刷新恢复，失败不丢输入，成功只清源版本，退出后不泄露草稿或迟到的连接 profile；类型、lint、单元测试与构建通过。
 
-代码与验证依据见 [Implementation-Evidence.md](./Implementation-Evidence.md)。准备阶段的 ledger 保持未勾选，不由代码完成推断正式方向接受或实施验收。
+代码与验证依据见 [Implementation-Evidence.md](./Implementation-Evidence.md)。ledger 勾选仅记录已完成工作和证明，不代表用户实施验收。
