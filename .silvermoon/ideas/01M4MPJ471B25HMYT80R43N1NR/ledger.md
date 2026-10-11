@@ -18,10 +18,10 @@
 
 ### Deployment steps
 
-- [ ] **D-S01:** 验证真实 Done 生命周期
-- [ ] **D-S02:** 验证生产链路兼容性
+- [x] **D-S01:** 验证真实 Done 生命周期
+- [x] **D-S02:** 验证生产链路兼容性
 
 ### Deployment acceptance criteria
 
-- [ ] **D-AC01:** Done 后活动可回看
-- [ ] **D-AC02:** 失败状态可诊断
+- [x] **D-AC01:** Done 后活动可回看
+- [x] **D-AC02:** 失败状态可诊断

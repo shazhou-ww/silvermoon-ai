@@ -738,6 +738,146 @@ function updateLocationSelection(
   )
 }
 
+function initialAuthError(): string | null {
+  return new URLSearchParams(window.location.search).has("authError")
+    ? "We couldn’t verify that sign-in. Try again or choose another provider."
+    : null
+}
+
+function ProviderIcon({ provider }: { provider: Provider }) {
+  if (provider === "google") {
+    return (
+      <span
+        aria-hidden="true"
+        className="login-provider-icon login-provider-google"
+        data-provider-icon={provider}
+      >
+        G
+      </span>
+    )
+  }
+  if (provider === "microsoft") {
+    return (
+      <span
+        aria-hidden="true"
+        className="login-provider-icon login-provider-microsoft"
+        data-provider-icon={provider}
+      >
+        <span />
+        <span />
+        <span />
+        <span />
+      </span>
+    )
+  }
+  return (
+    <span
+      aria-hidden="true"
+      className="login-provider-icon login-provider-github"
+      data-provider-icon={provider}
+    >
+      GH
+    </span>
+  )
+}
+
+function LoginPage({
+  error,
+  loading,
+}: {
+  error: string | null
+  loading: boolean
+}) {
+  return (
+    <main className="login-page">
+      <div className="login-moon" aria-hidden="true" />
+      <div className="login-page-content">
+        <div className="login-brand">
+          <RelayMark />
+          <strong>Silvermoon</strong>
+          <span>Relay</span>
+        </div>
+        <section className="login-hero" aria-labelledby="login-title">
+          <h1 id="login-title">Your agents, within reach from anywhere.</h1>
+          <p>
+            Silvermoon keeps watch over every session, so you can pick up the
+            thread wherever you are.
+          </p>
+        </section>
+        <div className="login-body">
+          <section className="login-card" aria-labelledby="login-card-title">
+            {loading ? (
+              <div className="login-loading" role="status">
+                <LoaderCircle aria-hidden="true" />
+                <div>
+                  <h2 id="login-card-title">Opening your relay</h2>
+                  <p>Checking your browser session…</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h2 id="login-card-title">Sign in or get started</h2>
+                <p>
+                  Choose an account to continue. We’ll create your Relay
+                  account if you’re new.
+                </p>
+                {error && (
+                  <p role="alert" className="login-error">
+                    <strong>Sign-in unsuccessful</strong>
+                    <span>{error}</span>
+                  </p>
+                )}
+                <div className="login-providers">
+                  {(["google", "microsoft", "github"] as const).map(
+                    (provider) => (
+                      <Button
+                        asChild
+                        key={provider}
+                        variant="outline"
+                        className="login-provider"
+                      >
+                        <a href={`${relayOrigin}/auth/${provider}/start`}>
+                          <ProviderIcon provider={provider} />
+                          <span>Continue with {providerLabels[provider]}</span>
+                          <span aria-hidden="true" />
+                        </a>
+                      </Button>
+                    ),
+                  )}
+                </div>
+                <small>
+                  Provider credentials never enter the relay protocol.
+                </small>
+              </>
+            )}
+          </section>
+          <div className="login-mascot-stage">
+            <img
+              className="login-mascot"
+              src="/silvermoon-mascot.png"
+              alt="Silvermoon, the project’s artifact spirit, waving"
+            />
+          </div>
+        </div>
+        <section className="login-capabilities" aria-label="Relay capabilities">
+          <div>
+            <strong>Across every device</strong>
+            <span>See connected machines and their local Agent sessions.</span>
+          </div>
+          <div>
+            <strong>Resume the thread</strong>
+            <span>Continue without returning to the original machine.</span>
+          </div>
+          <div>
+            <strong>Follow in real time</strong>
+            <span>Watch progress and send the next instruction.</span>
+          </div>
+        </section>
+      </div>
+    </main>
+  )
+}
+
 function App() {
   const [account, setAccount] = useState<Account | null>(null)
   const [tokens, setTokens] = useState<ConnectionToken[]>([])
@@ -756,7 +896,7 @@ function App() {
   const [sessionsLoadedForKey, setSessionsLoadedForKey] = useState<
     string | null
   >(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(initialAuthError)
   const [notice, setNotice] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [deviceName, setDeviceName] = useState("My device")
@@ -1506,66 +1646,11 @@ function App() {
   }
 
   if (loading) {
-    return (
-      <Shell>
-        <p className="text-muted-foreground">Loading your relay...</p>
-      </Shell>
-    )
+    return <LoginPage error={null} loading />
   }
 
   if (!account) {
-    return (
-      <Shell>
-        <div className="grid min-h-[68vh] overflow-hidden rounded-[1.75rem] border bg-card lg:grid-cols-[1.35fr_0.65fr]">
-          <section className="flex flex-col justify-between gap-16 bg-[var(--relay-ink)] p-8 text-white sm:p-12">
-            <div className="flex items-center gap-3">
-              <span className="status-pulse" />
-              <span className="text-sm text-white/70">Silvermoon Relay</span>
-            </div>
-            <div className="max-w-2xl">
-              <h1 className="text-4xl leading-[1.04] font-semibold tracking-[-0.04em] sm:text-6xl">
-                Your local agents, reachable from one control room.
-              </h1>
-              <p className="mt-6 max-w-xl text-base leading-7 text-white/65 sm:text-lg">
-                Connect each device, open GitHub Copilot sessions, and follow
-                their work without moving between machines.
-              </p>
-            </div>
-            <p className="max-w-md text-sm leading-6 text-white/50">
-              Agent traffic stays on authenticated connector channels.
-              Identity provider credentials never enter the relay protocol.
-            </p>
-          </section>
-          <section className="flex flex-col justify-center p-8 sm:p-12">
-            <h2 className="text-2xl font-semibold tracking-tight">
-              Enter the control room
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Use an identity already linked to your relay account.
-            </p>
-            <div className="mt-8 grid gap-3">
-              {(["google", "microsoft", "github"] as const).map((provider) => (
-                <Button
-                  asChild
-                  key={provider}
-                  variant="outline"
-                  className="h-11 w-full justify-start px-4"
-                >
-                  <a href={`${relayOrigin}/auth/${provider}/start`}>
-                    Continue with {providerLabels[provider]}
-                  </a>
-                </Button>
-              ))}
-            </div>
-            {error && (
-              <p role="alert" className="mt-5 text-sm text-destructive">
-                {error}
-              </p>
-            )}
-          </section>
-        </div>
-      </Shell>
-    )
+    return <LoginPage error={error} loading={false} />
   }
 
   const accountName =
@@ -2650,16 +2735,6 @@ function SessionStatus({
       <span aria-hidden="true" />
       {sessionStatusLabel(status)}
     </span>
-  )
-}
-
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="min-h-screen bg-[var(--relay-paper)] px-4 py-6 text-foreground sm:px-8 sm:py-10">
-      <div className="mx-auto flex w-full max-w-[88rem] flex-col gap-6">
-        {children}
-      </div>
-    </main>
   )
 }
 
