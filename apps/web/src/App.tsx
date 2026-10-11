@@ -2545,7 +2545,6 @@ function App() {
                           data-status={group.source.status}
                         >
                           {group.source.status}
-                          {group.source.status === "online" && groupCounts.pending > 0 ? " · state unconfirmed" : ""}
                         </span>
                       </button>
                       {expanded && group.sessions.map((item) =>
@@ -3051,13 +3050,12 @@ function App() {
 
 function RelayMark({ compact = false }: { compact?: boolean }) {
   return (
-    <span
+    <img
       className={`relay-mark${compact ? " is-compact" : ""}`}
+      src="/silvermoon-badge.svg"
+      alt=""
       aria-hidden="true"
-    >
-      <span />
-      <span />
-    </span>
+    />
   )
 }
 

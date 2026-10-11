@@ -6,6 +6,7 @@ import {
   CONNECTION_LEASE_MS,
   connectionLeaseIsActive,
 } from "./connector-session";
+import { signSecret } from "./crypto";
 import { beginOAuth, linkIdentity, validateOidcClaims } from "./oauth";
 import { createSession, setSessionCookies } from "./session";
 import { createToken, rotateToken } from "./tokens";
@@ -232,6 +233,60 @@ describe("relay identity and token service", () => {
       }
     },
   );
+
+  it("does not rate limit OAuth with expired transactions", async () => {
+    const ip = "192.0.2.30";
+    const initiatorHash = await signSecret(
+      `ip:${ip}`,
+      appEnv.SESSION_SECRET,
+    );
+    await env.DB.prepare(
+      `WITH RECURSIVE sequence(value) AS (
+         SELECT 1
+         UNION ALL
+         SELECT value + 1 FROM sequence WHERE value < 10
+       )
+       INSERT INTO oauth_transactions
+         (state_hash, provider, mode, initiator_hash, sealed_context,
+          return_to, expires_at)
+       SELECT 'expired-' || value, 'github', 'login', ?1, 'sealed', '/',
+         strftime('%Y-%m-%dT00:00:00.000Z', 'now')
+       FROM sequence`,
+    )
+      .bind(initiatorHash)
+      .run();
+
+    const response = await beginOAuth(
+      new Request("https://relay.silvermoon.work/auth/github/start", {
+        headers: { "cf-connecting-ip": ip },
+      }),
+      appEnv,
+      "github",
+    );
+
+    expect(response.status).toBe(302);
+  });
+
+  it("rate limits OAuth with ten active transactions", async () => {
+    const request = () =>
+      beginOAuth(
+        new Request("https://relay.silvermoon.work/auth/github/start", {
+          headers: { "cf-connecting-ip": "192.0.2.31" },
+        }),
+        appEnv,
+        "github",
+      );
+
+    for (let count = 0; count < 10; count += 1) {
+      expect((await request()).status).toBe(302);
+    }
+
+    const response = await request();
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toEqual({
+      error: "oauth-rate-limit",
+    });
+  });
 
   it("validates OIDC nonce and Microsoft consumer tenant", () => {
     expect(() =>
