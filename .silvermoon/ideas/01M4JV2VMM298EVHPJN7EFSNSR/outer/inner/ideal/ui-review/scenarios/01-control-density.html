@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>浏览历史时的返回控件</title>
+  <link rel="stylesheet" href="../scenario.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <div>
+      <h1>浏览历史时的返回控件</h1>
+      <p>同一条长 Session、同一阅读位置和输入区，仅比较控件占位与视觉密度。</p>
+    </div>
+    <ul class="callouts" aria-label="可见变化">
+      <li>移除控件行并收紧消息底部 padding</li>
+      <li>圆形 icon 保留 44×44 点击区域</li>
+    </ul>
+  </header>
+
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label">
+        <strong id="before-title">Before</strong>
+        <span>当前生产行为</span>
+      </header>
+      <div class="product-surface">
+        <div class="session-pane">
+          <div class="session-header">
+            <div class="session-title">
+              <strong>Production-like local development</strong>
+              <span>Studio laptop</span>
+            </div>
+            <span class="status">Working</span>
+          </div>
+          <div class="transcript-shell before-layout">
+            <div class="transcript-window">
+              <div class="transcript-content review-position">
+                <div class="message assistant"><p>生产 Worker 仅允许配置的 WEB_ORIGIN，本地请求因此没有 CORS header。</p></div>
+                <div class="message user"><p>那本地 OAuth callback 也会失败吗？</p></div>
+                <div class="message assistant"><p>会。本地 Worker 仍使用 production AUTH_BASE_URL，且 .dev.vars 缺失时 OAuth start 返回 500。</p></div>
+                <div class="activity">Inspect OAuth start route and local environment loading</div>
+              </div>
+              <span class="history-position">Earlier messages</span>
+              <div class="fade-top" aria-hidden="true"></div>
+            </div>
+            <div class="control-row">
+              <button class="jump-latest jump-latest-label" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                Jump to latest
+              </button>
+            </div>
+          </div>
+          <div class="composer">
+            <div class="composer-box">
+              <span>Ask for the next step...</span>
+              <span class="send" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label">
+        <strong id="after-title">After</strong>
+        <span>拟议调整</span>
+      </header>
+      <div class="product-surface">
+        <div class="session-pane">
+          <div class="session-header">
+            <div class="session-title">
+              <strong>Production-like local development</strong>
+              <span>Studio laptop</span>
+            </div>
+            <span class="status">Working</span>
+          </div>
+          <div class="transcript-shell after-layout compact-content">
+            <div class="transcript-window">
+              <div class="transcript-content review-position">
+                <div class="message assistant"><p>生产 Worker 仅允许配置的 WEB_ORIGIN，本地请求因此没有 CORS header。</p></div>
+                <div class="message user"><p>那本地 OAuth callback 也会失败吗？</p></div>
+                <div class="message assistant"><p>会。本地 Worker 仍使用 production AUTH_BASE_URL，且 .dev.vars 缺失时 OAuth start 返回 500。</p></div>
+                <div class="activity">Inspect OAuth start route and local environment loading</div>
+              </div>
+              <span class="history-position">Earlier messages</span>
+              <div class="fade-top" aria-hidden="true"></div>
+              <button class="jump-latest jump-latest-icon" type="button" aria-label="Jump to latest">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="composer">
+            <div class="composer-box">
+              <span>Ask for the next step...</span>
+              <span class="send" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({
+        type: "ui-review:height",
+        height: document.documentElement.scrollHeight,
+      }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>
