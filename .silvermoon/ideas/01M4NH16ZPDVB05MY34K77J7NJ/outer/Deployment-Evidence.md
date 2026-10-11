@@ -26,3 +26,32 @@
 - 远程只读查询确认已应用 0001–0009、尚未应用 0010；变更前聚合为 6 个设备、404 条 Session、25,517 个事件。查询 `rows_written=0`，未读取/登记用户消息正文。
 - 实际 Worker 基线版本 `0f1deccc-c4b4-444e-ad97-19b287c43213`，Pages production deployment `accec838-578d-4a20-954d-7fa347cb9381`，来源 `6699772`。这些来自 Wrangler deployment 列表，执行后以新版本另行核对。
 - 待同步本次授权/操作范围的部署契约后，再由隔离 release worktree 触发服务升级。真实设备版本与断网验证仍未授权/取得证据，不能提交完整 submitOuter。
+
+## 本次服务端生产升级结果
+
+### 发布来源与并发处理
+
+- 本次执行前同步并观察的部署 revision 为 `3a7160935fe2a3ff10486db3648849c93d16ce81`，位于 primary `061e13ebb0fb551baae487ee56e96d48d70dff96`。
+- 准备隔离 release 合并时，发现 release 已被并发任务更新到 `1ad0b56b293129cdcdef035d25d44c24ded3e0b5`，对应 [release run 38145243518](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38145243518) 正在运行。
+- 对比本次授权源码和该 release 的 `apps/`、`packages/`、workflow，无差异；本次合并只新增部署说明及事件。为避免取消并重跑相同应用部署，本轮没有再推送 release，也没有把对方触发的 run 伪称本轮触发；等待并核实其实际外部结果。
+- 临时 release worktree 的合并候选通过 Silvermoon worktree/staged 检查；确认无需额外发布后仅撤销 operation-owned 合并并移除该 worktree，不影响 main、release、应用源码或其他历史。
+
+### 外部成功证据
+
+| 项目 | 实际观察结果 |
+|---|---|
+| Release 工作流 | `38145243518` 已 completed/success，check 成功（4m58s），deploy 成功（49s） |
+| 迁移顺序 | run 日志显示 D1 迁移先于 Worker 和 Pages；`0010_session_confirmation.sql` 标记成功，远程再次 SELECT 证实已在 d1_migrations 中 |
+| Worker 版本 | `c86d108e-8d3e-4869-9ad8-e31f195bf3ab`，deployment 时间 `2026-10-11T14:03:14.742Z`，100% 当前版本 |
+| Pages 版本 | production deployment `2ce69833-78a7-4748-b17b-8a89fc78f2c7`，来源 `1ad0b56`，对应 [部署地址](https://2ce69833.silvermoon-work.pages.dev) |
+| 数据聚合 | 迁移前后均为 6 个设备、404 条 Sessions、25,517 个事件；只读核对 rows_written=0。这证明数量未因本次迁移减少，不冒充逐条正文完整性校验 |
+| Relay 公共健康检查 | `https://relay.silvermoon.work/health` HTTP 200，service=silvermoon-relay、status=ok |
+| Web 公共检查 | `https://silvermoon.work/` HTTP 200，生产浏览器能打开登录页、三种 OAuth 入口可见；未登录的鉴权拒绝保持有效 |
+
+### 已完成范围与未完成边界
+
+- 用户授权的数据库／Relay／Web 服务升级已由上述匹配源码的成功 release run 完成，本轮完成版本、迁移和公开访问验证。
+- 远程设备聚合为 3 online、3 offline，全部 `session_sync_state=unsupported`；这与旧 connector 尚未升级相符，不把 Online 当作本次能力已确认。
+- 本轮没有发布 `@silvermoon-ai/connector`、修改实际设备配置或执行用户 agent 工作；没有登录凭据，不绕过鉴权查看 Session 正文。
+- 因设备端升级未完成且无已登录的授权 Session 验证，D-S02/D-AC01 只完成服务子范围，D-S03/D-AC02/D-AC03 的真实会话、断网、重连及结果验证未完成。D-S01 中实际设备版本/恢复范围也尚待落实，所有 D ledger 继续未勾选。
+- 不提交 submitOuter、不请求 acceptOuter。下一步由用户另行确认 connector 发布／设备升级及登录后的真实验证范围；当前产品与实现接受记录不回退。
