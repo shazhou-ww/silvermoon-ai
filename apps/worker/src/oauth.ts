@@ -230,7 +230,7 @@ export async function beginOAuth(
   const activeTransactions = await env.DB.prepare(
     `SELECT COUNT(*) AS count FROM oauth_transactions
      WHERE initiator_hash = ?1 AND consumed_at IS NULL
-       AND expires_at > CURRENT_TIMESTAMP`,
+       AND datetime(expires_at) > CURRENT_TIMESTAMP`,
   )
     .bind(initiatorHash)
     .first<{ count: number }>();

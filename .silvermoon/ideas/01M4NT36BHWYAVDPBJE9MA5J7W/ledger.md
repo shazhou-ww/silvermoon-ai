@@ -4,14 +4,14 @@
 
 ### Implementation steps
 
-- [ ] **I-S01:** 统一过期时间比较语义
-- [ ] **I-S02:** 增加限流回归覆盖
+- [x] **I-S01:** 统一过期时间比较语义
+- [x] **I-S02:** 增加限流回归覆盖
 
 ### Implementation acceptance criteria
 
-- [ ] **I-AC01:** 过期事务不再占用名额
-- [ ] **I-AC02:** 阈值行为保持不变
-- [ ] **I-AC03:** Worker 验证通过
+- [x] **I-AC01:** 过期事务不再占用名额
+- [x] **I-AC02:** 阈值行为保持不变
+- [x] **I-AC03:** Worker 验证通过
 
 ## Deployment
 
