@@ -348,12 +348,13 @@ export class ConnectorSession extends DurableObject<Env> {
     attachment: ConnectionAttachment,
     event: AgentSessionEvent,
   ) {
+    // Historical projections can retain a sequence while deriving a newer ID.
     return this.env.DB.prepare(
       `INSERT INTO agent_session_events
         (user_id, connector_id, session_id, event_id, sequence, type, role,
          content, data_json, created_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-       ON CONFLICT (user_id, connector_id, session_id, event_id)
+       ON CONFLICT
        DO UPDATE SET
          type = excluded.type,
          role = COALESCE(excluded.role, agent_session_events.role),

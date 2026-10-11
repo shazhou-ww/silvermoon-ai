@@ -877,7 +877,7 @@ describe("relay identity and token service", () => {
         },
         createdAt: now,
       }, {
-        id: "history-event-3",
+        id: "legacy-history-event-3",
         sessionId: "session-existing",
         sequence: 3,
         type: "message",
@@ -924,7 +924,7 @@ describe("relay identity and token service", () => {
     });
     sendRpc(8, "mutation", "sessionEvents", {
       events: [{
-        id: "history-event-3",
+        id: "enriched-history-event-3",
         sessionId: "session-existing",
         sequence: 3,
         type: "message",
@@ -982,7 +982,7 @@ describe("relay identity and token service", () => {
           },
         }),
         expect.objectContaining({
-          id: "history-event-3",
+          id: "legacy-history-event-3",
           data: expect.objectContaining({
             inputRequestId: "input-1",
             inputRequestResolved: false,
@@ -1044,7 +1044,7 @@ describe("relay identity and token service", () => {
       events: [
         expect.objectContaining({ id: "history-event-1" }),
         expect.objectContaining({ id: "history-event-2" }),
-        expect.objectContaining({ id: "history-event-3" }),
+        expect.objectContaining({ id: "legacy-history-event-3" }),
       ],
     });
     const currentHistorySync = await SELF.fetch(
