@@ -74,13 +74,16 @@ import {
   type TranscriptTurn,
 } from "@/message-flow"
 import {
-  countSessionStatuses,
+  deriveSessionFacets,
   deriveVisibleSessions,
   groupSessionsByDevice,
+  sessionConfirmationIsCurrent,
+  sessionDisplayStatus,
   sessionIsArchived,
   sessionKey,
   type OrderedSession,
   type SessionStatusView,
+  type SessionSource,
 } from "@/session-list"
 
 const relayOrigin =
@@ -139,6 +142,9 @@ interface Connector {
     streamEvents: boolean
   }
   status: "online" | "offline"
+  connectionId: string | null
+  sessionSyncState: "unsupported" | "pending" | "ready" | "failed"
+  sessionSyncError: string | null
   connectedAt: string | null
   disconnectedAt: string | null
   lastSeenAt: string | null
@@ -159,6 +165,9 @@ interface AgentSession {
   lastMessagePreview: string | null
   canSendMessage: boolean
   pendingInputRequest?: AgentInputRequest | null
+  confirmedConnectionId: string | null
+  executionStateKnown: boolean
+  capabilityConfirmed: boolean
 }
 
 interface CommandResponse {
@@ -183,7 +192,7 @@ interface CommandStatus {
   connectorId: string
   type: string
   sessionId: string | null
-  status: "queued" | "sent" | "accepted" | "succeeded" | "failed"
+  status: "queued" | "sent" | "accepted" | "succeeded" | "failed" | "unknown"
   error: {
     code: string
     message: string | null
@@ -283,8 +292,20 @@ function sessionStatusLabel(status: string): string {
       return "Ended"
     case "gone":
       return "Unavailable"
+    case "offline":
+      return "Offline"
+    case "syncing":
+      return "Syncing status"
+    case "sync-failed":
+      return "Status sync failed"
+    case "unsupported":
+      return "Connector update required"
+    case "unconfirmed":
+      return "State not confirmed"
+    case "unknown-device":
+      return "Device status unknown"
     default:
-      return "Unknown"
+      return "Execution state unknown"
   }
 }
 
@@ -866,8 +887,13 @@ function App() {
   const [selection, setSelection] = useState<SessionSelection | null>(
     () => selectionFromLocation(),
   )
+  const selectionUnavailable = useRef(false)
   const [loading, setLoading] = useState(true)
   const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [devicesRefreshFailed, setDevicesRefreshFailed] = useState(false)
+  const [sessionsRefreshFailed, setSessionsRefreshFailed] = useState(false)
+  const [sessionRefreshAttempt, setSessionRefreshAttempt] = useState(0)
+  const deviceRefreshRequest = useRef(0)
   const [sessionsLoadedForKey, setSessionsLoadedForKey] = useState<
     string | null
   >(null)
@@ -879,7 +905,7 @@ function App() {
   const [revealedToken, setRevealedToken] = useState<string | null>(null)
   const [sessionTitle, setSessionTitle] = useState("")
   const [sessionPrompt, setSessionPrompt] = useState("")
-  const [followUp, setFollowUp] = useState("")
+  const [followUps, setFollowUps] = useState<Record<string, string>>({})
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [newSessionOpen, setNewSessionOpen] = useState(false)
   const [newSessionConnectorId, setNewSessionConnectorId] = useState<
@@ -890,6 +916,7 @@ function App() {
     useState<SessionStatusView>("all")
   const [showEndedSessions, setShowEndedSessions] = useState(false)
   const [showUnavailableSessions, setShowUnavailableSessions] = useState(false)
+  const [showOfflineSessions, setShowOfflineSessions] = useState(false)
   const [deviceGroupingEnabled, setDeviceGroupingEnabled] = useState(false)
   const [collapsedSessionKeys, setCollapsedSessionKeys] =
     useState<Set<string>>(() => new Set())
@@ -911,6 +938,10 @@ function App() {
   const selectedConnectorId = selection?.connectorId ?? null
   const selectedSessionId = selection?.sessionId ?? null
   const selectionKey = JSON.stringify([selectedConnectorId, selectedSessionId])
+  const followUp = followUps[selectionKey] ?? ""
+  const setFollowUp = useCallback((message: string) => {
+    setFollowUps((current) => ({ ...current, [selectionKey]: message }))
+  }, [selectionKey])
   const events = history?.key === selectionKey ? history.events : emptyEvents
   const accountSessionId = account?.sessionId
   const connectorIdKey = useMemo(
@@ -946,6 +977,7 @@ function App() {
   }, [resizeFollowUpInput])
 
   const refresh = useCallback(async () => {
+    const request = ++deviceRefreshRequest.current
     try {
       const current = await api<Account>("/api/me")
       const [tokenItems, sessionItems, connectorItems] = await Promise.all([
@@ -953,22 +985,28 @@ function App() {
         api<BrowserSession[]>("/api/sessions"),
         api<Connector[]>("/api/connectors"),
       ])
+      if (request !== deviceRefreshRequest.current) return
       setAccount(current)
       setTokens(tokenItems)
       setBrowserSessions(sessionItems)
-      setConnectors(connectorItems)
-      setError(null)
+      if (request === deviceRefreshRequest.current) {
+        setConnectors(connectorItems)
+        setDevicesRefreshFailed(false)
+      }
+      if (request === deviceRefreshRequest.current) setError(null)
     } catch (caught) {
+      if (request !== deviceRefreshRequest.current) return
       if (
         caught instanceof Error
         && caught.message === "authentication-required"
       ) {
         setAccount(null)
       } else if (caught instanceof Error) {
+        if (request === deviceRefreshRequest.current) setDevicesRefreshFailed(true)
         setError(caught.message)
       }
     } finally {
-      setLoading(false)
+      if (request === deviceRefreshRequest.current) setLoading(false)
     }
   }, [])
 
@@ -981,11 +1019,18 @@ function App() {
     if (!account) return
     let active = true
     const poll = async () => {
+      const request = ++deviceRefreshRequest.current
       try {
         const items = await api<Connector[]>("/api/connectors")
-        if (active) setConnectors(items)
+        if (active && request === deviceRefreshRequest.current) {
+          setConnectors(items)
+          setDevicesRefreshFailed(false)
+        }
       } catch (caught) {
-        if (active && caught instanceof Error) setError(caught.message)
+        if (active && request === deviceRefreshRequest.current && caught instanceof Error) {
+          setDevicesRefreshFailed(true)
+          setError(caught.message)
+        }
       }
     }
     const timer = window.setInterval(() => void poll(), 5_000)
@@ -1007,23 +1052,52 @@ function App() {
     }
     let active = true
     let firstLoad = true
+    let polling = false
     const poll = async () => {
+      if (polling) return
+      polling = true
       if (firstLoad) setSessionsLoading(true)
       try {
         const groups = await Promise.all(
-          connectorIds.map((connectorId) =>
-            api<AgentSession[]>(
-              `/api/connectors/${encodeURIComponent(connectorId)}/sessions`,
-            )
-          ),
+          connectorIds.map(async (connectorId) => {
+            const sessions: AgentSession[] = []
+            const cursors = new Set<string>()
+            let cursor: string | null = null
+            do {
+              const parameters = new URLSearchParams({ paged: "1" })
+              if (cursor) parameters.set("cursor", cursor)
+              const page = await api<{
+                sessions: AgentSession[]
+                nextCursor: string | null
+              } | AgentSession[]>(
+                `/api/connectors/${encodeURIComponent(connectorId)}/sessions?${parameters}`,
+              )
+              if (!active) return []
+              if (Array.isArray(page)) {
+                if (page.length >= 500) throw new Error("Relay update required: Session pagination is unavailable.")
+                sessions.push(...page)
+                break
+              }
+              sessions.push(...page.sessions)
+              cursor = page.nextCursor
+              if (cursor && cursors.has(cursor)) throw new Error("Session pagination returned a repeated cursor.")
+              if (cursor) cursors.add(cursor)
+            } while (cursor)
+            return sessions
+          }),
         )
         if (active) {
           setAgentSessions(groups.flat())
           setSessionsLoadedForKey(connectorIdKey)
+          setSessionsRefreshFailed(false)
         }
       } catch (caught) {
-        if (active && caught instanceof Error) setError(caught.message)
+        if (active && caught instanceof Error) {
+          setSessionsRefreshFailed(true)
+          setError(caught.message)
+        }
       } finally {
+        polling = false
         if (active && firstLoad) setSessionsLoading(false)
         firstLoad = false
       }
@@ -1034,11 +1108,16 @@ function App() {
       active = false
       window.clearInterval(timer)
     }
-  }, [account, connectorIdKey])
+  }, [account, connectorIdKey, sessionRefreshAttempt])
+  const retryRefresh = () => {
+    setSessionRefreshAttempt((attempt) => attempt + 1)
+    void refresh()
+  }
 
   useEffect(() => {
     if (
       !account
+      || loading
       || sessionsLoading
       || sessionsLoadedForKey !== connectorIdKey
     ) {
@@ -1054,6 +1133,16 @@ function App() {
     ) {
       return
     }
+    if (selection) {
+      selectionUnavailable.current = true
+      // oxlint-disable-next-line react/set-state-in-effect -- A completed remote inventory invalidates this selection.
+      setError("The selected Session is no longer available. Choose another Session.")
+      // oxlint-disable-next-line react/set-state-in-effect -- Removed remote work must not keep an accessible workspace.
+      setSelection(null)
+      updateLocationSelection(null, "replace")
+      return
+    }
+    if (selectionUnavailable.current) return
     const requested = selectionFromLocation()
     const requestedSession = requested
       ? agentSessions.find(
@@ -1062,7 +1151,10 @@ function App() {
             && session.id === requested.sessionId,
         )
       : null
-    const fallback = requestedSession ?? agentSessions[0] ?? null
+    const fallback = requestedSession ?? agentSessions.find((session) =>
+      connectors.some((connector) => connector.id === session.connectorId && connector.status === "online")
+      && !["closed", "gone"].includes(session.status),
+    ) ?? null
     // oxlint-disable-next-line react/set-state-in-effect -- A replacement Session restores the default transcript filters.
     setShowToolEvents(false)
     // oxlint-disable-next-line react/set-state-in-effect -- Selection follows the latest remote Session index.
@@ -1074,8 +1166,10 @@ function App() {
     if (requested && !requestedSession) updateLocationSelection(null, "replace")
   }, [
     account,
+    loading,
     agentSessions,
     connectorIdKey,
+    connectors,
     selection,
     sessionsLoadedForKey,
     sessionsLoading,
@@ -1083,6 +1177,7 @@ function App() {
 
   useEffect(() => {
     const handlePopState = () => {
+      selectionUnavailable.current = false
       const nextSelection = selectionFromLocation()
       setShowToolEvents(false)
       setSelection(nextSelection)
@@ -1093,6 +1188,7 @@ function App() {
   }, [])
 
   const selectAgentSession = useCallback((session: AgentSession) => {
+    selectionUnavailable.current = false
     const nextSelection = {
       connectorId: session.connectorId,
       sessionId: session.id,
@@ -1155,7 +1251,8 @@ function App() {
     : `Show ${toolEventCount} tool ${
       toolEventCount === 1 ? "message" : "messages"
     }`
-  const canSyncSelectedHistory = selectedConnector?.status === "online"
+  const canSyncSelectedHistory = !devicesRefreshFailed && !sessionsRefreshFailed
+    && selectedConnector?.status === "online"
     && selectedConnector.capabilities.streamEvents
 
   useEffect(() => {
@@ -1221,9 +1318,12 @@ function App() {
     let active = true
     let after = -1
     let loadedEvents: AgentSessionEvent[] = []
+    let polling = false
     const connectorId = encodeURIComponent(selectedConnectorId)
     const sessionId = encodeURIComponent(selectedSessionId)
     const poll = async () => {
+      if (polling) return
+      polling = true
       try {
         const result = await api<{
           events: AgentSessionEvent[]
@@ -1239,6 +1339,8 @@ function App() {
         setHistory({ key: selectionKey, events: loadedEvents })
       } catch (caught) {
         if (active && caught instanceof Error) setError(caught.message)
+      } finally {
+        polling = false
       }
     }
     void poll()
@@ -1256,8 +1358,14 @@ function App() {
   ])
 
   const connectorById = useMemo(
-    () => new Map(connectors.map((connector) => [connector.id, connector])),
-    [connectors],
+    () => new Map<string, SessionSource>(connectors.map((connector) => [
+      connector.id,
+      {
+        ...connector,
+        status: devicesRefreshFailed || sessionsRefreshFailed ? "unknown" : connector.status,
+      },
+    ])),
+    [connectors, devicesRefreshFailed, sessionsRefreshFailed],
   )
   const activeTokenByDevice = useMemo(
     () =>
@@ -1269,8 +1377,10 @@ function App() {
     [tokens],
   )
   const sessionStatusCounts = useMemo(
-    () => countSessionStatuses(agentSessions),
-    [agentSessions],
+    () => deriveSessionFacets(agentSessions, connectorById, {
+      query: sessionQuery, showEnded: showEndedSessions, showUnavailable: showUnavailableSessions,
+    }),
+    [agentSessions, connectorById, sessionQuery, showEndedSessions, showUnavailableSessions],
   )
   const visibleAgentSessions = useMemo(
     () =>
@@ -1279,6 +1389,7 @@ function App() {
         statusView: sessionStatusView,
         showEnded: showEndedSessions,
         showUnavailable: showUnavailableSessions,
+        showOffline: showOfflineSessions,
         collapsedSessionKeys,
       }),
     [
@@ -1289,17 +1400,37 @@ function App() {
       sessionStatusView,
       showEndedSessions,
       showUnavailableSessions,
+      showOfflineSessions,
     ],
   )
   const sessionDeviceGroups = useMemo(
     () => groupSessionsByDevice(visibleAgentSessions, connectorById),
     [connectorById, visibleAgentSessions],
   )
-  const visibleSessionCount = visibleAgentSessions.filter(
-    (item) => !item.isContext,
-  ).length
+  const visibleSessionCount = useMemo(() => deriveVisibleSessions(
+    agentSessions, connectorById, {
+      query: sessionQuery, statusView: sessionStatusView,
+      showEnded: showEndedSessions, showUnavailable: showUnavailableSessions,
+      showOffline: showOfflineSessions,
+    },
+  ).filter((item) => !item.isContext).length, [
+    agentSessions, connectorById, sessionQuery, sessionStatusView,
+    showEndedSessions, showUnavailableSessions, showOfflineSessions,
+  ])
   const hasCustomSessionView =
-    showEndedSessions || showUnavailableSessions || deviceGroupingEnabled
+    showEndedSessions || showUnavailableSessions || showOfflineSessions || deviceGroupingEnabled
+  const selectedSource = selectedConnectorId ? connectorById.get(selectedConnectorId) : undefined
+  const selectedDisplayStatus = selectedAgentSession
+    ? sessionDisplayStatus(selectedAgentSession, selectedSource) : "unknown"
+  const selectedConfirmationCurrent = selectedAgentSession
+    ? sessionConfirmationIsCurrent(selectedAgentSession, selectedSource) : false
+  const showOfflineShortcut = sessionStatusCounts.offline > 0
+    && (!showOfflineSessions || sessionStatusView !== "all")
+    && (sessionQuery.trim().length > 0 || visibleSessionCount === 0 || sessionStatusView !== "all")
+  const revealOfflineHistory = () => {
+    setShowOfflineSessions(true)
+    setSessionStatusView("all")
+  }
   const toggleSessionCollapsed = useCallback((session: AgentSession) => {
     const key = sessionKey(session)
     setCollapsedSessionKeys((current) => {
@@ -1331,12 +1462,12 @@ function App() {
   ])
   const onlineCreateConnectors = useMemo(
     () =>
-      connectors.filter(
+      devicesRefreshFailed || sessionsRefreshFailed ? [] : connectors.filter(
         (connector) =>
           connector.status === "online"
           && connector.capabilities.createSession,
       ),
-    [connectors],
+    [connectors, devicesRefreshFailed, sessionsRefreshFailed],
   )
   const newSessionConnector = useMemo(
     () =>
@@ -1345,10 +1476,15 @@ function App() {
       ) ?? null,
     [newSessionConnectorId, onlineCreateConnectors],
   )
-  const canSendFollowUp = selectedConnector?.status === "online"
+  const canSendFollowUp = selectedConfirmationCurrent
+    && selectedAgentSession?.capabilityConfirmed === true
+    && selectedConnector?.status === "online"
     && selectedConnector.capabilities.sendMessage
     && selectedAgentSession?.canSendMessage !== false
-  const pendingInputRequest = selectedAgentSession?.status === "waiting"
+  const hasCurrentPendingInput = selectedConfirmationCurrent
+    && selectedAgentSession?.executionStateKnown === true
+    && selectedAgentSession.status === "waiting"
+  const pendingInputRequest = hasCurrentPendingInput
     ? selectedAgentSession.pendingInputRequest
     : null
   const pendingInputAllowsCustomAnswer =
@@ -1379,6 +1515,15 @@ function App() {
           setError(null)
           return
         }
+        if (result.status === "unknown" && trackedHistoryRequestKey) {
+          setTrackedCommand(null)
+          historyRequests.current.delete(trackedHistoryRequestKey)
+          setHistorySyncFailure({
+            key: trackedHistoryRequestKey,
+            message: "History sync result is not confirmed. You can retry this read-only sync.",
+          })
+          return
+        }
         if (result.status === "failed") {
           if (timer !== undefined) window.clearInterval(timer)
           setTrackedCommand(null)
@@ -1397,6 +1542,7 @@ function App() {
           }
           return
         }
+        if (result.status === "unknown") setNotice(null)
         setTrackedCommand((current) =>
           current?.id === result.id
             ? { ...current, status: result.status }
@@ -1480,7 +1626,10 @@ function App() {
         `/api/connectors/${connectorId}/sessions/${sessionId}/messages`,
         {
           method: "POST",
-          body: JSON.stringify({ message: followUp.trim() }),
+          body: JSON.stringify({
+            message: followUp.trim(),
+            connectionId: selectedConnector.connectionId,
+          }),
         },
       )
       setFollowUp("")
@@ -1494,6 +1643,24 @@ function App() {
       setError(
         caught instanceof Error ? caught.message : "Message delivery failed",
       )
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function retrySessionState() {
+    if (!selectedConnectorId) return
+    setBusyAction("sync-state")
+    setError(null)
+    try {
+      const result = await api<CommandResponse>(
+        `/api/connectors/${encodeURIComponent(selectedConnectorId)}/sessions/sync`,
+        { method: "POST", body: "{}" },
+      )
+      setTrackedCommand({ id: result.command.id, label: "Session state sync", status: result.command.status })
+      setNotice("Confirming current Session state and capabilities.")
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Session state sync failed.")
     } finally {
       setBusyAction(null)
     }
@@ -1572,6 +1739,7 @@ function App() {
     setHistory(null)
     setShowToolEvents(false)
     setSelection(null)
+    setFollowUps({})
     setTrackedCommand(null)
     setSettingsOpen(false)
     setMobileView("list")
@@ -1646,11 +1814,14 @@ function App() {
   ) => {
     const { session } = item
     const connector = connectorById.get(session.connectorId)
+    const displayStatus = sessionDisplayStatus(session, connector)
+    const executionStateCurrent = sessionConfirmationIsCurrent(session, connector)
+      && session.executionStateKnown === true
     const isSelected =
       session.connectorId === selectedConnectorId
       && session.id === selectedSessionId
     const isCollapsed = collapsedSessionKeys.has(sessionKey(session))
-    const preview = sessionPreview(session)
+    const preview = executionStateCurrent ? sessionPreview(session) : session.lastMessagePreview
     return (
       <div
         key={`${session.connectorId}:${session.id}`}
@@ -1659,7 +1830,7 @@ function App() {
         <span className="session-tree-control">
           <span
             className="session-state-dot"
-            data-status={session.status}
+            data-status={displayStatus}
             aria-hidden="true"
           />
           {item.hasChildren && (
@@ -1705,12 +1876,12 @@ function App() {
             </span>
             <span
               className="session-item-meta"
-              title={session.nativeStatus
+              title={executionStateCurrent && session.nativeStatus
                 ? `Agent status: ${session.nativeStatus}`
                 : undefined}
             >
               <span className="session-item-status">
-                {sessionStatusLabel(session.status)}
+                {sessionStatusLabel(displayStatus)}
               </span>
               {!groupedByDevice && (
                 <span className="device-tag">
@@ -1776,8 +1947,9 @@ function App() {
                       </span>
                     </div>
                     <SessionStatus
-                      status={selectedAgentSession.status}
-                      nativeStatus={selectedAgentSession.nativeStatus}
+                      status={selectedDisplayStatus}
+                      nativeStatus={selectedConfirmationCurrent && selectedAgentSession.executionStateKnown
+                        ? selectedAgentSession.nativeStatus : null}
                     />
                   </>
                 )
@@ -1835,9 +2007,10 @@ function App() {
             <div>
               <h2>Sessions</h2>
               <p>
-                {visibleSessionCount === 1
-                  ? "1 current session"
-                  : `${visibleSessionCount} current sessions`}
+                {visibleSessionCount} matching {visibleSessionCount === 1 ? "Session" : "Sessions"}
+                {showOfflineSessions && sessionStatusView === "all" && sessionStatusCounts.offline > 0
+                  ? ` · ${sessionStatusCounts.offline} offline history` : ""}
+                {sessionStatusView === "all" && sessionStatusCounts.pending > 0 ? ` · ${sessionStatusCounts.pending} state unconfirmed` : ""}
               </p>
             </div>
             <Button
@@ -1874,7 +2047,7 @@ function App() {
               >
                 All
               </button>
-              {sessionStatusCounts.active > 0 && (
+              {(sessionStatusCounts.active > 0 || sessionStatusView === "active") && (
                 <button
                   type="button"
                   aria-pressed={sessionStatusView === "active"}
@@ -1883,7 +2056,7 @@ function App() {
                   Active {sessionStatusCounts.active}
                 </button>
               )}
-              {sessionStatusCounts.waiting > 0 && (
+              {(sessionStatusCounts.waiting > 0 || sessionStatusView === "waiting") && (
                 <button
                   type="button"
                   className="is-waiting"
@@ -1893,7 +2066,7 @@ function App() {
                   Needs input {sessionStatusCounts.waiting}
                 </button>
               )}
-              {sessionStatusCounts.failed > 0 && (
+              {(sessionStatusCounts.failed > 0 || sessionStatusView === "failed") && (
                 <button
                   type="button"
                   className="is-failed"
@@ -1934,6 +2107,13 @@ function App() {
                   >
                     Show unavailable
                   </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={showOfflineSessions}
+                    onCheckedChange={(checked) => setShowOfflineSessions(checked === true)}
+                  >
+                    Show offline Sessions ({devicesRefreshFailed || sessionsRefreshFailed
+                      ? "unknown" : sessionStatusCounts.offline})
+                  </DropdownMenuCheckboxItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuCheckboxItem
                     checked={deviceGroupingEnabled}
@@ -1947,6 +2127,25 @@ function App() {
             </div>
           </div>
 
+          {(devicesRefreshFailed || sessionsRefreshFailed) && (
+            <div className="session-view-notice is-error" role="alert">
+              <strong>Unable to refresh Sessions</strong>
+              <span>Showing saved content. Device and execution states are not confirmed.</span>
+              <button type="button" onClick={retryRefresh}>Retry refresh</button>
+            </div>
+          )}
+          {showOfflineShortcut && (
+            <div className="session-view-notice" role="status">
+              <span>{sessionStatusCounts.offline} matching offline Sessions are hidden.
+                {sessionStatusView !== "all" ? " Current state filters do not include offline history." : ""}</span>
+              <button type="button" onClick={revealOfflineHistory}>
+                {sessionStatusView === "all" ? "View offline history" : "View offline history (switch to All)"}
+              </button>
+            </div>
+          )}
+          {!showOfflineShortcut && !showOfflineSessions && sessionStatusCounts.offline > 0 && (
+            <p className="session-hidden-hint">{sessionStatusCounts.offline} offline Sessions hidden · View options</p>
+          )}
           <div className="session-list">
             {sessionsLoading && agentSessions.length === 0 && (
               <div className="session-list-state" role="status">
@@ -1956,7 +2155,7 @@ function App() {
               </div>
             )}
 
-            {!sessionsLoading && agentSessions.length === 0 && (
+            {!sessionsLoading && !sessionsRefreshFailed && !devicesRefreshFailed && agentSessions.length === 0 && (
               <div className="session-list-state">
                 <Laptop aria-hidden="true" />
                 <strong>No Sessions yet</strong>
@@ -1975,8 +2174,12 @@ function App() {
             {agentSessions.length > 0 && visibleAgentSessions.length === 0 && (
               <div className="session-list-state">
                 <Search aria-hidden="true" />
-                <strong>No matching Sessions</strong>
-                <span>Try a different search or show all states.</span>
+                <strong>{sessionStatusCounts.offline > 0 && !showOfflineSessions && !sessionQuery.trim() && sessionStatusView === "all"
+                  ? "No online Sessions in this view"
+                  : sessionStatusCounts.hiddenLifecycle > 0 ? "Some history is hidden by view options" : "No matching Sessions"}</strong>
+                <span>{sessionStatusCounts.hiddenLifecycle > 0
+                  ? "Show ended / Show unavailable controls also apply. Offline visibility does not override them."
+                  : showOfflineShortcut ? "Your offline history is still available from the entry above." : "Try a different search or show all states."}</span>
                 <Button
                   size="sm"
                   variant="outline"
@@ -1993,8 +2196,10 @@ function App() {
             {deviceGroupingEnabled
               ? sessionDeviceGroups.map((group) => {
                   const expanded = expandedDeviceIds.has(group.source.id)
-                  const groupCounts = countSessionStatuses(
-                    group.sessions.map((item) => item.session),
+                  const groupCounts = deriveSessionFacets(
+                    agentSessions.filter((session) => session.connectorId === group.source.id),
+                    connectorById,
+                    { query: sessionQuery, showEnded: showEndedSessions, showUnavailable: showUnavailableSessions },
                   )
                   return (
                     <section
@@ -2028,6 +2233,7 @@ function App() {
                           data-status={group.source.status}
                         >
                           {group.source.status}
+                          {group.source.status === "online" && groupCounts.pending > 0 ? " · state unconfirmed" : ""}
                         </span>
                       </button>
                       {expanded && group.sessions.map((item) =>
@@ -2075,11 +2281,49 @@ function App() {
                       </span>
                     </div>
                     <SessionStatus
-                      status={selectedAgentSession.status}
-                      nativeStatus={selectedAgentSession.nativeStatus}
+                      status={selectedDisplayStatus}
+                      nativeStatus={selectedConfirmationCurrent && selectedAgentSession.executionStateKnown
+                        ? selectedAgentSession.nativeStatus : null}
                     />
                   </div>
 
+                  {["offline", "unknown-device", "syncing", "sync-failed", "unsupported", "unconfirmed"].includes(selectedDisplayStatus) && (
+                    <div className={`session-connection-notice${selectedDisplayStatus === "sync-failed" ? " is-error" : ""}`}
+                      role={selectedDisplayStatus === "sync-failed" ? "alert" : "status"}>
+                      <strong>{sessionStatusLabel(selectedDisplayStatus)}</strong>
+                      <span>{selectedDisplayStatus === "offline"
+                        ? "The Device is unreachable. Read saved content or edit a local draft; reconnect and confirm capabilities to continue."
+                        : selectedDisplayStatus === "unsupported"
+                        ? "Update the connector to support current-connection confirmation. Saved content and local drafts remain available."
+                        : selectedDisplayStatus === "sync-failed"
+                        ? selectedSource?.sessionSyncError ?? "The current Session state could not be confirmed."
+                        : selectedDisplayStatus === "unconfirmed"
+                        ? "This Session was not confirmed in the current inventory. Its saved content may be incomplete."
+                        : "Current Device or Session information is not confirmed. Saved content and local drafts remain available."}</span>
+                      {selectedDisplayStatus === "offline" && !showOfflineSessions && (
+                        <button type="button" onClick={revealOfflineHistory}>View offline history</button>
+                      )}
+                      {["sync-failed", "unconfirmed"].includes(selectedDisplayStatus) && (
+                        <button type="button" onClick={() => void retrySessionState()}
+                          disabled={busyAction === "sync-state" || Boolean(trackedCommand)}>
+                          Retry state sync
+                        </button>
+                      )}
+                      {selectedDisplayStatus === "unknown-device" && (
+                        <button type="button" onClick={retryRefresh}>Refresh Device information</button>
+                      )}
+                    </div>
+                  )}
+                  {trackedCommand && (trackedCommand.status === "unknown" || selectedDisplayStatus === "offline") && (
+                    <div className="session-connection-notice" role="status">
+                      <strong>Command result not confirmed</strong>
+                      <span>Reconnecting does not mean execution failed or succeeded. The command will not be resent automatically.</span>
+                      <button type="button" onClick={() => {
+                        setTrackedCommand(null)
+                        setNotice("Stopped watching this result; its command record remains unconfirmed. Nothing was resent.")
+                      }}>Stop watching this result</button>
+                    </div>
+                  )}
                   <TranscriptScroll key={selectionKey}>
                       <div className="transcript-origin">
                         <span>Session opened</span>
@@ -2104,7 +2348,7 @@ function App() {
                         )}
                       </div>
 
-                      {selectedSessionArchived && (
+                      {selectedSessionArchived && selectedConfirmationCurrent && (
                         <div className="history-state-notice" role="status">
                           <strong>This Session is archived and read-only.</strong>
                           <span>Its saved activity remains available.</span>
@@ -2123,6 +2367,7 @@ function App() {
                           </span>
                           <button
                             type="button"
+                            disabled={!canSyncSelectedHistory || Boolean(trackedCommand)}
                             onClick={() => {
                               historyRequests.current.delete(selectionKey)
                               setHistorySyncFailure(null)
@@ -2136,17 +2381,18 @@ function App() {
 
                       {events.length === 0 && (
                         <div className="transcript-empty" role="status">
-                          {selectedConnector?.status === "offline"
+                          {selectedDisplayStatus === "offline"
                             ? <WifiOff aria-hidden="true" />
                             : <LoaderCircle className="animate-spin" aria-hidden="true" />}
                           <strong>
-                            {selectedConnector?.status === "offline"
+                            {selectedDisplayStatus === "offline"
                               ? "Device is offline"
-                              : "Waiting for activity"}
+                              : !selectedConfirmationCurrent ? "No saved activity loaded" : "Waiting for activity"}
                           </strong>
                           <span>
-                            {selectedConnector?.status === "offline"
+                            {selectedDisplayStatus === "offline"
                               ? "Recent events remain available. Reconnect the Device to continue."
+                              : !selectedConfirmationCurrent ? "Only synchronized content can be read until the Device is reachable and confirmed."
                               : "Events will appear here as the agent works."}
                           </span>
                         </div>
@@ -2187,13 +2433,13 @@ function App() {
 
                   <div
                     className={`session-composer-shell${
-                      selectedAgentSession.status === "waiting"
+                      hasCurrentPendingInput
                         ? " has-pending-input"
                         : ""
                     }`}
                   >
                     <form className="session-composer" onSubmit={sendFollowUp}>
-                      {selectedAgentSession.status === "waiting" && (
+                      {hasCurrentPendingInput && (
                         <PendingInputPanel
                           request={pendingInputRequest}
                           canReply={canSendFollowUp}
@@ -2229,9 +2475,9 @@ function App() {
                             }
                           }}
                           placeholder={
-                            selectedAgentSession.canSendMessage === false
+                            selectedConfirmationCurrent && selectedAgentSession.canSendMessage === false
                               ? "This Session is read-only"
-                              : selectedAgentSession.status === "waiting"
+                              : hasCurrentPendingInput
                               ? pendingInputAllowsCustomAnswer
                                 ? "Enter a custom answer... Shift+Enter for a new line."
                                 : "Reply to the agent's request... Shift+Enter for a new line."
@@ -2240,7 +2486,7 @@ function App() {
                               : "This Session cannot receive messages right now"
                           }
                           rows={2}
-                          disabled={!canSendFollowUp}
+                          disabled={selectedConfirmationCurrent && selectedAgentSession.canSendMessage === false}
                         />
                         <div className="composer-toolbar">
                           <div className="composer-status" aria-live="polite">
@@ -2252,17 +2498,19 @@ function App() {
                                       aria-hidden="true"
                                     />
                                     {trackedCommand.label}{" "}
-                                    {trackedCommand.status}
+                                    {trackedCommand.status === "unknown" ? "result not confirmed" : trackedCommand.status}
                                   </>
                                 )
-                              : selectedConnector?.status === "offline"
+                              : selectedDisplayStatus === "offline"
                               ? (
                                   <>
                                     <WifiOff aria-hidden="true" />
-                                    Reconnect {selectedConnector.displayName} to
+                                    Reconnect {selectedConnector?.displayName ?? "the Device"} to
                                     send a follow-up.
                                   </>
                                 )
+                              : !canSendFollowUp
+                              ? <span>Local draft only · sending is not available.</span>
                               : (
                                   <>
                                     <Laptop aria-hidden="true" />

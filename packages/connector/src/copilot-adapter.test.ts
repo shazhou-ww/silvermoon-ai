@@ -264,7 +264,9 @@ describe("CopilotAgentAdapter", () => {
     await expect(adapter.listSessions()).resolves.toContainEqual(
       expect.objectContaining({
         id: "session-existing",
-        status: "idle",
+        status: "unknown",
+        executionStateKnown: false,
+        canSendMessage: true,
       }),
     );
     const created = await adapter.createSession({
@@ -384,7 +386,9 @@ describe("CopilotAgentAdapter", () => {
       session: expect.objectContaining({
         id: "session-existing",
         title: "Existing work",
-        status: "idle",
+        status: "unknown",
+        executionStateKnown: false,
+        canSendMessage: true,
       }),
     });
     await adapter.sendMessage({

@@ -81,6 +81,7 @@ export const agentSessionSchema = z.object({
   lastMessagePreview: z.string().max(512).nullable().default(null),
   canSendMessage: z.boolean().optional(),
   pendingInputRequest: agentInputRequestSchema.nullable().optional(),
+  executionStateKnown: z.boolean().optional(),
 });
 
 export const agentSessionEventPartKindSchema = z.enum([
@@ -130,6 +131,7 @@ export const agentSessionEventSchema = z.object({
 const commandBaseSchema = z.object({
   protocolVersion: z.literal(PROTOCOL_VERSION),
   commandId: requestIdSchema,
+  connectionId: z.uuid().optional(),
 });
 
 export const listSessionsCommandSchema = commandBaseSchema.extend({

@@ -560,9 +560,49 @@ textarea:focus-visible {
 }
 
 .session-status[data-status="failed"],
-.session-status[data-status="gone"] {
+.session-status[data-status="gone"],
+.session-status[data-status="sync-failed"] {
   color: #a12f39;
   background: #f8e5e7;
+}
+
+.session-view-notice,
+.session-connection-notice {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.7rem;
+  padding: 0.65rem 0.9rem;
+  color: var(--muted-foreground);
+  background: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.session-connection-notice {
+  border-bottom: 1px solid var(--border);
+  padding-inline: var(--conversation-inline-padding);
+}
+
+.session-view-notice.is-error,
+.session-connection-notice.is-error {
+  color: var(--destructive);
+}
+
+.session-view-notice button,
+.session-connection-notice button {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
+  cursor: pointer;
+}
+
+.session-hidden-hint {
+  margin: 0;
+  padding: 0.35rem 1rem;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
 }
 
 .account-trigger {

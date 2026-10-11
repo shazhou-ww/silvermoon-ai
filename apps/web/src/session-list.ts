@@ -23,12 +23,18 @@ export interface FilterableSession extends HierarchicalSession {
   title: string | null
   status: string
   lastMessagePreview: string | null
+  confirmedConnectionId?: string | null
+  executionStateKnown?: boolean
+  capabilityConfirmed?: boolean
 }
 
 export interface SessionSource {
   id: string
   displayName: string
-  status: "online" | "offline"
+  status: "online" | "offline" | "unknown"
+  connectionId?: string | null
+  sessionSyncState?: "unsupported" | "pending" | "ready" | "failed"
+  sessionSyncError?: string | null
   agent: {
     name: string
   } | null
@@ -54,6 +60,7 @@ export interface SessionListOptions {
   statusView: SessionStatusView
   showEnded: boolean
   showUnavailable: boolean
+  showOffline?: boolean
   collapsedSessionKeys?: ReadonlySet<string>
 }
 
@@ -116,6 +123,73 @@ function statusMatchesView(
   if (view === "waiting") return status === "waiting"
   if (view === "failed") return status === "failed"
   return true
+}
+
+export function sessionConfirmationIsCurrent(
+  session: FilterableSession,
+  source: SessionSource | undefined,
+): boolean {
+  return source?.status === "online"
+    && Boolean(source.connectionId)
+    && session.confirmedConnectionId === source.connectionId
+}
+
+export function sessionDisplayStatus(
+  session: FilterableSession,
+  source: SessionSource | undefined,
+): string {
+  if (!source || source.status === "unknown") return "unknown-device"
+  if (source.status === "offline") return "offline"
+  if (sessionConfirmationIsCurrent(session, source)) {
+    return session.executionStateKnown === true ? session.status : "unknown"
+  }
+  if (!source.sessionSyncState || source.sessionSyncState === "unsupported") return "unsupported"
+  if (source.sessionSyncState === "failed") return "sync-failed"
+  return source.sessionSyncState === "pending" ? "syncing" : "unconfirmed"
+}
+
+export function sessionMatchesScope(
+  session: FilterableSession,
+  source: SessionSource | undefined,
+  options: Pick<SessionListOptions, "query" | "showEnded" | "showUnavailable">,
+): boolean {
+  const status = normalizedSessionStatus(session.status)
+  if (status === "closed" && !options.showEnded) return false
+  if (status === "gone" && !options.showUnavailable) return false
+  const query = options.query.trim().toLocaleLowerCase()
+  return !query || [
+    session.title ?? "",
+    session.lastMessagePreview ?? "",
+    source?.displayName ?? "",
+    source?.agent?.name ?? "",
+  ].some((value) => value.toLocaleLowerCase().includes(query))
+}
+
+export function deriveSessionFacets(
+  sessions: readonly FilterableSession[],
+  sources: ReadonlyMap<string, SessionSource>,
+  options: Pick<SessionListOptions, "query" | "showEnded" | "showUnavailable">,
+) {
+  const scoped = sessions.filter((session) =>
+    sessionMatchesScope(session, sources.get(session.connectorId), options),
+  )
+  return {
+    ...countSessionStatuses(scoped.filter((session) =>
+      sessionConfirmationIsCurrent(session, sources.get(session.connectorId))
+      && session.executionStateKnown === true,
+    )),
+    offline: scoped.filter((session) => sources.get(session.connectorId)?.status === "offline").length,
+    pending: scoped.filter((session) =>
+      sources.get(session.connectorId)?.status !== "offline"
+      && (!sessionConfirmationIsCurrent(session, sources.get(session.connectorId))
+        || session.executionStateKnown !== true),
+    ).length,
+    hiddenLifecycle: sessions.filter((session) =>
+      sessionMatchesScope(session, sources.get(session.connectorId), {
+        ...options, showEnded: true, showUnavailable: true,
+      }),
+    ).length - scoped.length,
+  }
 }
 
 function buildValidParentMap<T extends HierarchicalSession>(
@@ -209,22 +283,14 @@ export function deriveVisibleSessions<T extends FilterableSession>(
   const directlyIncluded = new Set<string>()
 
   for (const session of sessions) {
-    const status = normalizedSessionStatus(session.status)
-    if (status === "closed" && !options.showEnded) continue
-    if (status === "gone" && !options.showUnavailable) continue
-    if (!statusMatchesView(status, options.statusView)) continue
-    if (query) {
-      const source = sources.get(session.connectorId)
-      const values = [
-        session.title ?? "",
-        session.lastMessagePreview ?? "",
-        source?.displayName ?? "",
-        source?.agent?.name ?? "",
-      ]
-      if (!values.some((value) => value.toLocaleLowerCase().includes(query))) {
-        continue
-      }
-    }
+    const source = sources.get(session.connectorId)
+    if (!sessionMatchesScope(session, source, options)) continue
+    if (source?.status === "offline" && (!options.showOffline || options.statusView !== "all")) continue
+    if (options.statusView !== "all" && (
+      !sessionConfirmationIsCurrent(session, source)
+      || session.executionStateKnown !== true
+      || !statusMatchesView(normalizedSessionStatus(session.status), options.statusView)
+    )) continue
     directlyIncluded.add(sessionKey(session))
   }
 
@@ -265,7 +331,7 @@ export function groupSessionsByDevice<T extends FilterableSession>(
       source: sources.get(connectorId) ?? {
         id: connectorId,
         displayName: "Unknown device",
-        status: "offline" as const,
+        status: "unknown" as const,
         agent: null,
       },
       sessions: items,

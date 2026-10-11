@@ -25,6 +25,19 @@ async function fixture(
     status: "online",
     delaySecondSession: false,
     eventPolls: 0,
+    generation: 1,
+    confirmedGeneration: 1,
+    messageResult: "sent",
+    sentMessages: [] as Record<string, unknown>[],
+    executionStateKnown: true,
+    failSessionRefresh: false,
+    sessionDelayMs: 0,
+    sessionRequests: 0,
+    activeSessionRequests: 0,
+    maxActiveSessionRequests: 0,
+    omitFirstSession: false,
+    stateSyncFailed: false,
+    stateSyncRequests: 0,
   }
   await page.route("https://relay.silvermoon.work/**", async (route) => {
     const url = new URL(route.request().url())
@@ -34,6 +47,9 @@ async function fixture(
       agent: null,
       capabilities: { listSessions: true, createSession: true, sendMessage: true, streamEvents: true },
       status: state.status,
+      connectionId: `${id}-connection-${state.generation}`,
+      sessionSyncState: state.stateSyncFailed ? "failed" : state.generation === state.confirmedGeneration ? "ready" : "pending",
+      sessionSyncError: state.stateSyncFailed ? "Current inventory refresh failed." : null,
       connectedAt: null,
       disconnectedAt: null,
       lastSeenAt: null,
@@ -73,6 +89,23 @@ async function fixture(
         status: "succeeded",
         error: null,
       }
+    } else if (url.pathname.endsWith("/sessions/sync")) {
+      state.stateSyncRequests++
+      state.stateSyncFailed = false
+      state.confirmedGeneration = state.generation
+      body = { command: { id: "state-sync", type: "sessions.list", status: "sent" } }
+    } else if (url.pathname === "/api/commands/state-sync") {
+      body = { id: "state-sync", connectorId: "one", type: "sessions.list", sessionId: null, status: "succeeded", error: null }
+    } else if (url.pathname.endsWith("/messages")) {
+      state.sentMessages.push(route.request().postDataJSON())
+      body = { command: { id: "follow-up", type: "session.message", status: "sent" } }
+    } else if (url.pathname === "/api/commands/follow-up") {
+      body = {
+        id: "follow-up", connectorId: "one", type: "session.message",
+        sessionId: "session-1", status: state.messageResult,
+        error: state.messageResult === "unknown"
+          ? { code: "command-result-unconfirmed", message: "Result not confirmed." } : null,
+      }
     } else if (url.pathname.endsWith("/events")) {
       state.eventPolls++
       const second = url.pathname.includes("/two/")
@@ -86,7 +119,16 @@ async function fixture(
       body = { events: source.filter((event) => event.sequence > after), nextAfter: source.at(-1)?.sequence ?? -1 }
     } else if (url.pathname.endsWith("/sessions")) {
       const second = url.pathname.includes("/two/")
-      body = [{
+      state.sessionRequests++
+      state.activeSessionRequests++
+      state.maxActiveSessionRequests = Math.max(state.maxActiveSessionRequests, state.activeSessionRequests)
+      if (state.sessionDelayMs) await new Promise((resolve) => setTimeout(resolve, state.sessionDelayMs))
+      state.activeSessionRequests--
+      if (state.failSessionRefresh) {
+        await route.fulfill({ status: 503, json: { error: "Session inventory unavailable" } })
+        return
+      }
+      body = { sessions: !second && state.omitFirstSession ? [] : [{
         id: "session-1",
         connectorId: second ? "two" : "one",
         parentSessionId: null,
@@ -97,7 +139,10 @@ async function fixture(
         lastActivityAt: "2026-10-10T00:00:00.000Z",
         lastMessagePreview: null,
         canSendMessage: true,
-      }]
+        confirmedConnectionId: `${second ? "two" : "one"}-connection-${state.confirmedGeneration}`,
+        executionStateKnown: state.executionStateKnown,
+        capabilityConfirmed: true,
+      }], nextCursor: null }
     } else {
       throw new Error(`Unexpected API request: ${route.request().method()} ${url.pathname}`)
     }
@@ -188,6 +233,119 @@ test("input answers render after the waiting message", async ({ page }) => {
   await expect(blocks.nth(0)).toContainText("I need one confirmation first.")
   await expect(blocks.nth(1)).toContainText("Pause until I return.")
   await expect(blocks.nth(2)).toContainText("Okay, I will pause here.")
+})
+
+test("refresh failure preserves content, blocks sending and retries both indexes without false empty state", async ({ page }) => {
+  const state = await fixture(page)
+  await expect(page.getByText("Message 39", { exact: true })).toBeVisible()
+  const composer = page.getByRole("textbox", { name: "Follow-up message" })
+  await composer.fill("Local draft survives refresh failure")
+  state.failSessionRefresh = true
+  await expect(page.getByText("Unable to refresh Sessions", { exact: true })).toHaveCount(1, { timeout: 8000 })
+  await expect(page.getByText("No Sessions yet", { exact: true })).toHaveCount(0)
+  await expect(composer).toHaveValue("Local draft survives refresh failure")
+  await expect(page.getByRole("button", { name: "Send follow-up" })).toBeDisabled()
+  state.failSessionRefresh = false
+  await page.getByRole("button", { name: "Refresh Device information" }).press("Enter")
+  await expect(page.getByText("Unable to refresh Sessions", { exact: true })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Send follow-up" })).toBeEnabled()
+  await expect(composer).toHaveValue("Local draft survives refresh failure")
+  expect(state.sentMessages).toHaveLength(0)
+})
+
+test("slow paged inventory reads do not overlap successive refreshes", async ({ page }) => {
+  const state = await fixture(page)
+  await expect(page.getByText("Message 39", { exact: true })).toBeVisible()
+  state.maxActiveSessionRequests = 0
+  const requests = state.sessionRequests
+  state.sessionDelayMs = 4200
+  await expect.poll(() => state.sessionRequests, { timeout: 8000 }).toBeGreaterThan(requests)
+  await page.waitForTimeout(3500)
+  expect(state.maxActiveSessionRequests).toBeLessThanOrEqual(2)
+  state.sessionDelayMs = 0
+})
+
+test("state sync failure keeps drafts and restores capability only after explicit state retry", async ({ page }) => {
+  const state = await fixture(page)
+  await expect(page.getByText("Message 39", { exact: true })).toBeVisible()
+  const composer = page.getByRole("textbox", { name: "Follow-up message" })
+  await composer.fill("Draft during sync failure")
+  state.generation = 2
+  state.stateSyncFailed = true
+  await expect(page.locator(".session-connection-notice").getByText("Status sync failed", { exact: true })).toBeVisible({ timeout: 8000 })
+  await expect(page.getByRole("button", { name: "Send follow-up" })).toBeDisabled()
+  await expect(composer).toHaveValue("Draft during sync failure")
+  await page.getByRole("button", { name: "Retry state sync" }).press("Enter")
+  await expect.poll(() => state.stateSyncRequests).toBe(1)
+  await expect(page.getByRole("button", { name: "Send follow-up" })).toBeEnabled({ timeout: 8000 })
+  await expect(composer).toHaveValue("Draft during sync failure")
+  expect(state.sentMessages).toHaveLength(0)
+})
+
+test("a removed open Session clears inaccessible content without selecting another Session automatically", async ({ page }) => {
+  const state = await fixture(page)
+  await expect(page.getByText("Message 39", { exact: true })).toBeVisible()
+  state.omitFirstSession = true
+  await expect(page.getByText("The selected Session is no longer available. Choose another Session.", { exact: true })).toBeVisible({ timeout: 8000 })
+  await expect(page.getByText("Message 39", { exact: true })).toHaveCount(0)
+  await expect(page.getByText("Second device 29", { exact: true })).toHaveCount(0)
+  await expect(page).not.toHaveURL(/connector=/)
+  await expect(page.getByRole("heading", { name: "Select a Session to continue" })).toBeVisible()
+})
+
+test("confirmed continuation does not invent execution state for metadata-only Sessions", async ({ page }) => {
+  const state = await fixture(page)
+  await expect(page.getByText("Message 39", { exact: true })).toBeVisible()
+  state.executionStateKnown = false
+  await expect(page.locator(".session-item-status").first()).toHaveText("Execution state unknown", { timeout: 8000 })
+  await page.getByRole("textbox", { name: "Follow-up message" }).fill("Explicitly continue saved work")
+  await expect(page.getByRole("button", { name: "Send follow-up" })).toBeEnabled()
+  expect(state.sentMessages).toHaveLength(0)
+  await page.getByRole("button", { name: "Send follow-up" }).click()
+  await expect.poll(() => state.sentMessages.length).toBe(1)
+})
+
+test("offline drafts and reconnect confirmation preserve the open Session and do not resend", async ({ page, isMobile }) => {
+  const state = await fixture(page)
+  await expect(page.getByText("Message 39", { exact: true })).toBeVisible()
+  const composer = page.getByRole("textbox", { name: "Follow-up message" })
+  await composer.fill("Keep this local draft")
+  await scrollFromBottom(page, 900)
+  const position = await scrollRegion(page).evaluate((element) => element.scrollTop)
+  const url = page.url()
+  state.status = "offline"
+  await expect(page.locator(".session-connection-notice").getByText("Offline", { exact: true })).toBeVisible({ timeout: 8000 })
+  await expect(composer).toBeEnabled()
+  await expect(composer).toHaveValue("Keep this local draft")
+  expect(page.url()).toBe(url)
+  expect(await scrollRegion(page).evaluate((element) => element.scrollTop)).toBe(position)
+  await composer.fill("Edited while offline")
+  await expect(page.getByRole("button", { name: "Send follow-up" })).toBeDisabled()
+  state.status = "online"
+  state.generation = 2
+  await expect(page.locator(".session-connection-notice").getByText("Syncing status", { exact: true })).toBeVisible({ timeout: 8000 })
+  await expect(page.getByRole("button", { name: "Send follow-up" })).toBeDisabled()
+  state.confirmedGeneration = 2
+  await expect(page.getByRole("button", { name: "Send follow-up" })).toBeEnabled({ timeout: 8000 })
+  await expect(composer).toHaveValue("Edited while offline")
+  expect(state.sentMessages).toHaveLength(0)
+  await page.getByRole("button", { name: "Send follow-up" }).click()
+  await expect.poll(() => state.sentMessages.length).toBe(1)
+  expect(state.sentMessages[0]).toMatchObject({ connectionId: "one-connection-2", message: "Edited while offline" })
+  state.messageResult = "unknown"
+  await expect(page.getByText("Command result not confirmed", { exact: true })).toBeVisible()
+  expect(state.sentMessages).toHaveLength(1)
+  await page.getByRole("button", { name: "Stop watching this result" }).click()
+  expect(state.sentMessages).toHaveLength(1)
+  await composer.fill("Draft for the first Device")
+  if (isMobile) await page.getByRole("button", { name: "Back to Sessions" }).click()
+  await page.locator(".session-item-select").filter({ hasText: "Second Session" }).press("Enter")
+  await expect(composer).toHaveValue("")
+  await composer.fill("Draft for the second Device")
+  if (isMobile) await page.getByRole("button", { name: "Back to Sessions" }).click()
+  await page.locator(".session-item-select").filter({ hasText: "First Session" }).press("Enter")
+  await expect(composer).toHaveValue("Draft for the first Device")
+  expect(state.sentMessages).toHaveLength(1)
 })
 
 test("device settings use one add flow and unified device cards", async ({ page }) => {

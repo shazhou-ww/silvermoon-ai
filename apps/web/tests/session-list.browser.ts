@@ -88,6 +88,7 @@ async function fixture(
   page: Page,
   historyCommandStatus: "succeeded" | "failed" = "succeeded",
   pendingInputRequest: AgentInputRequest | null = optionInputRequest,
+  deviceState = { status: "online", generation: 1, confirmedGeneration: 1 },
 ) {
   let historySyncRequests = 0
   await page.route("https://relay.silvermoon.work/**", async (route) => {
@@ -102,7 +103,10 @@ async function fixture(
         sendMessage: true,
         streamEvents: true,
       },
-      status,
+      status: id === "studio" ? deviceState.status : status,
+      connectionId: `${id}-connection-${deviceState.generation}`,
+      sessionSyncState: deviceState.generation === deviceState.confirmedGeneration ? "ready" : "pending",
+      sessionSyncError: null,
       connectedAt: null,
       disconnectedAt: null,
       lastSeenAt: null,
@@ -158,7 +162,7 @@ async function fixture(
         : { events: [], nextAfter: -1 }
     } else if (url.pathname.endsWith("/sessions")) {
       const connectorId = url.pathname.split("/")[3]
-      body = sessions
+      body = { sessions: sessions
         .filter((session) => session.connectorId === connectorId)
         .map((session) => ({
           ...session,
@@ -171,7 +175,10 @@ async function fixture(
           pendingInputRequest: session.id === "signing"
             ? pendingInputRequest
             : null,
-        }))
+          confirmedConnectionId: `${connectorId}-connection-${deviceState.confirmedGeneration}`,
+          executionStateKnown: true,
+          capabilityConfirmed: true,
+        })), nextCursor: null }
     } else {
       throw new Error(
         `Unexpected API request: ${route.request().method()} ${url.pathname}`,
@@ -194,7 +201,8 @@ test("status views, parent context, and hover disclosure stay coherent", async (
   await fixture(page)
   await expect(page.getByRole("button", { name: "Active 1" })).toBeVisible()
   await expect(page.getByRole("button", { name: "Needs input 1" })).toBeVisible()
-  await expect(page.getByRole("button", { name: "Failed 1" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Failed 1" })).toHaveCount(0)
+  await expect(page.getByText("Repair preview deployment", { exact: true })).toHaveCount(0)
   await expect(page.getByText("Completed migration", { exact: true }))
     .toHaveCount(0)
   await expect(page.getByText("Unavailable connector work", { exact: true }))
@@ -211,6 +219,7 @@ test("status views, parent context, and hover disclosure stay coherent", async (
   const collapseButton = parent.getByRole("button", {
     name: "Collapse Release desktop client",
   })
+
   await collapseButton.focus()
   await expect(parent.locator(".session-tree-toggle")).toHaveCSS("opacity", "1")
   await collapseButton.press("Enter")
@@ -231,6 +240,29 @@ test("status views, parent context, and hover disclosure stay coherent", async (
   await expect(page.getByText("Confirm signing identity", { exact: true }))
     .toBeVisible()
   await expect(page.locator(".session-list-item.is-subsession")).toHaveCount(1)
+})
+
+test("offline history, keyword facets and selected zero states use AND semantics", async ({ page }) => {
+  await fixture(page)
+  const search = page.getByRole("textbox", { name: "Search Sessions, Agents, and Devices" })
+  await search.fill("signing")
+  await expect(page.getByRole("button", { name: "Active 1" })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Needs input 1" })).toBeVisible()
+  await page.getByRole("button", { name: "Needs input 1" }).click()
+  await search.fill("Travel")
+  await expect(page.getByRole("button", { name: "Needs input 0" })).toBeVisible()
+  await expect(search).toHaveValue("Travel")
+  await page.getByRole("button", { name: "View offline history (switch to All)" }).click()
+  await expect(search).toHaveValue("Travel")
+  const offlineRow = page.locator(".session-list-item").filter({ hasText: "Repair preview deployment" })
+  await expect(offlineRow).toContainText("Offline")
+  await expect(offlineRow).not.toContainText("Failed")
+  await page.getByRole("button", { name: "Session view options" }).click()
+  await expect(page.getByRole("menuitemcheckbox", { name: "Show offline Sessions (1)" })).toHaveAttribute("data-state", "checked")
+  await page.keyboard.press("Escape")
+  await search.fill("missing keyword")
+  await page.getByRole("button", { name: "Session view options" }).click()
+  await expect(page.getByRole("menuitemcheckbox", { name: "Show offline Sessions (0)" })).toBeVisible()
 })
 
 test("view options reveal hidden states and focus device groups", async ({ page }) => {
@@ -369,9 +401,35 @@ test("waiting sessions with missing metadata give an honest fallback", async ({ 
   })).toBeVisible()
 })
 
+test("input request actions follow offline and current-connection capability confirmation", async ({ page }) => {
+  const state = { status: "online", generation: 1, confirmedGeneration: 1 }
+  await fixture(page, "succeeded", optionInputRequest, state)
+  await page.getByText("Confirm signing identity", { exact: true }).click()
+  await expect(page.locator(".pending-input")).toBeVisible()
+  await expect(page.getByRole("button", { name: /Apple Distribution/ })).toBeEnabled()
+  const draft = page.getByRole("textbox", { name: "Follow-up message" })
+  await draft.fill("Draft survives the old input request")
+  state.status = "offline"
+  await expect(page.locator(".session-connection-notice").getByText("Offline", { exact: true })).toBeVisible({ timeout: 8000 })
+  await expect(page.locator(".pending-input")).toHaveCount(0)
+  await expect(draft).toBeEnabled()
+  await expect(draft).toHaveValue("Draft survives the old input request")
+  await expect(page.getByRole("button", { name: "Send follow-up" })).toBeDisabled()
+  state.status = "online"
+  state.generation = 2
+  await expect(page.locator(".session-connection-notice").getByText("Syncing status", { exact: true })).toBeVisible({ timeout: 8000 })
+  await expect(page.locator(".pending-input")).toHaveCount(0)
+  state.confirmedGeneration = 2
+  await expect(page.locator(".pending-input")).toBeVisible({ timeout: 8000 })
+  await expect(page.getByRole("button", { name: /Apple Distribution/ })).toBeEnabled()
+  await expect(draft).toHaveValue("Draft survives the old input request")
+})
+
 test("mobile selection and back navigation preserve the list workflow", async ({ page, isMobile }) => {
   test.skip(!isMobile, "Mobile navigation only")
   await fixture(page)
+  await page.getByRole("button", { name: "Session view options" }).click()
+  await page.getByRole("menuitemcheckbox", { name: "Show offline Sessions (1)" }).click()
   await page.locator(".session-item-select").filter({
     hasText: "Repair preview deployment",
   }).click()

@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest"
 import {
   countSessionStatuses,
   deriveVisibleSessions,
+  deriveSessionFacets,
+  sessionDisplayStatus,
+  sessionConfirmationIsCurrent,
   groupSessionsByDevice,
   orderSessionHierarchy,
   sessionIsArchived,
@@ -17,6 +20,9 @@ interface TestSession {
   status: string
   lastActivityAt: string
   lastMessagePreview: string | null
+  confirmedConnectionId: string | null
+  executionStateKnown: boolean
+  capabilityConfirmed: boolean
 }
 
 function session(
@@ -34,6 +40,9 @@ function session(
     status,
     lastActivityAt,
     lastMessagePreview: `${id} preview`,
+    confirmedConnectionId: "connection-1",
+    executionStateKnown: true,
+    capabilityConfirmed: true,
   }
 }
 
@@ -42,6 +51,8 @@ const sources = new Map<string, SessionSource>([
     id: "device-1",
     displayName: "Studio laptop",
     status: "online",
+    connectionId: "connection-1",
+    sessionSyncState: "ready",
     agent: { name: "GitHub Copilot" },
   }],
   ["device-2", {
@@ -210,6 +221,7 @@ describe("session list derivation", () => {
       statusView: "all",
       showEnded: false,
       showUnavailable: false,
+      showOffline: true,
     })
     const groups = groupSessionsByDevice(visible, sources)
     expect(groups.map((group) => [
@@ -219,5 +231,53 @@ describe("session list derivation", () => {
       ["Work desktop", ["work"]],
       ["Studio laptop", ["studio"]],
     ])
+  })
+
+  describe("offline and connection-scoped views", () => {
+    const options = { query: "", showEnded: false, showUnavailable: false }
+    it("keeps keyword facets independent of the selected status and excludes offline snapshots", () => {
+      const items = [
+        session("build-running", null, "", "device-1", "running"),
+        session("build-input", null, "", "device-1", "waiting"),
+        session("other-failed", null, "", "device-1", "failed"),
+        session("build-offline", null, "", "device-2", "failed"),
+      ]
+      const scope = { ...options, query: "build" }
+      expect(deriveSessionFacets(items, sources, scope)).toMatchObject({ active: 1, waiting: 1, failed: 0, offline: 1 })
+      expect(deriveVisibleSessions(items, sources, {
+        ...scope, statusView: "active", showOffline: true,
+      }).map((item) => item.session.id)).toEqual(["build-running"])
+      expect(deriveVisibleSessions(items, sources, {
+        ...scope, statusView: "waiting", showOffline: true,
+      }).map((item) => item.session.id)).toEqual(["build-input"])
+      expect(sessionDisplayStatus(items[3], sources.get("device-2"))).toBe("offline")
+    })
+    it("combines offline visibility with lifecycle options and does not affect counts on collapse", () => {
+      const items = [
+        session("offline", null, "", "device-2", "waiting"),
+        session("ended", null, "", "device-2", "closed"),
+        session("gone", null, "", "device-2", "gone"),
+      ]
+      expect(deriveVisibleSessions(items, sources, { ...options, statusView: "all" })).toEqual([])
+      expect(deriveSessionFacets(items, sources, options).offline).toBe(1)
+      expect(deriveSessionFacets(items, sources, { ...options, showEnded: true }).offline).toBe(2)
+      expect(deriveSessionFacets(items, sources, { ...options, showEnded: true, showUnavailable: true }).offline).toBe(3)
+      expect(deriveVisibleSessions(items, sources, {
+        ...options, showOffline: true, statusView: "waiting",
+      })).toEqual([])
+    })
+    it("never trusts old connection observations, absent devices or metadata-only execution states", () => {
+      const item = session("work", null, "", "device-1", "running")
+      item.confirmedConnectionId = "previous-connection"
+      expect(sessionConfirmationIsCurrent(item, sources.get("device-1"))).toBe(false)
+      expect(sessionDisplayStatus(item, sources.get("device-1"))).toBe("unconfirmed")
+      expect(deriveSessionFacets([item], sources, options).active).toBe(0)
+      expect(sessionDisplayStatus(item, undefined)).toBe("unknown-device")
+      item.confirmedConnectionId = "connection-1"
+      item.executionStateKnown = false
+      expect(sessionConfirmationIsCurrent(item, sources.get("device-1"))).toBe(true)
+      expect(sessionDisplayStatus(item, sources.get("device-1"))).toBe("unknown")
+      expect(deriveSessionFacets([item], sources, options).active).toBe(0)
+    })
   })
 })
