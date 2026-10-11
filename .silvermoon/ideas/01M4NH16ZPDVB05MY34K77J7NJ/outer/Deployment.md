@@ -7,7 +7,7 @@
 - 配置目标：Worker `silvermoon-relay`，域名 `relay.silvermoon.work`；D1 `silvermoon-relay`；Pages 项目 `silvermoon-work`，界面域名 `silvermoon.work`。
 - 正式服务升级由将待发布主线提交整合到 `release` 后的 GitHub Actions 驱动；不能以更新 `main`、本地构建或 dry run 代替部署。
 - 仓库流水线不发布 npm。`@silvermoon-ai/connector` 包发布和实际设备升级必须另行明确范围；旧 connector 缺少确认时只能查看历史，升级期间不能许诺远程发送继续可用。
-- 尚未执行 release 合并/推送、远程迁移、服务部署或 connector 发布；未经授权不执行这些外部操作。
+- 用户已明确授权通过 release 部署 Relay/Web 与数据库迁移；connector npm 发布及实际设备替换仍不在本次授权范围。实际执行与证据按下列步骤推进，不把服务上线当作设备端验证完成。
 
 ## Steps
 
@@ -19,11 +19,15 @@
 2. 服务升级沿用[仓库流水线](../../../../.github/workflows/check-and-deploy.yml)：检查通过后先应用迁移 0010，后 Worker/Durable Object，最后 Pages。Connector 升级必须匹配当前确认协议，不能只部署 Web 就视为功能完整。
 3. 执行前确认生产操作授权及已有数据库备份/可恢复条件。回退不能删除新字段或丢弃命令/会话历史；必要时暂停远程操作、保留已保存正文并走向前修复。具体备份时点与旧版本取自真实环境，不虚构已存在备份。
 
+本次待发布基线包括已经通过 main CI 的 `0e8f3d85b7a8a6a07a701e7bbe2b969846969e65` 及后续只改变事件/本契约的提交；release 集成主线是累积发布，包含同步后的登录与设置工作区等既有主线变更。执行前再次核对源码和 workflow 未被未验证的并发提交改变；release 流水线还须完整检查通过才进入部署。
+
 ### D-S02: 应用外部升级
 
 按已同步的部署契约应用迁移与服务/设备更新，保留历史身份及数据；旧 connector 未确认状态显式提示，不隐式放开操作。
 
 只在范围授权、目标与恢复条件明确后，普通整合并推送 release 触发部署。记录 release commit、对应 Actions run、D1 迁移应答、Worker/Pages 版本与实际设备 connector 的来源/版本。若 npm 发布未获授权，可只记录待完成的设备升级，不伪称完整发布；不能为了设备更新修改已接受的 Inner deliverables。
+
+本次在 operation-owned release worktree 中整合指定主线，执行 Silvermoon 工作区/暂存检查后普通提交并推送 release；不切换或覆盖用户当前 main 工作区、不修改应用 deliverables、不 force-push。实际 connector 版本未知时 D-S02 与 D-AC01 不据服务部分完成而全部勾选。
 
 ### D-S03: 验证真实离线与重连
 
