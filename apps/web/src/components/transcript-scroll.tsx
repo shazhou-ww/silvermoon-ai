@@ -111,12 +111,13 @@ export function TranscriptScroll({ children }: { children: ReactNode }) {
         <Button
           type="button"
           variant="outline"
+          size="icon"
           className="transcript-jump"
+          aria-label="Jump to latest"
           aria-controls="session-transcript"
           onClick={jumpToLatest}
         >
           <ArrowDown aria-hidden="true" />
-          Jump to latest
         </Button>
       )}
     </div>
