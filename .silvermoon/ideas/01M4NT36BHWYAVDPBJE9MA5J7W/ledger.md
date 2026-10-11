@@ -17,11 +17,11 @@
 
 ### Deployment steps
 
-- [ ] **D-S01:** 发布 Relay Worker
-- [ ] **D-S02:** 验证生产过期行为
+- [x] **D-S01:** 发布 Relay Worker
+- [x] **D-S02:** 验证生产过期行为
 
 ### Deployment acceptance criteria
 
-- [ ] **D-AC01:** 生产 OAuth 启动恢复
-- [ ] **D-AC02:** 生产数据无需改写
-- [ ] **D-AC03:** Relay 健康状态正常
+- [x] **D-AC01:** 生产 OAuth 启动恢复
+- [x] **D-AC02:** 生产数据无需改写
+- [x] **D-AC03:** Relay 健康状态正常
