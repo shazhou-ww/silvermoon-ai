@@ -36,6 +36,16 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
   await expect(page.getByRole("heading", { name: "Sign in or get started" }))
     .toBeVisible()
   await expect(page.locator("[data-provider-icon]")).toHaveCount(3)
+  await expect.poll(() =>
+    page.locator("[data-provider-icon]")
+      .evaluateAll((icons) =>
+        icons.every((icon) =>
+          icon instanceof HTMLImageElement
+          && icon.complete
+          && icon.naturalWidth > 0
+        )
+      )
+  ).toBe(true)
   await expect(page.getByRole("img", {
     name: "Silvermoon, the project’s artifact spirit, waving",
   })).toBeVisible()
@@ -59,6 +69,8 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
     const hero = document.querySelector(".login-hero")!.getBoundingClientRect()
     const capabilities = document.querySelector(".login-capabilities")!
       .getBoundingClientRect()
+    const panel = document.querySelector(".login-page-content")!
+      .getBoundingClientRect()
     return {
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
@@ -77,6 +89,10 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
         || hero.top >= mascot.bottom
       ),
       capabilitiesBottom: capabilities.bottom,
+      panelCenterOffset: Math.abs(
+        (panel.top + panel.bottom) / 2 - window.innerHeight / 2,
+      ),
+      capabilityPanelGap: panel.bottom - capabilities.bottom,
       horizontalOverflow:
         document.documentElement.scrollWidth
         > document.documentElement.clientWidth,
@@ -88,7 +104,8 @@ test("presents responsive provider sign-in without obscuring Silvermoon", async 
     expect(layout.loginLeftOfMascot).toBe(true)
     expect(layout.overlap).toBe(false)
     expect(layout.heroMascotOverlap).toBe(false)
-    expect(layout.capabilitiesBottom).toBeLessThanOrEqual(layout.viewportHeight)
+    expect(layout.panelCenterOffset).toBeLessThanOrEqual(1)
+    expect(layout.capabilityPanelGap).toBeGreaterThan(0)
   } else {
     expect(layout.loginBeforeMascot).toBe(true)
   }

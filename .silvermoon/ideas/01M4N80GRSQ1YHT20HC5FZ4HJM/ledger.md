@@ -5,7 +5,7 @@
 ### Implementation steps
 
 - [x] **I-S01:** 落实响应式登录布局
-- [x] **I-S02:** 接入既有品牌与提供商视觉
+- [x] **I-S02:** 接入既有品牌与官方提供商视觉
 - [x] **I-S03:** 完善状态与回归覆盖
 
 ### Implementation acceptance criteria
@@ -18,10 +18,10 @@
 
 ### Deployment steps
 
-- [x] **D-S01:** 发布登录页变更
-- [x] **D-S02:** 验证公开登录流程
+- [ ] **D-S01:** 发布登录页变更
+- [ ] **D-S02:** 验证公开登录流程
 
 ### Deployment acceptance criteria
 
-- [x] **D-AC01:** 公开页面呈现正确
-- [x] **D-AC02:** 三种 OAuth 入口可用
+- [ ] **D-AC01:** 公开页面呈现正确
+- [ ] **D-AC02:** 三种 OAuth 入口可用
