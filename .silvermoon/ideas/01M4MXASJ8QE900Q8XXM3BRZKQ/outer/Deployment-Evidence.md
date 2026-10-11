@@ -78,3 +78,5 @@
 本次必选结果已有真实证据：发布包含接受的路由修正、规范路径直达 / 刷新与 Session query 保留、手动登录首次返回 Settings、实际窄屏抽屉开关、临时设备创建及凭据撤销、Sign out 与草稿缓存清理、Settings 暂离并刷新后的草稿恢复。仅临时测试数据被清理，没有发送消息或变更已有身份 / 设备凭据。
 
 保留风险：真实身份绑定返回未验证；窄屏实际视口为 487 CSS px 而非精确 390px；曾缓存旧 308 的全部历史链接未逐个清理或验证，但现用规范路径与 Session query 已通过。当前主线后来合入另一个主题的 OAuth 限流修改，该修改不属于本次 Settings 发布；本主题未触发新的 release。
+
+范围调整同步到 primary 后，再次针对契约检查实际带 Session query 的 `/settings`：直达 HTTP 200、无重定向，刷新 HTTP 200、路径和 query 均保留；测试设备仍无有效连接 token。其余未改变的标准沿用上述已完成且仍有效的真实操作证据。Deployment 清单完成仅表示 Agent 验证工作完成，尚须用户接受精确 deployment revision。
