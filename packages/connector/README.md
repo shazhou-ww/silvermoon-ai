@@ -23,15 +23,17 @@ The Copilot SDK includes its verified platform runtime when available. Set
 `COPILOT_CLI_PATH` only when an existing Copilot CLI installation should be
 used instead.
 
-Install the public package after it has been released:
+Install the CLI globally:
 
 ```powershell
-pnpm add @silvermoon-ai/connector
+npm install --global @silvermoon-ai/connector
 ```
 
 The published package includes the Silvermoon protocol and RPC implementation
 used by the connector. The monorepo's private workspace packages are not
-runtime dependencies for consumers.
+runtime dependencies for consumers. Applications embedding the exported
+connector APIs can instead add `@silvermoon-ai/connector` to their project
+dependencies.
 
 ## Run
 

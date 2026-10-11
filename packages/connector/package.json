@@ -1,10 +1,10 @@
 {
   "name": "@silvermoon-ai/connector",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local agent connector for Silvermoon Relay",
   "repository": {
     "type": "git",
-    "url": "https://github.com/shazhou-ww/silvermoon-ai.git",
+    "url": "git+https://github.com/shazhou-ww/silvermoon-ai.git",
     "directory": "packages/connector"
   },
   "homepage": "https://github.com/shazhou-ww/silvermoon-ai/tree/main/packages/connector#readme",
@@ -17,7 +17,7 @@
   },
   "type": "module",
   "bin": {
-    "silvermoon-connector": "./dist/cli.js"
+    "silvermoon-connector": "dist/cli.js"
   },
   "exports": {
     ".": {
@@ -31,10 +31,13 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsup",
+    "prepack": "pnpm build",
+    "prepublishOnly": "pnpm test && pnpm typecheck",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
