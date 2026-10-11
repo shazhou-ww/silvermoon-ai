@@ -202,10 +202,19 @@ test("pointer and keyboard jump are accessible, hide immediately, and respect re
   expect(composerBox).not.toBeNull()
   if (!buttonBox || !composerBox || !transcriptBox) throw new Error("Missing layout boxes")
   expect(buttonBox.height).toBeGreaterThanOrEqual(44)
+  expect(buttonBox.width).toBeGreaterThanOrEqual(44)
+  expect(Math.abs(buttonBox.width - buttonBox.height)).toBeLessThanOrEqual(1)
   expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(composerBox.y)
-  expect(buttonBox.y).toBeGreaterThanOrEqual(transcriptBox.y + transcriptBox.height)
-  expect(buttonBox.x).toBeGreaterThanOrEqual(0)
-  expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+  expect(buttonBox.y).toBeGreaterThanOrEqual(transcriptBox.y)
+  expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(transcriptBox.y + transcriptBox.height)
+  expect(buttonBox.x).toBeGreaterThanOrEqual(transcriptBox.x)
+  expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(transcriptBox.x + transcriptBox.width)
+  expect(await page.locator(".transcript-shell").evaluate((element) =>
+    getComputedStyle(element).paddingBottom
+  )).toBe("0px")
+  expect(await page.locator(".transcript").evaluate((element) =>
+    getComputedStyle(element).paddingBottom
+  )).toBe("16px")
   await page.screenshot({ path: testInfo.outputPath("reading-history.png") })
   await jumpButton(page).click()
   await expect(jumpButton(page)).toHaveCount(0)

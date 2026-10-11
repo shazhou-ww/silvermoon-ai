@@ -964,7 +964,6 @@ textarea:focus-visible {
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  padding-bottom: 4rem;
 }
 
 .transcript-scroll {
@@ -982,13 +981,13 @@ textarea:focus-visible {
 
 .transcript-jump {
   position: absolute;
-  bottom: 0.75rem;
-  left: 50%;
+  right: 1rem;
+  bottom: 1rem;
   z-index: 1;
+  width: 2.75rem;
+  height: 2.75rem;
   min-height: 2.75rem;
-  max-width: calc(100% - 2rem);
-  padding-inline: 1rem;
-  transform: translateX(-50%);
+  padding: 0;
   border-radius: 999px;
   background: var(--popover);
   box-shadow: 0 0.3rem 1rem rgb(20 32 51 / 12%);
@@ -1003,7 +1002,7 @@ textarea:focus-visible {
   padding:
     clamp(1.5rem, 4vw, 3.2rem)
     var(--conversation-inline-padding)
-    2rem;
+    1rem;
 }
 
 .transcript-origin {
