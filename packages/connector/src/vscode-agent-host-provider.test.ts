@@ -426,7 +426,7 @@ describe("VS Code Agent Host mapping", () => {
     });
   });
 
-  it("rejects follow-ups that cannot satisfy structured input", () => {
+  it("answers boolean and single-select input from clear follow-ups", () => {
     const state = chatState(true);
     state.activeTurn!.responseParts = [{
       kind: ResponsePartKind.InputRequest,
@@ -440,7 +440,62 @@ describe("VS Code Agent Host mapping", () => {
       },
     }];
 
-    expect(() => createAgentHostMessageAction(state, "yes")).toThrow(
+    expect(createAgentHostMessageAction(state, "yes")).toMatchObject({
+      type: ActionType.ChatInputCompleted,
+      answers: {
+        "answer-1": {
+          value: {
+            kind: ChatInputAnswerValueKind.Boolean,
+            value: true,
+          },
+        },
+      },
+    });
+
+    state.activeTurn!.responseParts = [{
+      kind: ResponsePartKind.InputRequest,
+      request: {
+        id: "input-2",
+        questions: [{
+          id: "answer-2",
+          kind: ChatInputQuestionKind.SingleSelect,
+          message: "Target?",
+          options: [
+            { id: "staging", label: "Staging" },
+            { id: "production", label: "Production" },
+          ],
+        }],
+      },
+    }];
+    expect(createAgentHostMessageAction(state, "Staging")).toMatchObject({
+      type: ActionType.ChatInputCompleted,
+      answers: {
+        "answer-2": {
+          value: {
+            kind: ChatInputAnswerValueKind.Selected,
+            value: "staging",
+          },
+        },
+      },
+    });
+  });
+
+  it("rejects follow-ups that cannot satisfy structured input", () => {
+    const state = chatState(true);
+    state.activeTurn!.responseParts = [{
+      kind: ResponsePartKind.InputRequest,
+      request: {
+        id: "input-1",
+        questions: [{
+          id: "answer-1",
+          kind: ChatInputQuestionKind.MultiSelect,
+          message: "Targets?",
+          options: [{ id: "staging", label: "Staging" }],
+        }],
+      },
+    }];
+
+    expect(() => createAgentHostMessageAction(state, "staging")).toThrow(
       "requires structured input",
     );
   });
@@ -477,7 +532,76 @@ describe("VS Code Agent Host mapping", () => {
         text: "Continue with the focused tests",
         data: expect.objectContaining({
           inputRequestId: "input-1",
+          inputRequest: {
+            id: "input-1",
+            message: "What should I do next?",
+            url: null,
+            questions: [{
+              id: "answer-1",
+              kind: "text",
+              message: "Next instruction",
+            }],
+          },
+          inputRequestResolved: true,
           partKind: "request",
+        }),
+      }),
+    );
+  });
+
+  it("preserves open input questions and options in event metadata", () => {
+    const state = chatState(true);
+    state.activeTurn!.responseParts = [{
+      kind: ResponsePartKind.InputRequest,
+      request: {
+        id: "input-1",
+        message: "Choose a deployment target.",
+        questions: [{
+          id: "target",
+          kind: ChatInputQuestionKind.SingleSelect,
+          title: "Target",
+          message: "Where should I deploy?",
+          required: true,
+          options: [{
+            id: "staging",
+            label: "Staging",
+            description: "Validate before production.",
+            recommended: true,
+          }, {
+            id: "production",
+            label: "Production",
+          }],
+        }],
+      },
+    }];
+
+    expect(agentHostChatHistoryToEvents("session-1", state)).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        text: "Choose a deployment target.",
+        data: expect.objectContaining({
+          inputRequestResolved: false,
+          inputRequest: {
+            id: "input-1",
+            message: "Choose a deployment target.",
+            url: null,
+            questions: [{
+              id: "target",
+              kind: "single-select",
+              title: "Target",
+              message: "Where should I deploy?",
+              required: true,
+              options: [{
+                id: "staging",
+                label: "Staging",
+                description: "Validate before production.",
+                recommended: true,
+              }, {
+                id: "production",
+                label: "Production",
+              }],
+            }],
+          },
         }),
       }),
     );

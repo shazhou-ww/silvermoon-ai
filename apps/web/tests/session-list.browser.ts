@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
+import type { AgentInputRequest } from "@silvermoon-ai/protocol"
 
 interface SessionFixture {
   id: string
@@ -7,6 +8,28 @@ interface SessionFixture {
   title: string
   status: string
   lastActivityAt: string
+}
+
+const optionInputRequest: AgentInputRequest = {
+  id: "input-signing",
+  message: "Choose the certificate that should sign this release.",
+  url: null,
+  questions: [{
+    id: "certificate",
+    kind: "single-select",
+    title: "Signing certificate",
+    message: "Which identity should be used?",
+    required: true,
+    options: [{
+      id: "distribution",
+      label: "Apple Distribution",
+      description: "Use the shared release certificate.",
+      recommended: true,
+    }, {
+      id: "development",
+      label: "Apple Development",
+    }],
+  }],
 }
 
 const sessions: SessionFixture[] = [
@@ -63,6 +86,7 @@ const sessions: SessionFixture[] = [
 async function fixture(
   page: Page,
   historyCommandStatus: "succeeded" | "failed" = "succeeded",
+  pendingInputRequest: AgentInputRequest | null = optionInputRequest,
 ) {
   let historySyncRequests = 0
   await page.route("https://relay.silvermoon.work/**", async (route) => {
@@ -143,6 +167,9 @@ async function fixture(
           lastMessagePreview: `${session.title} preview`,
           canSendMessage: session.status !== "closed",
           nativeStatus: session.status === "closed" ? "65" : null,
+          pendingInputRequest: session.id === "signing"
+            ? pendingInputRequest
+            : null,
         }))
     } else {
       throw new Error(
@@ -242,6 +269,93 @@ test("view options reveal hidden states and focus device groups", async ({ page 
     .toBeVisible()
   await expect(page.getByRole("button", { name: /Studio laptop/ }))
     .toHaveAttribute("aria-expanded", "true")
+})
+
+test("waiting sessions show the original request and selectable options", async ({ page }) => {
+  await fixture(page)
+  const signing = page.locator(".session-list-item").filter({
+    hasText: "Confirm signing identity",
+  })
+  await expect(signing).toContainText(
+    "Choose the certificate that should sign this release.",
+  )
+  await signing.getByRole("button", {
+    name: /Confirm signing identity/,
+  }).click()
+
+  await expect(page.getByText("Agent is waiting for your input")).toBeVisible()
+  await expect(page.getByText("Which identity should be used?")).toBeVisible()
+  await expect(page.getByText("Recommended")).toBeVisible()
+  const composer = page.locator(".session-composer")
+  const composerFrame = page.locator(".composer-frame")
+  await expect(composer.locator(":scope > .pending-input")).toBeVisible()
+  await expect(composerFrame.getByRole("textbox", {
+    name: "Follow-up message",
+  })).toBeVisible()
+  await expect(composerFrame.locator(".composer-toolbar")).toBeVisible()
+  await expect(composerFrame.getByRole("button", {
+    name: "Send follow-up",
+  })).toBeVisible()
+  await expect(composerFrame.locator(".pending-input")).toHaveCount(0)
+  await expect(page.locator(".transcript-shell .pending-input")).toHaveCount(0)
+  const options = page.locator(".pending-input-options > button")
+  const [firstOption, secondOption] = await Promise.all([
+    options.nth(0).boundingBox(),
+    options.nth(1).boundingBox(),
+  ])
+  expect(firstOption).not.toBeNull()
+  expect(secondOption).not.toBeNull()
+  expect(secondOption!.y).toBeGreaterThan(firstOption!.y)
+  expect(secondOption!.x).toBe(firstOption!.x)
+  expect(secondOption!.width).toBe(firstOption!.width)
+  await page.getByRole("button", { name: /Apple Distribution/ }).click()
+  await expect(page.getByRole("textbox", { name: "Follow-up message" }))
+    .toHaveValue("Apple Distribution")
+  await expect(page.getByRole("textbox", { name: "Follow-up message" }))
+    .toBeFocused()
+})
+
+test("free-text input requests retain a clear reply entry", async ({ page }) => {
+  await fixture(page, "succeeded", {
+    id: "input-signing",
+    message: "Provide the release note.",
+    url: null,
+    questions: [{
+      id: "release-note",
+      kind: "text",
+      title: "Release note",
+      message: "What should users know about this build?",
+      required: true,
+    }],
+  })
+  await page.getByText("Confirm signing identity", { exact: true }).click()
+  const pendingInput = page.locator(".pending-input")
+  await expect(pendingInput.getByText("Provide the release note.")).toBeVisible()
+  await expect(pendingInput.getByText(
+    "Enter your answer in the reply box below.",
+  ))
+    .toBeVisible()
+  await expect(page.getByRole("textbox", { name: "Follow-up message" }))
+    .toHaveAttribute("placeholder", /Reply to the agent's request/)
+})
+
+test("waiting sessions with missing metadata give an honest fallback", async ({ page }) => {
+  await fixture(page, "succeeded", null)
+  const signing = page.locator(".session-list-item").filter({
+    hasText: "Confirm signing identity",
+  })
+  await expect(signing).toContainText("Input request details unavailable")
+  await signing.getByRole("button", {
+    name: /Confirm signing identity/,
+  }).click()
+  const pendingInput = page.locator(".pending-input")
+  await expect(pendingInput.getByText("Input request details unavailable"))
+    .toBeVisible()
+  await expect(pendingInput.getByText(/older or incomplete Session/))
+    .toBeVisible()
+  await expect(pendingInput.locator("..").getByRole("textbox", {
+    name: "Follow-up message",
+  })).toBeVisible()
 })
 
 test("mobile selection and back navigation preserve the list workflow", async ({ page, isMobile }) => {

@@ -1,5 +1,6 @@
 import type { AppEnv } from "./env";
 import {
+  agentInputRequestSchema,
   connectorCapabilitiesSchema,
   connectorIdSchema,
   createSessionCommandSchema,
@@ -7,6 +8,7 @@ import {
   sendSessionMessageCommandSchema,
   sessionIdSchema,
   syncSessionHistoryCommandSchema,
+  type AgentInputRequest,
   type ConnectorCommand,
 } from "@silvermoon-ai/protocol";
 import {
@@ -55,6 +57,56 @@ interface ConnectorRow {
   last_seen_at: string | null;
   created_at: string;
   session_count: number;
+}
+
+interface InputRequestEventRow {
+  session_id: string;
+  role: string | null;
+  content: string | null;
+  data_json: string;
+}
+
+export function pendingInputRequests(
+  rows: readonly InputRequestEventRow[],
+): Map<string, AgentInputRequest> {
+  const pending = new Map<string, AgentInputRequest>();
+  const seen = new Set<string>();
+  for (const row of rows) {
+    let data: unknown;
+    try {
+      data = JSON.parse(row.data_json);
+    } catch {
+      continue;
+    }
+    if (!data || typeof data !== "object") continue;
+    const eventData = data as Record<string, unknown>;
+    const requestId = typeof eventData.inputRequestId === "string"
+      ? eventData.inputRequestId
+      : null;
+    if (!requestId) continue;
+    const requestKey = `${row.session_id}\0${requestId}`;
+    if (seen.has(requestKey)) continue;
+    seen.add(requestKey);
+    const resolved = typeof eventData.inputRequestResolved === "boolean"
+      ? eventData.inputRequestResolved
+      : row.role === "user";
+    if (resolved || pending.has(row.session_id)) continue;
+    const structured = agentInputRequestSchema.safeParse(
+      eventData.inputRequest,
+    );
+    pending.set(
+      row.session_id,
+      structured.success
+        ? structured.data
+        : {
+            id: requestId,
+            message: row.content?.trim() || null,
+            url: null,
+            questions: [],
+          },
+    );
+  }
+  return pending;
 }
 
 function response(
@@ -338,27 +390,40 @@ export async function handleApi(
     }
 
     if (request.method === "GET") {
-      const sessions = await env.DB.prepare(
-        `SELECT id, title, status, native_status, created_at, updated_at, last_activity_at,
-          last_message_preview, parent_session_id, can_send_message
-         FROM agent_sessions
-         WHERE user_id = ?1 AND connector_id = ?2
-         ORDER BY last_activity_at DESC
-         LIMIT 500`,
-      )
-        .bind(session.userId, connector.id)
-        .all<{
-          id: string;
-          title: string | null;
-          status: string;
-          native_status: string | null;
-          created_at: string;
-          updated_at: string;
-          last_activity_at: string;
-          last_message_preview: string | null;
-          parent_session_id: string | null;
-          can_send_message: number;
-        }>();
+      const [sessions, inputEvents] = await Promise.all([
+        env.DB.prepare(
+          `SELECT id, title, status, native_status, created_at, updated_at, last_activity_at,
+            last_message_preview, parent_session_id, can_send_message
+           FROM agent_sessions
+           WHERE user_id = ?1 AND connector_id = ?2
+           ORDER BY last_activity_at DESC
+           LIMIT 500`,
+        )
+          .bind(session.userId, connector.id)
+          .all<{
+            id: string;
+            title: string | null;
+            status: string;
+            native_status: string | null;
+            created_at: string;
+            updated_at: string;
+            last_activity_at: string;
+            last_message_preview: string | null;
+            parent_session_id: string | null;
+            can_send_message: number;
+          }>(),
+        env.DB.prepare(
+          `SELECT session_id, role, content, data_json
+           FROM agent_session_events
+           WHERE user_id = ?1 AND connector_id = ?2
+             AND data_json IS NOT NULL
+             AND json_extract(data_json, '$.inputRequestId') IS NOT NULL
+           ORDER BY session_id, sequence DESC`,
+        )
+          .bind(session.userId, connector.id)
+          .all<InputRequestEventRow>(),
+      ]);
+      const requests = pendingInputRequests(inputEvents.results);
       return response(request, env, sessions.results.map((item) => ({
         id: item.id,
         connectorId: connector.id,
@@ -371,6 +436,7 @@ export async function handleApi(
         lastMessagePreview: item.last_message_preview,
         parentSessionId: item.parent_session_id,
         canSendMessage: item.can_send_message !== 0,
+        pendingInputRequest: requests.get(item.id) ?? null,
       })));
     }
 

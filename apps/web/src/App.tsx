@@ -30,6 +30,7 @@ import {
 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import type { AgentInputRequest } from "@silvermoon-ai/protocol"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -153,6 +154,7 @@ interface AgentSession {
   lastActivityAt: string
   lastMessagePreview: string | null
   canSendMessage: boolean
+  pendingInputRequest?: AgentInputRequest | null
 }
 
 interface CommandResponse {
@@ -282,6 +284,19 @@ function sessionStatusLabel(status: string): string {
   }
 }
 
+function inputRequestSummary(request: AgentInputRequest | null | undefined) {
+  return request?.message
+    ?? request?.questions[0]?.title
+    ?? request?.questions[0]?.message
+    ?? null
+}
+
+function sessionPreview(session: AgentSession): string | null {
+  if (session.status !== "waiting") return session.lastMessagePreview
+  return inputRequestSummary(session.pendingInputRequest)
+    ?? "Input request details unavailable — open to review and reply."
+}
+
 function eventLabel(event: AgentSessionEvent): string {
   if (event.type === "tool") return "Tool"
   if (event.type === "error") return "Error"
@@ -302,6 +317,107 @@ function MarkdownBody({ children }: { children: string }) {
     <div className="message-markdown">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
     </div>
+  )
+}
+
+function PendingInputPanel({
+  request,
+  canReply,
+  onChoose,
+}: {
+  request: AgentInputRequest | null | undefined
+  canReply: boolean
+  onChoose(value: string): void
+}) {
+  const titleId = "pending-input-title"
+  return (
+    <section className="pending-input" aria-labelledby={titleId}>
+      <div className="pending-input-heading">
+        <CircleAlert aria-hidden="true" />
+        <div>
+          <span>Agent is waiting for your input</span>
+          <strong id={titleId}>
+            {request
+              ? "Review the request and reply"
+              : "Input request details unavailable"}
+          </strong>
+        </div>
+      </div>
+      {request
+        ? (
+            <div className="pending-input-body">
+              {request.message && <MarkdownBody>{request.message}</MarkdownBody>}
+              {request.url && (
+                <a href={request.url} target="_blank" rel="noreferrer">
+                  Open referenced resource
+                </a>
+              )}
+              {request.questions.map((question) => {
+                const options = question.options
+                  ?? (question.kind === "boolean"
+                    ? [
+                        { id: "true", label: "Yes" },
+                        { id: "false", label: "No" },
+                      ]
+                    : [])
+                return (
+                  <div className="pending-input-question" key={question.id}>
+                    {question.title && <strong>{question.title}</strong>}
+                    <span>
+                      {question.message}
+                      {question.required && (
+                        <span className="pending-input-required"> Required</span>
+                      )}
+                    </span>
+                    {options.length > 0 && (
+                      <div
+                        className="pending-input-options"
+                        aria-label={`Options for ${question.title ?? question.message}`}
+                      >
+                        {options.map((option) => (
+                          <button
+                            type="button"
+                            key={option.id}
+                            onClick={() => onChoose(option.label)}
+                            disabled={!canReply}
+                          >
+                            <span>{option.label}</span>
+                            {"recommended" in option
+                              && option.recommended
+                              && <small>Recommended</small>}
+                            {"description" in option
+                              && option.description
+                              && <small>{option.description}</small>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {(question.kind === "text"
+                      || question.kind === "number"
+                      || question.kind === "integer"
+                      || question.allowFreeformInput) && (
+                      <small className="pending-input-hint">
+                        Enter your answer in the reply box below.
+                      </small>
+                    )}
+                  </div>
+                )
+              })}
+              {request.questions.length === 0 && (
+                <p className="pending-input-hint">
+                  Reply below with the information the agent requested.
+                </p>
+              )}
+            </div>
+          )
+        : (
+            <p className="pending-input-fallback">
+              This older or incomplete Session does not include the original
+              question metadata. Review the latest activity, then reply below
+              with the missing confirmation or instruction.
+            </p>
+          )}
+    </section>
   )
 }
 
@@ -1061,6 +1177,9 @@ function App() {
   const canSendFollowUp = selectedConnector?.status === "online"
     && selectedConnector.capabilities.sendMessage
     && selectedAgentSession?.canSendMessage !== false
+  const pendingInputRequest = selectedAgentSession?.status === "waiting"
+    ? selectedAgentSession.pendingInputRequest
+    : null
   const trackedCommandId = trackedCommand?.id ?? null
   const trackedCommandLabel = trackedCommand?.label ?? null
   const trackedHistoryRequestKey = trackedCommand?.historyRequestKey ?? null
@@ -1413,6 +1532,7 @@ function App() {
       session.connectorId === selectedConnectorId
       && session.id === selectedSessionId
     const isCollapsed = collapsedSessionKeys.has(sessionKey(session))
+    const preview = sessionPreview(session)
     return (
       <div
         key={`${session.connectorId}:${session.id}`}
@@ -1481,9 +1601,9 @@ function App() {
                 </span>
               )}
             </span>
-            {session.lastMessagePreview && !item.isContext && (
+            {preview && !item.isContext && (
               <span className="session-item-preview">
-                {session.lastMessagePreview}
+                {preview}
               </span>
             )}
           </span>
@@ -1947,8 +2067,25 @@ function App() {
                       )}
                   </TranscriptScroll>
 
-                  <div className="session-composer-shell">
+                  <div
+                    className={`session-composer-shell${
+                      selectedAgentSession.status === "waiting"
+                        ? " has-pending-input"
+                        : ""
+                    }`}
+                  >
                     <form className="session-composer" onSubmit={sendFollowUp}>
+                      {selectedAgentSession.status === "waiting" && (
+                        <PendingInputPanel
+                          request={pendingInputRequest}
+                          canReply={canSendFollowUp}
+                          onChoose={(value) => {
+                            setFollowUp(value)
+                            window.requestAnimationFrame(() =>
+                              followUpInputRef.current?.focus())
+                          }}
+                        />
+                      )}
                       <div className="composer-frame">
                         <label htmlFor="session-follow-up" className="sr-only">
                           Follow-up message
@@ -1971,6 +2108,8 @@ function App() {
                           placeholder={
                             selectedAgentSession.canSendMessage === false
                               ? "This Session is read-only"
+                              : selectedAgentSession.status === "waiting"
+                              ? "Reply to the agent's request... Shift+Enter for a new line."
                               : canSendFollowUp
                               ? "Ask for the next step... Shift+Enter for a new line."
                               : "This Session cannot receive messages right now"

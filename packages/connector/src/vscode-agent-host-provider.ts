@@ -35,6 +35,8 @@ import {
   type TransportFrame,
 } from "@microsoft/agent-host-protocol/client";
 import type {
+  AgentInputQuestion,
+  AgentInputRequest,
   AgentSession,
   AgentSessionEvent,
   SessionStatus,
@@ -448,6 +450,53 @@ function responsePartId(
   return `${part.kind}:${partIndex}`;
 }
 
+function inputQuestion(question: NonNullable<
+  Extract<TurnResponsePart, { kind: ResponsePartKind.InputRequest }>["request"]["questions"]
+>[number]): AgentInputQuestion {
+  const options = "options" in question
+    ? question.options.map((option) => ({
+        id: option.id,
+        label: option.label,
+        ...(option.description ? { description: option.description } : {}),
+        ...(option.recommended === undefined
+          ? {}
+          : { recommended: option.recommended }),
+      }))
+    : undefined;
+  return {
+    id: question.id,
+    kind: question.kind,
+    ...(question.title ? { title: question.title } : {}),
+    message: question.message,
+    ...(question.required === undefined ? {} : { required: question.required }),
+    ...(options ? { options } : {}),
+    ...("allowFreeformInput" in question
+        && question.allowFreeformInput !== undefined
+      ? { allowFreeformInput: question.allowFreeformInput }
+      : {}),
+    ...("min" in question && question.min !== undefined
+      ? { min: question.min }
+      : {}),
+    ...("max" in question && question.max !== undefined
+      ? { max: question.max }
+      : {}),
+  };
+}
+
+function inputRequest(
+  request: Extract<
+    TurnResponsePart,
+    { kind: ResponsePartKind.InputRequest }
+  >["request"],
+): AgentInputRequest {
+  return {
+    id: request.id,
+    message: request.message ? boundedContent(request.message, 4_096) : null,
+    url: request.url ?? null,
+    questions: (request.questions ?? []).map(inputQuestion),
+  };
+}
+
 function responsePartEventDraft(
   turnId: string,
   part: TurnResponsePart,
@@ -537,6 +586,8 @@ function responsePartEventDraft(
             partKind: "request",
             update: "snapshot",
             inputRequestId: part.request.id,
+            inputRequest: inputRequest(part.request),
+            inputRequestResolved: part.response !== undefined,
           },
           createdAt,
           sortOrder: partIndex + 1,
@@ -688,21 +739,55 @@ export function createAgentHostMessageAction(
     }
     const request = openInputRequests[0].request;
     const questions = request.questions ?? [];
-    if (
-      questions.length !== 1
-      || questions[0].kind !== ChatInputQuestionKind.Text
-    ) {
+    if (questions.length !== 1) {
       throw new Error(
         "Agent Host session requires structured input that cannot be answered with a follow-up message.",
       );
     }
     const question = questions[0];
-    if (
-      (question.min !== undefined && message.length < question.min)
-      || (question.max !== undefined && message.length > question.max)
-    ) {
+    let value;
+    if (question.kind === ChatInputQuestionKind.Text) {
+      if (
+        (question.min !== undefined && message.length < question.min)
+        || (question.max !== undefined && message.length > question.max)
+      ) {
+        throw new Error(
+          "Follow-up message does not satisfy the Agent Host input requirements.",
+        );
+      }
+      value = {
+        kind: ChatInputAnswerValueKind.Text,
+        value: message,
+      } as const;
+    } else if (question.kind === ChatInputQuestionKind.Boolean) {
+      const normalized = message.trim().toLowerCase();
+      if (!["yes", "true", "no", "false"].includes(normalized)) {
+        throw new Error(
+          "Follow-up message must answer the Agent Host question with yes or no.",
+        );
+      }
+      value = {
+        kind: ChatInputAnswerValueKind.Boolean,
+        value: normalized === "yes" || normalized === "true",
+      } as const;
+    } else if (question.kind === ChatInputQuestionKind.SingleSelect) {
+      const normalized = message.trim().toLowerCase();
+      const selected = question.options.find((option) =>
+        option.id.toLowerCase() === normalized
+        || option.label.toLowerCase() === normalized
+      );
+      if (!selected) {
+        throw new Error(
+          "Follow-up message must match one of the Agent Host input options.",
+        );
+      }
+      value = {
+        kind: ChatInputAnswerValueKind.Selected,
+        value: selected.id,
+      } as const;
+    } else {
       throw new Error(
-        "Follow-up message does not satisfy the Agent Host input requirements.",
+        "Agent Host session requires structured input that cannot be answered with a follow-up message.",
       );
     }
     return {
@@ -712,10 +797,7 @@ export function createAgentHostMessageAction(
       answers: {
         [question.id]: {
           state: ChatInputAnswerState.Submitted,
-          value: {
-            kind: ChatInputAnswerValueKind.Text,
-            value: message,
-          },
+          value,
         },
       },
     };

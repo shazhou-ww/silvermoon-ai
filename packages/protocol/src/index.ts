@@ -32,6 +32,39 @@ export const connectorCapabilitiesSchema = z.object({
   streamEvents: z.boolean(),
 });
 
+export const agentInputOptionSchema = z.object({
+  id: z.string().trim().min(1).max(256),
+  label: z.string().trim().min(1).max(512),
+  description: z.string().trim().min(1).max(2_048).optional(),
+  recommended: z.boolean().optional(),
+});
+
+export const agentInputQuestionSchema = z.object({
+  id: z.string().trim().min(1).max(256),
+  kind: z.enum([
+    "text",
+    "number",
+    "integer",
+    "boolean",
+    "single-select",
+    "multi-select",
+  ]),
+  title: z.string().trim().min(1).max(512).optional(),
+  message: z.string().trim().min(1).max(4_096),
+  required: z.boolean().optional(),
+  options: z.array(agentInputOptionSchema).max(100).optional(),
+  allowFreeformInput: z.boolean().optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+});
+
+export const agentInputRequestSchema = z.object({
+  id: z.string().trim().min(1).max(256),
+  message: z.string().trim().min(1).max(4_096).nullable().default(null),
+  url: z.string().url().max(8_192).nullable().default(null),
+  questions: z.array(agentInputQuestionSchema).max(100).default([]),
+});
+
 export const agentDescriptorSchema = z.object({
   name: z.string().trim().min(1).max(128),
   version: z.string().trim().min(1).max(64).optional(),
@@ -47,6 +80,7 @@ export const agentSessionSchema = z.object({
   updatedAt: timestampSchema,
   lastMessagePreview: z.string().max(512).nullable().default(null),
   canSendMessage: z.boolean().optional(),
+  pendingInputRequest: agentInputRequestSchema.nullable().optional(),
 });
 
 export const agentSessionEventPartKindSchema = z.enum([
@@ -76,6 +110,9 @@ export const agentSessionEventDataSchema = z.object({
   toolName: z.string().trim().min(1).max(512).optional(),
   toolCallId: z.string().trim().min(1).max(256).optional(),
   state: agentSessionToolStateSchema.optional(),
+  inputRequestId: z.string().trim().min(1).max(256).optional(),
+  inputRequest: agentInputRequestSchema.optional(),
+  inputRequestResolved: z.boolean().optional(),
 }).catchall(z.unknown());
 
 export const agentSessionEventSchema = z.object({
@@ -127,6 +164,9 @@ export type ConnectorId = z.infer<typeof connectorIdSchema>;
 export type SessionStatus = z.infer<typeof sessionStatusSchema>;
 export type ConnectorCapabilities = z.infer<typeof connectorCapabilitiesSchema>;
 export type AgentDescriptor = z.infer<typeof agentDescriptorSchema>;
+export type AgentInputOption = z.infer<typeof agentInputOptionSchema>;
+export type AgentInputQuestion = z.infer<typeof agentInputQuestionSchema>;
+export type AgentInputRequest = z.infer<typeof agentInputRequestSchema>;
 export type AgentSession = z.infer<typeof agentSessionSchema>;
 export type AgentSessionEventData = z.infer<
   typeof agentSessionEventDataSchema
