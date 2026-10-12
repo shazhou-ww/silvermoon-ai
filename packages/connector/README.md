@@ -23,11 +23,19 @@ The Copilot SDK includes its verified platform runtime when available. Set
 `COPILOT_CLI_PATH` only when an existing Copilot CLI installation should be
 used instead.
 
-Install the public package after it has been released:
+For the end-user sign-in, device setup, and Session workflow, start with the
+[Relay quick start](../../README.md#quick-start).
+
+The public npm release verified for that guide is `0.2.0`. Run it without
+cloning this repository:
 
 ```powershell
-pnpm add @silvermoon-ai/connector
+npx --yes @silvermoon-ai/connector@0.2.0 --help
 ```
+
+Alternatively, install the executable globally with
+`npm install --global @silvermoon-ai/connector@0.2.0` and use
+`silvermoon-connector` for the commands below.
 
 The published package includes the Silvermoon protocol and RPC implementation
 used by the connector. The monorepo's private workspace packages are not
@@ -35,23 +43,63 @@ runtime dependencies for consumers.
 
 ## Run
 
-In the Relay Web UI, choose **Add device**, name the device once, and copy the
-generated profile to `$HOME/.silvermoon/connector.yaml`. The connector reads
-the Relay address, token, and non-sensitive options from that file:
+In the Relay Web UI, open **Settings > Devices > Add device**, name the
+device, and copy the generated profile before leaving Settings or refreshing.
+Save it as `$HOME/.silvermoon/connector.yaml` with owner-only permissions.
+For Windows, use the [secure setup command](../../README.md#3-configure-the-connector-securely)
+to write the profile instead of saving a file with inherited, shared ACLs.
+The connector reads the Relay address, token, and non-sensitive options from
+that file:
 
 ```powershell
-silvermoon-connector
+npx --yes @silvermoon-ai/connector@0.2.0 --working-directory .
 ```
+
+Run from the project directory for new Copilot sessions and keep the terminal
+open. No token is needed on the command line. Do not run two connectors with
+the same token at once.
 
 The connector refuses to read a profile that is accessible by another
 operating-system identity. Profile updates made with `--write-config` use an
 atomic same-directory replacement, mode `0600` on POSIX, and a protected ACL
 for only the current user on Windows:
 
-```powershell
-$env:SILVERMOON_CONNECTION_TOKEN = "smr1_..."
-silvermoon-connector --relay https://relay.silvermoon.work --write-config
-```
+`--write-config` saves the resolved settings and exits; it does not start a
+connection. Supply the token using a hidden prompt as in the quick start, or
+an owner-protected token file with `--token-file`. Do not type the token
+literally into a shell command. Reconfiguring replaces an existing valid
+profile, retaining resolved options; an existing unsafe profile is rejected
+even when a token override is supplied.
+
+### Save a profile on macOS or Linux
+
+These steps use a terminal and the profile copied from **Copy profile**:
+
+1. Create the configuration directory and restrict an existing profile before
+   writing it. Back up any existing configuration securely if you need it.
+
+   ```bash
+   mkdir -p "$HOME/.silvermoon"
+   if [ -e "$HOME/.silvermoon/connector.yaml" ]; then
+       chmod 600 "$HOME/.silvermoon/connector.yaml"
+   fi
+   (umask 077; cat > "$HOME/.silvermoon/connector.yaml")
+   ```
+
+2. While `cat` is waiting, paste the **whole YAML profile**, including
+   `version`, `relay`, and `token`. Press Enter, then Ctrl+D to finish.
+3. Confirm owner-only permissions and clear your clipboard:
+
+   ```bash
+   chmod 600 "$HOME/.silvermoon/connector.yaml"
+   ```
+
+4. Change to your project directory and run
+   `npx --yes @silvermoon-ai/connector@0.2.0 --working-directory .`.
+
+Do not share this file or use a public/shared clipboard to transfer it.
+
+### Options and permissions
 
 Resolution order for the token is `SILVERMOON_CONNECTION_TOKEN`, an explicit
 `--token-file` or `SILVERMOON_CONNECTION_TOKEN_FILE`, then the profile. CLI
@@ -66,6 +114,8 @@ For a checkout of this monorepo:
 pnpm --filter @silvermoon-ai/connector build
 node .\packages\connector\dist\cli.js --help
 ```
+
+This is a development path, not a prerequisite for using the npm release.
 
 Relay tokens are sent only in the WebSocket `Authorization` header and are
 never printed or included in connector logs.
