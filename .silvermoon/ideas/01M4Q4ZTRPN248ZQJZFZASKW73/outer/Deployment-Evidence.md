@@ -36,3 +36,10 @@ repository `silvermoon-ai`、workflow `publish-npm.yml`、environment `npm`，
 尚未确认具体未发布 canary 版本/tag，也未完成对应主线 manifest 准备。
 本次没有首发 Actions run、真实 OIDC 发布或公开 canary 安装结果；
 部署执行及验收条目全部保持未勾选，不提交 submitOuter。
+
+## 后续用户确认与执行边界
+
+用户确认已按要求完成 npm Trusted Publisher，并授权 Agent 应用部署契约中
+列出的最小 GitHub 保护方案。npm 配置属于维护者确认，真实 OIDC 接受仍待
+canary 发布验证；此授权只涵盖 GitHub environment 与保护规则，不涵盖具体
+canary 版本选择、版本修改或发布 tag 创建。

@@ -11,6 +11,11 @@
 ### D-S01: 确认外部发布前提
 
 在实施验收后，由有权限的维护者配置并确认 npm Trusted Publisher、GitHub npm environment、发布 tag 规则和主线保护；只记录非敏感配置证据，不代办授权流。
+用户已确认 npm Trusted Publisher 完成，并明确授权以下最小 GitHub 设置：
+`npm` environment 仅允许 `npm/*/*` tags；`npm/**` tag 创建仅允许
+`shazhou-ww` 绕过创建限制，独立不可变规则禁止更新/删除且无 bypass；
+`main` 仅禁止 force push 与删除、不设 bypass，不新增 PR 或 required checks 要求。
+不配置 deploy key、npm token、reviewer 或自动打 tag。
 
 ### D-S02: 执行授权的 canary 首发
 
