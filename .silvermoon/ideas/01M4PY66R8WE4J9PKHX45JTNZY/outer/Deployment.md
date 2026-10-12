@@ -18,6 +18,8 @@
 
 ## Acceptance criteria
 
+当前生产发布及探测见 [Deployment-Evidence.md](./Deployment-Evidence.md)；该证据明确区分发布成功和登录后用户结果，不能以 CI 或匿名探测代替 D-AC02。
+
 ### D-AC01: 发布与兼容边界可证明
 
 记录实际环境、组件版本、迁移结果及兼容检查，证明新增迁移不改既有设备身份、所有权和历史归属，回滚方案不会复活旧凭据。不得记录 token 明文。
