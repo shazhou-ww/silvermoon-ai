@@ -70,3 +70,48 @@ Chat created; its backing stays deferred until the first send
 
 - 本机可控 Connector 是 Home PC `device-0q6jdqArkbQMgAHR`。
 - 原始案例的 Office PC `copilot-sdk-test` 是另一在线 Connector，不是本机 supervisor；不得将 Home PC 升级结果冒充为 Office PC 结果。
+
+## 最终 canary 与发布
+
+- `0.3.0-canary.3` Actions run：[38258367993](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38258367993)，成功。
+- `.3` create 成功但 generic `ahp-session:/…` 被 Host external catalog 策略隐藏，故改用原生 `copilotcli:/…`。
+- `0.3.0-canary.4` Actions run：[38267496687](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38267496687)，source `aa9e35699a63e72d01f5debd3a9671a48e629118`，成功。
+- Registry：`canary=0.3.0-canary.4`，shasum `7fde73cf026160fce28797f29746fd919d78a4a9`；`latest=0.2.1` 未变。
+- 官方 registry clean install 和 clean-consumer smoke 通过。
+
+## Worker migration 与部署
+
+- production migration 前 `connector_commands=203`，`devices_remove_access` trigger=1。
+- 0014 remote migration 成功，203 条 command 全保留，trigger 仍为 1，table CHECK 明确包含 `session.archive`。
+- Worker 从 accepted primary `579a48b9840a5226e5358bb7880554d59ef24191` 部署，version `a4b34b81-8745-48b0-92ab-3c5bb114296b`。
+- production tail 的原异常为旧 CHECK 拒绝 `session.archive`；migration 后相同 UI 路径正常返回命令，不再产生无 CORS exception response。
+
+## Home PC 端到端证明
+
+Connector：`device-0q6jdqArkbQMgAHR`，公开 canary.4，agent `GitHub Copilot via Agent Host`。
+
+- 新 Session：`ed69299f-05b6-4b3f-a317-a0402fcea538`，标题 `AHP-only canary.4 smoke 20261012`。
+- create command `87d9c9ba-3ea3-441d-8204-246109fcad15` 成功；周期 inventory 后仍为 `idle`、native status `1`、状态已知。
+- history 含首条 user prompt 与最终 `AHP_ONLY_CREATE_OK`。
+- follow-up command `9fe34640-d76c-4d53-8e84-50bbbf858179` 成功；history 含 user prompt 与 `AHP_ONLY_FOLLOWUP_OK`。
+- Done command `ccfe2559-c0f7-4c29-a785-900467b5497b` 成功，Session `closed`、native archived=1。
+- Done 后 Relay connection 更新；使用旧 connection ID 的 Restore 被安全拒绝为 unconfirmed。
+- 使用 current connection 的 Restore command `2e57bc41-06b4-400a-a082-39aa0d480fe4` 成功，Session 恢复 `idle`、native archived=0、状态已知。
+- 当前 inventory 65/65 confirmed Session 状态已知，current unknown=0；87 个旧行保留为未确认历史。
+- 本机 Connector Node 进程路径指向 `connector-0.3.0-canary.4`，没有 Connector-owned `copilot-runtime` 子进程。
+
+## Office PC 原案例收敛
+
+Office PC `copilot-sdk-test` 通过既有 AHP Session 接收受限升级指令，发现旧 managed install `0.2.0`、两个 supervisor 与 Connector-owned SDK runtime；随后安装公开 canary.4、原子切换 persistent launcher、停止精确旧进程树并通过原 Scheduled Task 重启。
+
+- Connector 重连后 agent name 为 `GitHub Copilot via Agent Host`，sync state ready。
+- 98 个 current confirmed Session 全部 `execution_state_known=1`，current unknown=0。
+- Agent Host 行 `9df9ca7a-22e9-41e3-87ec-7bbccff5d79d` 为 current、running、状态已知。
+- 旧 SDK 行 `9090f04f-63e6-4dc1-9f52-03ac6c9ca406` 保持 unknown 但不再 current confirmed，仅作为历史数据保留。
+- Office PC 总计 104 个历史未确认行，未执行配对、重写或删除。
+
+## 最终完整性
+
+- production command 总数在两个成功 archive command 后由 203 正常增长到 205。
+- `devices_remove_access` trigger 仍为 1。
+- `latest` 保持 `0.2.1`，可按应用版本回滚；D1 migration 不删除 Session/event 数据。

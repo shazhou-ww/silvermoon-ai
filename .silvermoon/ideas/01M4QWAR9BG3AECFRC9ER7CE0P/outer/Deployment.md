@@ -20,10 +20,16 @@
 
 Actions 与 registry 证明精确 canary 发布成功且 `latest` 未变；生产只读查询证明升级后新增或更新的 Session 只有 AHP 身份，未再产生新的 metadata-only `execution_state_known=0` 行。
 
+证明见 [Deployment-Evidence.md](./Deployment-Evidence.md)：Home PC current unknown=0；Office PC 升级后 98 个 current Session 全部状态已知，旧 SDK 行只作为 unconfirmed 历史保留。
+
 ### D-AC02: AHP 操作端到端成功
 
 生产 UI 与命令证据证明 list、create、send、history、实时状态和 Done/Restore 通过 AHP 成功，Host 不可用时没有 namespace fallback。
 
+Home PC canary.4 的 create、周期 inventory、首条 history、follow-up、Done 和 Restore command 均成功；Connector 进程无自带 Copilot SDK runtime 子进程。
+
 ### D-AC03: 历史数据与回滚安全
 
 D1 行数与事件检查证明旧 Session 未被自动配对、重写或删除；出现能力回退时可回滚 Connector 版本且无需数据恢复。
+
+0014 migration 前后 203 条 command 全保留且 `devices_remove_access` trigger 仍为 1；后续两条 archive command 使总数正常增加到 205。`latest=0.2.1` 未移动，版本目录保留明确应用回滚路径。

@@ -18,12 +18,12 @@
 
 ### Deployment steps
 
-- [ ] **D-S01:** 记录 AHP 切换基线
-- [ ] **D-S02:** 发布 AHP-only Connector
-- [ ] **D-S03:** 验证单一来源并观察回退
+- [x] **D-S01:** 记录 AHP 切换基线
+- [x] **D-S02:** 发布 AHP-only Connector
+- [x] **D-S03:** 验证单一来源并观察回退
 
 ### Deployment acceptance criteria
 
-- [ ] **D-AC01:** 不再产生 SDK 投影
-- [ ] **D-AC02:** AHP 操作端到端成功
-- [ ] **D-AC03:** 历史数据与回滚安全
+- [x] **D-AC01:** 不再产生 SDK 投影
+- [x] **D-AC02:** AHP 操作端到端成功
+- [x] **D-AC03:** 历史数据与回滚安全
