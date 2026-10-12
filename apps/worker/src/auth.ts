@@ -61,7 +61,7 @@ export async function authenticateConnectionToken(
      FROM connection_tokens AS token
      JOIN devices AS device
        ON device.user_id = token.user_id AND device.id = token.device_id
-     WHERE token.id = ?1`,
+     WHERE token.id = ?1 AND device.removed_at IS NULL`,
   )
     .bind(parsed.id)
     .first<ConnectionTokenRow>();

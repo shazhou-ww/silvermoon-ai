@@ -140,6 +140,8 @@ interface Connector {
   lastSeenAt: string | null
   createdAt: string
   sessionCount: number
+  removedAt?: string | null
+  disconnectRequestedAt?: string | null
 }
 
 interface AgentSession {
@@ -282,6 +284,8 @@ function sessionStatusLabel(status: string): string {
       return "Unavailable"
     case "offline":
       return "Offline"
+    case "removed":
+      return "Device removed · read-only"
     case "syncing":
       return "Syncing status"
     case "sync-failed":
@@ -1452,6 +1456,7 @@ function App() {
     }`
   const canSyncSelectedHistory = !devicesRefreshFailed && !sessionsRefreshFailed
     && selectedConnector?.status === "online"
+    && !selectedConnector.removedAt
     && selectedConnector.capabilities.streamEvents
 
   useEffect(() => {
@@ -1672,6 +1677,7 @@ function App() {
       devicesRefreshFailed || sessionsRefreshFailed ? [] : connectors.filter(
         (connector) =>
           connector.status === "online"
+          && !connector.removedAt
           && connector.capabilities.createSession,
       ),
     [connectors, devicesRefreshFailed, sessionsRefreshFailed],
@@ -2033,6 +2039,49 @@ function App() {
     }
   }
 
+  async function renameDevice(id: string, name: string): Promise<boolean> {
+    const epoch = authEpoch.current
+    setBusyAction(`rename-device:${id}`)
+    try {
+      await api(`/api/devices/${encodeURIComponent(id)}/rename`, {
+        method: "POST", body: JSON.stringify({ name }),
+      })
+      if (epoch !== authEpoch.current) return false
+      setConnectors(current => current.map(device =>
+        device.id === id ? { ...device, displayName: name.trim() } : device))
+      setNotice("Device renamed. Its connection and Sessions are unchanged.")
+      await refresh()
+      return true
+    } finally {
+      if (epoch === authEpoch.current) setBusyAction(null)
+    }
+  }
+
+  async function deleteDevice(id: string): Promise<{ disconnectRequested: boolean } | null> {
+    const epoch = authEpoch.current
+    setBusyAction(`delete-device:${id}`)
+    try {
+      const result = await api<{ removed: boolean; disconnectRequested: boolean }>(
+        `/api/devices/${encodeURIComponent(id)}`, { method: "DELETE" },
+      )
+      if (epoch !== authEpoch.current) return null
+      setConnectors(current => current.map(device => device.id === id ? {
+        ...device, removedAt: device.removedAt ?? new Date().toISOString(),
+        disconnectRequestedAt: result.disconnectRequested ? new Date().toISOString() : null,
+        status: "offline", connectionId: null,
+      } : device))
+      setTokens(current => current.filter(token => token.deviceId !== id))
+      setRevealedToken(null)
+      setNotice(result.disconnectRequested
+        ? "Device removed. Connection access is disabled and disconnect requests were sent. Synced history remains read-only."
+        : "Device access is disabled. Some disconnect requests need a retry.")
+      await refresh()
+      return result
+    } finally {
+      if (epoch === authEpoch.current) setBusyAction(null)
+    }
+  }
+
   async function logout() {
     const epoch = authEpoch.current
     setError(null)
@@ -2101,8 +2150,9 @@ function App() {
     account.identities.find((identity) => identity.email)?.email
     ?? "Signed in"
   const onlineConnectorCount = connectors.filter(
-    (connector) => connector.status === "online",
+    (connector) => connector.status === "online" && !connector.removedAt,
   ).length
+  const availableConnectorCount = connectors.filter(connector => !connector.removedAt).length
 
   const renderSessionRow = (
     item: OrderedSession<AgentSession>,
@@ -2568,7 +2618,7 @@ function App() {
                           className="session-device-status"
                           data-status={group.source.status}
                         >
-                          {group.source.status}
+                          {group.source.removedAt ? "removed · read-only" : group.source.status}
                         </span>
                       </button>
                       {expanded && group.sessions.map((item) =>
@@ -2588,9 +2638,9 @@ function App() {
               {onlineConnectorCount} online
             </span>
             <button type="button" onClick={() => openSettings(true)}>
-              {connectors.length === 1
+              {availableConnectorCount === 1
                 ? "1 Device"
-                : `${connectors.length} Devices`}
+                : `${availableConnectorCount} Devices`}
             </button>
           </div>
         </aside>
@@ -2618,6 +2668,8 @@ function App() {
             cancelDevice={cancelDeviceForm}
             rotateToken={rotateConnectionToken}
             revokeToken={revokeConnectionToken}
+            renameDevice={renameDevice}
+            deleteDevice={deleteDevice}
             unlinkIdentity={unlinkIdentity}
             copyProfile={copyRevealedToken}
             formatTime={formatTime}
@@ -2657,11 +2709,13 @@ function App() {
                     />
                   </div>
 
-                  {["offline", "unknown-device", "syncing", "sync-failed", "unsupported", "unconfirmed"].includes(selectedDisplayStatus) && (
+                  {["offline", "removed", "unknown-device", "syncing", "sync-failed", "unsupported", "unconfirmed"].includes(selectedDisplayStatus) && (
                     <div className={`session-connection-notice${selectedDisplayStatus === "sync-failed" ? " is-error" : ""}`}
                       role={selectedDisplayStatus === "sync-failed" ? "alert" : "status"}>
                       <strong>{sessionStatusLabel(selectedDisplayStatus)}</strong>
-                      <span>{selectedDisplayStatus === "offline"
+                      <span>{selectedDisplayStatus === "removed"
+                        ? "This Device was removed. Synced history is read-only. To connect this computer again, add a new Device; old history will not be merged."
+                        : selectedDisplayStatus === "offline"
                         ? "The Device is unreachable. Read saved content or edit a local draft; reconnect and confirm capabilities to continue."
                         : selectedDisplayStatus === "unsupported"
                         ? "Update the connector to support current-connection confirmation. Saved content and local drafts remain available."
@@ -2816,6 +2870,7 @@ function App() {
                   </TranscriptScroll>
 
                   <div
+                    hidden={Boolean(selectedConnector?.removedAt)}
                     className={`session-composer-shell${
                       hasCurrentPendingInput
                         ? " has-pending-input"

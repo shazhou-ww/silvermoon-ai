@@ -1,4 +1,4 @@
-import { env, SELF } from "cloudflare:test";
+import { env, SELF, runInDurableObject } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { AppEnv } from "./env";
 import { authenticate } from "./auth";
@@ -166,6 +166,14 @@ async function createSchema(): Promise<void> {
     )`,
   ];
   for (const statement of statements) {
+    await env.DB.prepare(statement).run();
+  }
+  const migration = (env as AppEnv & { DEVICE_MANAGEMENT_SQL: string }).DEVICE_MANAGEMENT_SQL;
+  for (const statement of migration.trim().split(/\n\s*\n/u)) {
+    if (statement.startsWith("ALTER TABLE")) {
+      for (const alter of statement.split("\n")) await env.DB.prepare(alter).run();
+      continue;
+    }
     await env.DB.prepare(statement).run();
   }
 }
@@ -661,6 +669,225 @@ describe("relay identity and token service", () => {
     expect(previous?.revoked_at).not.toBeNull();
     expect(previous?.replaced_by_id).toBe(replacement.metadata.id);
     expect(next?.revoked_at).toBeNull();
+  });
+
+  it("renames the canonical Device and Connector without changing tokens or identity", async () => {
+    const created = await createToken(appEnv, "user-01", { name: "Original" });
+    const id = created.metadata.deviceId;
+    const renamed = await SELF.fetch(`https://relay.silvermoon.work/api/devices/${id}/rename`, {
+      method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ name: "  Work laptop  " }),
+    });
+    expect(renamed.status).toBe(200);
+    expect(await env.DB.prepare("SELECT display_name FROM connectors WHERE user_id = ?1 AND id = ?2")
+      .bind("user-01", id).first<string>("display_name")).toBe("Work laptop");
+    const authenticated = await authenticate(new Request("https://relay.silvermoon.work/v1/connect", {
+      headers: { authorization: `Bearer ${created.token}` },
+    }), appEnv);
+    expect(authenticated).toMatchObject({ deviceId: id, displayName: "Work laptop", tokenId: created.metadata.id });
+    await createToken(appEnv, "user-01", { name: "Work laptop" });
+    for (const name of ["x", "x".repeat(80), "Work laptop"]) {
+      const valid = await SELF.fetch(`https://relay.silvermoon.work/api/devices/${id}/rename`, {
+        method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ name }),
+      });
+      expect(valid.status).toBe(200);
+    }
+    const upgrade = await SELF.fetch("https://relay.silvermoon.work/v1/connect", {
+      headers: {
+        authorization: `Bearer ${created.token}`, connection: "Upgrade", upgrade: "websocket",
+        "sec-websocket-version": "13", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+      },
+    });
+    expect(upgrade.status).toBe(101);
+    const socket = upgrade.webSocket!;
+    socket.accept();
+    socket.send(JSON.stringify({
+      id: 1, method: "mutation", params: {
+        path: "register", input: {
+          displayName: "Stale profile name", agent: { name: "Rename test connector" },
+          capabilities: { listSessions: false, createSession: false, sendMessage: false, streamEvents: false },
+        },
+      },
+    }));
+    await expect.poll(async () => env.DB.prepare("SELECT agent_name FROM connectors WHERE id = ?1")
+      .bind(id).first<string>("agent_name")).toBe("Rename test connector");
+    expect(await env.DB.prepare("SELECT display_name FROM connectors WHERE id = ?1")
+      .bind(id).first<string>("display_name")).toBe("Work laptop");
+    socket.close(1000, "rename verified");
+    for (const name of [" ", "x".repeat(81)]) {
+      const invalid = await SELF.fetch(`https://relay.silvermoon.work/api/devices/${id}/rename`, {
+        method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ name }),
+      });
+      expect(invalid.status).toBe(400);
+    }
+    const csrf = await SELF.fetch(`https://relay.silvermoon.work/api/devices/${id}`, {
+      method: "DELETE", headers: { origin: "https://silvermoon.work", cookie: `sm_session=${session.token}` },
+    });
+    expect(csrf.status).toBe(403);
+    await env.DB.prepare("INSERT INTO users (id) VALUES ('another-owner')").run();
+    const foreign = await createToken(appEnv, "another-owner", { name: "Foreign" });
+    for (const method of ["POST", "DELETE"]) {
+      const response = await SELF.fetch(
+        `https://relay.silvermoon.work/api/devices/${foreign.metadata.deviceId}${method === "POST" ? "/rename" : ""}`,
+        { method, headers: sessionHeaders(session), ...(method === "POST" ? { body: JSON.stringify({ name: "Wrong owner" }) } : {}) },
+      );
+      expect(response.status).toBe(404);
+    }
+  });
+
+  it("removes an online Device, revokes every token and retains read-only history", async () => {
+    const original = await createToken(appEnv, "user-01", { name: "Retired workstation" });
+    const replacement = await rotateToken(appEnv, "user-01", original.metadata.id);
+    await env.DB.prepare("UPDATE connection_tokens SET revoked_at = NULL WHERE id = ?1")
+      .bind(original.metadata.id).run();
+    const id = original.metadata.deviceId;
+    const now = new Date().toISOString();
+    const upgrade = await SELF.fetch("https://relay.silvermoon.work/v1/connect", {
+      headers: {
+        authorization: `Bearer ${replacement.token}`, connection: "Upgrade", upgrade: "websocket",
+        "sec-websocket-version": "13", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+      },
+    });
+    expect(upgrade.status).toBe(101);
+    const socket = upgrade.webSocket!;
+    socket.accept();
+    const closed = new Promise<CloseEvent>(resolve => socket.addEventListener("close", resolve, { once: true }));
+    const otherUpgrade = await SELF.fetch("https://relay.silvermoon.work/v1/connect", {
+      headers: {
+        authorization: `Bearer ${original.token}`, connection: "Upgrade", upgrade: "websocket",
+        "sec-websocket-version": "13", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+      },
+    });
+    expect(otherUpgrade.status).toBe(101);
+    const otherSocket = otherUpgrade.webSocket!;
+    otherSocket.accept();
+    const otherClosed = new Promise<CloseEvent>(resolve => otherSocket.addEventListener("close", resolve, { once: true }));
+    await env.DB.prepare(`INSERT INTO agent_sessions
+      (user_id, connector_id, id, title, status, created_at, updated_at, last_activity_at)
+      VALUES ('user-01', ?1, 'saved-session', 'Preserved work', 'running', ?2, ?2, ?2)`).bind(id, now).run();
+    await env.DB.prepare(`INSERT INTO agent_session_events
+      (user_id, connector_id, session_id, event_id, sequence, type, content, created_at)
+      VALUES ('user-01', ?1, 'saved-session', 'saved-event', 0, 'message', 'Preserved message', ?2)`).bind(id, now).run();
+    for (const status of ["queued", "sent", "accepted"]) {
+      await env.DB.prepare(`INSERT INTO connector_commands (id, user_id, connector_id, type, payload_json, status)
+        VALUES (?1, 'user-01', ?2, 'session.create', '{}', ?3)`).bind(`remove-${status}`, id, status).run();
+    }
+    const response = await SELF.fetch(`https://relay.silvermoon.work/api/devices/${id}`, {
+      method: "DELETE", headers: sessionHeaders(session),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ removed: true, disconnectRequested: true });
+    await expect(closed).resolves.toMatchObject({ code: 4003 });
+    await expect(otherClosed).resolves.toMatchObject({ code: 4003 });
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM connection_tokens WHERE device_id = ?1 AND revoked_at IS NULL")
+      .bind(id).first<number>("count")).toBe(0);
+    expect(await env.DB.prepare("SELECT connection_id FROM connectors WHERE id = ?1").bind(id).first<string>("connection_id")).toBeNull();
+    const history = await SELF.fetch(`https://relay.silvermoon.work/api/connectors/${id}/sessions/saved-session/events`, {
+      headers: sessionHeaders(session),
+    });
+    expect(history.status).toBe(200);
+    expect(await history.text()).toContain("Preserved message");
+    const commands = await env.DB.prepare("SELECT status, result_uncertain_at FROM connector_commands WHERE connector_id = ?1")
+      .bind(id).all<{ status: string; result_uncertain_at: string | null }>();
+    expect(commands.results.find(row => row.status === "failed")?.result_uncertain_at).toBeNull();
+    expect(commands.results.filter(row => row.result_uncertain_at !== null)).toHaveLength(2);
+    for (const suffix of ["sessions", "sessions/sync", "sessions/saved-session/messages", "sessions/saved-session/events/sync"]) {
+      const write = await SELF.fetch(`https://relay.silvermoon.work/api/connectors/${id}/${suffix}`, {
+        method: "POST", headers: sessionHeaders(session), body: "{}",
+      });
+      expect(write.status).toBe(409);
+      expect(await write.json()).toEqual({ error: "device-removed" });
+    }
+    await expect(rotateToken(appEnv, "user-01", replacement.metadata.id)).rejects.toThrow("token-not-found");
+    await expect(env.DB.prepare("UPDATE devices SET removed_at = NULL WHERE id = ?1").bind(id).run())
+      .rejects.toThrow("irreversible");
+    await expect(env.DB.prepare("UPDATE agent_session_events SET content = 'late' WHERE connector_id = ?1").bind(id).run())
+      .rejects.toThrow("device-removed");
+    await expect(env.DB.prepare("UPDATE agent_sessions SET title = 'late' WHERE connector_id = ?1").bind(id).run())
+      .rejects.toThrow("device-removed");
+    await expect(env.DB.prepare("UPDATE connection_tokens SET revoked_at = NULL WHERE device_id = ?1").bind(id).run())
+      .rejects.toThrow("device-removed");
+    await expect(env.DB.prepare("UPDATE connectors SET status = 'online' WHERE id = ?1").bind(id).run())
+      .rejects.toThrow("device-removed");
+    await expect(env.DB.prepare(`INSERT INTO connection_tokens
+      (id, user_id, device_id, secret_hash, token_hint, label)
+      VALUES ('late-token', 'user-01', ?1, 'late-hash', 'late', 'late')`).bind(id).run())
+      .rejects.toThrow("device-removed");
+    await expect(env.DB.prepare(`INSERT INTO agent_sessions
+      (user_id, connector_id, id, status, created_at, updated_at, last_activity_at)
+      VALUES ('user-01', ?1, 'late-session', 'idle', ?2, ?2, ?2)`).bind(id, now).run())
+      .rejects.toThrow("device-removed");
+    await expect(env.DB.prepare(`INSERT INTO agent_session_events
+      (user_id, connector_id, session_id, event_id, sequence, type, content, created_at)
+      VALUES ('user-01', ?1, 'saved-session', 'late-event', 1, 'message', 'late', ?2)`).bind(id, now).run())
+      .rejects.toThrow("device-removed");
+    const reconnect = await SELF.fetch("https://relay.silvermoon.work/v1/connect", {
+      headers: { authorization: `Bearer ${replacement.token}`, upgrade: "websocket" },
+    });
+    expect(reconnect.status).toBe(401);
+    const repeated = await SELF.fetch(`https://relay.silvermoon.work/api/devices/${id}`, {
+      method: "DELETE", headers: sessionHeaders(session),
+    });
+    expect(repeated.status).toBe(200);
+    const fresh = await createToken(appEnv, "user-01", { name: "Retired workstation" });
+    expect(fresh.metadata.deviceId).not.toBe(id);
+    expect(await authenticate(new Request("https://relay.silvermoon.work", {
+      headers: { authorization: `Bearer ${fresh.token}` },
+    }), appEnv)).not.toBeNull();
+  });
+
+  it("persists removal when disconnect notification fails and safely retries", async () => {
+    const created = await createToken(appEnv, "user-01", { name: "Disconnect retry" });
+    const id = created.metadata.deviceId;
+    const stub = env.DAEMON_SESSIONS.getByName(created.metadata.id);
+    let restoreDisconnect!: () => void;
+    await runInDurableObject(stub, instance => {
+      const prototype = Object.getPrototypeOf(instance);
+      const original = Object.getOwnPropertyDescriptor(prototype, "revokeToken");
+      if (!original) throw new Error("Expected a Durable Object disconnect method");
+      Object.defineProperty(prototype, "revokeToken", {
+        ...original, value: async () => { throw new Error("Test disconnect unavailable"); },
+      });
+      restoreDisconnect = () => Object.defineProperty(prototype, "revokeToken", original);
+    });
+    try {
+      const partial = await SELF.fetch(`https://relay.silvermoon.work/api/devices/${id}`, {
+        method: "DELETE", headers: sessionHeaders(session),
+      });
+      expect(partial.status).toBe(202);
+      expect(await partial.json()).toEqual({ removed: true, disconnectRequested: false });
+      const persisted = await env.DB.prepare(
+        "SELECT removed_at, disconnect_requested_at FROM devices WHERE id = ?1",
+      ).bind(id).first<{ removed_at: string | null; disconnect_requested_at: string | null }>();
+      expect(persisted?.removed_at).not.toBeNull();
+      expect(persisted?.disconnect_requested_at).toBeNull();
+      expect(await authenticate(new Request("https://relay.silvermoon.work/v1/connect", {
+        headers: { authorization: `Bearer ${created.token}` },
+      }), appEnv)).toBeNull();
+    } finally {
+      await runInDurableObject(stub, () => restoreDisconnect());
+    }
+    const retry = await SELF.fetch(`https://relay.silvermoon.work/api/devices/${id}`, {
+      method: "DELETE", headers: sessionHeaders(session),
+    });
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toEqual({ removed: true, disconnectRequested: true });
+    expect(await env.DB.prepare("SELECT disconnect_requested_at FROM devices WHERE id = ?1")
+      .bind(id).first<string>("disconnect_requested_at")).not.toBeNull();
+  });
+
+  it("keeps an offline Device removed while rotation and removal race", async () => {
+    const created = await createToken(appEnv, "user-01", { name: "Offline" });
+    const id = created.metadata.deviceId;
+    const [removal] = await Promise.all([
+      SELF.fetch(`https://relay.silvermoon.work/api/devices/${id}`, { method: "DELETE", headers: sessionHeaders(session) }),
+      rotateToken(appEnv, "user-01", created.metadata.id).then(() => true, error => {
+        expect(String(error)).toMatch(/token-not-found|token-rotation-conflict|device-removed/u);
+        return false;
+      }),
+    ]);
+    expect(removal.status).toBe(200);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM connection_tokens WHERE device_id = ?1 AND revoked_at IS NULL")
+      .bind(id).first<number>("count")).toBe(0);
   });
 
   it("rejects an expired connection token", async () => {

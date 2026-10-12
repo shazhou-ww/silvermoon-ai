@@ -32,6 +32,7 @@ export interface SessionSource {
   id: string
   displayName: string
   status: "online" | "offline" | "unknown"
+  removedAt?: string | null
   connectionId?: string | null
   sessionSyncState?: "unsupported" | "pending" | "ready" | "failed"
   sessionSyncError?: string | null
@@ -130,6 +131,7 @@ export function sessionConfirmationIsCurrent(
   source: SessionSource | undefined,
 ): boolean {
   return source?.status === "online"
+    && !source.removedAt
     && Boolean(source.connectionId)
     && session.confirmedConnectionId === source.connectionId
 }
@@ -139,6 +141,7 @@ export function sessionDisplayStatus(
   source: SessionSource | undefined,
 ): string {
   if (!source || source.status === "unknown") return "unknown-device"
+  if (source.removedAt) return "removed"
   if (source.status === "offline") return "offline"
   if (sessionConfirmationIsCurrent(session, source)) {
     return session.executionStateKnown === true ? session.status : "unknown"
@@ -178,9 +181,13 @@ export function deriveSessionFacets(
       sessionConfirmationIsCurrent(session, sources.get(session.connectorId))
       && session.executionStateKnown === true,
     )),
-    offline: scoped.filter((session) => sources.get(session.connectorId)?.status === "offline").length,
+    offline: scoped.filter((session) => {
+      const source = sources.get(session.connectorId)
+      return source?.status === "offline" || Boolean(source?.removedAt)
+    }).length,
     pending: scoped.filter((session) =>
       sources.get(session.connectorId)?.status !== "offline"
+      && !sources.get(session.connectorId)?.removedAt
       && (!sessionConfirmationIsCurrent(session, sources.get(session.connectorId))
         || session.executionStateKnown !== true),
     ).length,
@@ -285,7 +292,7 @@ export function deriveVisibleSessions<T extends FilterableSession>(
   for (const session of sessions) {
     const source = sources.get(session.connectorId)
     if (!sessionMatchesScope(session, source, options)) continue
-    if (source?.status === "offline" && (!options.showOffline || options.statusView !== "all")) continue
+    if ((source?.status === "offline" || source?.removedAt) && (!options.showOffline || options.statusView !== "all")) continue
     if (options.statusView !== "all" && (
       !sessionConfirmationIsCurrent(session, source)
       || session.executionStateKnown !== true

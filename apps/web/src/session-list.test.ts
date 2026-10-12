@@ -63,6 +63,22 @@ const sources = new Map<string, SessionSource>([
   }],
 ])
 
+describe("removed Device history", () => {
+  it("keeps attribution, requires offline visibility and never confirms execution", () => {
+    const removedSources = new Map(sources)
+    removedSources.set("device-1", { ...sources.get("device-1")!, removedAt: "2026-10-12T00:00:00Z" })
+    const saved = session("retained", null, "2026-10-10T10:00:00.000Z", "device-1", "running")
+    expect(sessionDisplayStatus(saved, removedSources.get("device-1"))).toBe("removed")
+    expect(sessionConfirmationIsCurrent(saved, removedSources.get("device-1"))).toBe(false)
+    const options = { query: "", statusView: "all" as const, showEnded: true, showUnavailable: true }
+    expect(deriveVisibleSessions([saved], removedSources, options)).toHaveLength(0)
+    const visible = deriveVisibleSessions([saved], removedSources, { ...options, showOffline: true })
+    expect(visible).toHaveLength(1)
+    expect(groupSessionsByDevice(visible, removedSources)[0]?.source.displayName).toBe("Studio laptop")
+    expect(deriveSessionFacets([saved], removedSources, options)).toMatchObject({ active: 0, offline: 1, pending: 0 })
+  })
+})
+
 describe("orderSessionHierarchy", () => {
   it("keeps children beside their parent and sorts siblings by activity", () => {
     const ordered = orderSessionHierarchy([

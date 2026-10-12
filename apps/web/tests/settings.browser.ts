@@ -6,6 +6,7 @@ async function fixture(page: Page) {
     user: "user",
     createFailure: false,
     createDelay: 0,
+    createGate: Promise.resolve(),
     messageDelay: 0,
     messageFailure: false,
     commandStatus: "accepted",
@@ -13,6 +14,12 @@ async function fixture(page: Page) {
     requests: [] as string[],
     created: false,
     events: 40,
+    deviceName: "Development Mac",
+    removed: false,
+    renameFailure: false,
+    deleteFailure: false,
+    disconnectFailure: false,
+    deleteGate: Promise.resolve(),
   }
   await page.route("https://relay.silvermoon.work/**", async (route) => {
     const request = route.request()
@@ -41,6 +48,7 @@ async function fixture(page: Page) {
         sessionId: `browser-${state.user}`,
       }
     } else if (path === "/api/tokens" && request.method() === "POST") {
+      await state.createGate
       await new Promise((resolve) => setTimeout(resolve, state.createDelay))
       if (state.createFailure) {
         await route.fulfill({ status: 400, json: { error: "Device creation rejected." } })
@@ -49,17 +57,34 @@ async function fixture(page: Page) {
       state.created = true
       body = { token: "mock-profile-secret", metadata: token }
     } else if (path === "/api/tokens") {
-      body = [token]
+      body = state.removed ? [] : [token]
+    } else if (path === "/api/devices/one/rename") {
+      if (state.renameFailure) {
+        await route.fulfill({ status: 400, json: { error: "Rename rejected." } })
+        return
+      }
+      state.deviceName = request.postDataJSON().name.trim()
+      body = { renamed: true }
+    } else if (path === "/api/devices/one" && request.method() === "DELETE") {
+      if (state.deleteFailure) {
+        await route.fulfill({ status: 503, json: { error: "Deletion unavailable." } })
+        return
+      }
+      await state.deleteGate
+      state.removed = true
+      body = { removed: true, disconnectRequested: !state.disconnectFailure }
     } else if (path.endsWith("/rotate")) {
       body = { token: "mock-rotated-secret" }
     } else if (path === "/api/connectors") {
       body = ["one", "two", ...(state.created ? ["new"] : [])].map((id) => ({
         id,
-        displayName: id === "one" ? "Development Mac" : id === "two" ? "Work desktop" : "Created Device",
+        displayName: id === "one" ? state.deviceName : id === "two" ? "Work desktop" : "Created Device",
         agent: { name: "Copilot", version: null },
         capabilities: { listSessions: true, createSession: true, sendMessage: true, streamEvents: true },
-        status: "online",
-        connectionId: `${id}-connection`,
+        status: id === "one" && state.removed ? "offline" : "online",
+        removedAt: id === "one" && state.removed ? "2026-10-12T00:00:00.000Z" : null,
+        disconnectRequestedAt: id === "one" && state.removed && !state.disconnectFailure ? "2026-10-12T00:00:00.000Z" : null,
+        connectionId: id === "one" && state.removed ? null : `${id}-connection`,
         sessionSyncState: "ready",
         sessionSyncError: null,
         connectedAt: null,
@@ -221,6 +246,82 @@ test("Session drafts are isolated by device and survive Settings and refresh", a
   await expect(input(page)).toHaveValue("beta")
 })
 
+test("Device rename cancels without IO, retains failed input and updates attribution", async ({ page }) => {
+  const state = await fixture(page)
+  await page.goto("/settings?connector=one&session=same")
+  const row = page.locator(".device-settings-row").filter({ hasText: "Development Mac" })
+  const rename = row.getByRole("button", { name: "Rename", exact: true })
+  await rename.click()
+  const dialog = page.getByRole("dialog", { name: "Rename Device" })
+  await expect(dialog.getByLabel("Device name")).toBeFocused()
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click()
+  await expect(rename).toBeFocused()
+  expect(state.requests).not.toContain("POST /api/devices/one/rename")
+  await rename.click()
+  await dialog.getByLabel("Device name").fill("Work laptop")
+  state.renameFailure = true
+  await dialog.getByRole("button", { name: "Save name" }).click()
+  await expect(dialog.getByRole("alert")).toHaveText("Rename rejected.")
+  await expect(dialog.getByLabel("Device name")).toHaveValue("Work laptop")
+  state.renameFailure = false
+  await dialog.getByRole("button", { name: "Save name" }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(settings(page).getByText("Work laptop", { exact: true })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await select(page, "First Session")
+  await expect(page.getByRole("region", { name: "Session workspace" })).toContainText("Work laptop")
+})
+
+test("Device deletion retains read-only history and exposes persistent disconnect retry", async ({ page, isMobile }) => {
+  const state = await fixture(page)
+  await page.goto("/settings?connector=one&session=same")
+  const row = page.locator(".device-settings-row").filter({ hasText: "Development Mac" })
+  await row.getByRole("button", { name: "Delete", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "Delete Development Mac?" })
+  await expect(dialog).toContainText("does not delete local data, stop local agents")
+  await dialog.getByRole("button", { name: "Cancel" }).click()
+  expect(state.requests).not.toContain("DELETE /api/devices/one")
+  await row.getByRole("button", { name: "Delete", exact: true }).click()
+  state.deleteFailure = true
+  await dialog.getByRole("button", { name: "Delete device" }).click()
+  await expect(dialog.getByRole("alert")).toHaveText("Deletion unavailable.")
+  await expect(row).toBeVisible()
+  state.deleteFailure = false
+  state.disconnectFailure = true
+  let releaseDelete!: () => void
+  state.deleteGate = new Promise<void>(resolve => { releaseDelete = resolve })
+  await dialog.getByRole("button", { name: "Delete device" }).click()
+  await expect(dialog.locator('button[type="submit"]')).toBeDisabled()
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled()
+  await page.keyboard.press("Escape")
+  await expect(dialog).toBeVisible()
+  releaseDelete()
+  await expect(dialog.getByRole("alert")).toContainText("Connection access is disabled")
+  expect(state.requests.filter(request => request === "DELETE /api/devices/one")).toHaveLength(2)
+  state.deleteGate = Promise.resolve()
+  await dialog.getByRole("button", { name: "Cancel" }).click()
+  await expect(row).toHaveCount(0)
+  await page.reload()
+  await settings(page).getByRole("button", { name: "Retry disconnect" }).click()
+  state.disconnectFailure = false
+  await dialog.getByRole("button", { name: "Retry disconnect" }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(settings(page).getByRole("button", { name: "Retry disconnect" })).toHaveCount(0)
+  await expect(settings(page).getByRole("button", { name: "Add device", exact: true })).toBeFocused()
+  if (isMobile) await page.getByRole("button", { name: "Open Sessions" }).click()
+  await page.getByRole("button", { name: "New Session", exact: true }).click()
+  const createDialog = page.getByRole("dialog", { name: "Start a new Session" })
+  await expect(createDialog.getByRole("combobox").getByRole("option", { name: "Development Mac" })).toHaveCount(0)
+  await expect(createDialog.getByRole("combobox")).toContainText("Work desktop")
+  await createDialog.getByRole("button", { name: "Cancel" }).click()
+  await page.goto("/?connector=one&session=same")
+  const workspace = page.getByRole("region", { name: "Session workspace" })
+  await expect(workspace).toContainText("Device removed")
+  await expect(workspace.getByText("First message 39", { exact: true })).toBeVisible()
+  await expect(input(page)).not.toBeVisible()
+  expect(state.requests.filter(request => request.endsWith("/messages"))).toHaveLength(0)
+})
+
 test("back and forward resolve the right-side destination, and Devices opens its card", async ({ page, isMobile }) => {
   await fixture(page)
   await page.goto("/?connector=one&session=same")
@@ -325,10 +426,12 @@ test("profile leaves with Settings and a late token response is never redisplaye
   await select(page, "First Session")
   await openSettings(page)
   await expect(page.locator(".token-reveal")).toHaveCount(0)
-  state.createDelay = 500
+  let releaseCreate!: () => void
+  state.createGate = new Promise<void>(resolve => { releaseCreate = resolve })
   await settings(page).getByRole("button", { name: "Add device", exact: true }).click()
   await settings(page).getByRole("button", { name: "Add device", exact: true }).click()
   await select(page, "First Session")
+  releaseCreate()
   await expect(page.getByText(/Device created\. Return to Settings/)).toBeVisible()
   await openSettings(page)
   await expect(page.locator(".token-reveal")).toHaveCount(0)

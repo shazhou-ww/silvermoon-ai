@@ -1,4 +1,5 @@
 import type { AppEnv } from "./env";
+import { removeDevice, renameDevice } from "./devices";
 import {
   agentInputRequestSchema,
   connectorCapabilitiesSchema,
@@ -61,6 +62,8 @@ interface ConnectorRow {
   connection_id: string | null;
   session_sync_state: "unsupported" | "pending" | "ready" | "failed";
   session_sync_error: string | null;
+  removed_at: string | null;
+  disconnect_requested_at: string | null;
 }
 
 interface InputRequestEventRow {
@@ -114,7 +117,7 @@ export function pendingInputRequests(
 }
 
 type ConnectorState = Pick<ConnectorRow,
-  "id" | "status" | "connection_id" | "session_sync_state" | "capabilities_json"
+  "id" | "status" | "connection_id" | "session_sync_state" | "capabilities_json" | "removed_at"
 >;
 
 function response(
@@ -168,8 +171,9 @@ async function connectorForUser(
   connectorId: string,
 ): Promise<ConnectorState | null> {
   return env.DB.prepare(
-    `SELECT id, status, connection_id, session_sync_state, capabilities_json
-     FROM connectors WHERE user_id = ?1 AND id = ?2`,
+    `SELECT c.id, c.status, c.connection_id, c.session_sync_state, c.capabilities_json, d.removed_at
+     FROM connectors c JOIN devices d ON d.user_id = c.user_id AND d.id = c.id
+     WHERE c.user_id = ?1 AND c.id = ?2`,
   )
     .bind(userId, connectorId)
     .first<ConnectorState>();
@@ -188,10 +192,12 @@ async function dispatchCommand(
       ? { connectionId: command.connectionId ?? connector?.connection_id ?? undefined }
       : {}),
   };
-  await env.DB.prepare(
+  const queued = await env.DB.prepare(
     `INSERT INTO connector_commands
       (id, user_id, connector_id, type, session_id, payload_json, status, connection_id)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7)`,
+     SELECT ?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7
+     WHERE EXISTS (SELECT 1 FROM devices
+       WHERE user_id = ?2 AND id = ?3 AND removed_at IS NULL)`,
   )
     .bind(
       command.commandId,
@@ -205,6 +211,7 @@ async function dispatchCommand(
       addressedCommand.connectionId ?? null,
     )
     .run();
+  if (queued.meta.changes !== 1) return false;
 
   const result = await env.DAEMON_SESSIONS
     .getByName(
@@ -277,6 +284,35 @@ export async function handleApi(
 
   const url = new URL(request.url);
   const path = url.pathname;
+  const deviceMatch = /^\/api\/devices\/([^/]+)(\/rename)?$/u.exec(path);
+  if (deviceMatch && (request.method === "DELETE" || request.method === "POST")) {
+    const id = connectorIdSchema.safeParse(pathValue(deviceMatch[1]));
+    if (!id.success) return response(request, env, { error: "invalid-device-id" }, { status: 400 });
+    if (request.method === "POST" && deviceMatch[2]) {
+      try {
+        const renamed = await renameDevice(env, session.userId, id.data, (await requestBody(request)).name);
+        return response(request, env, { renamed }, { status: renamed ? 200 : 404 });
+      } catch (error) {
+        if (error instanceof SyntaxError || (error instanceof Error
+          && ["invalid-device-name", "json-required", "invalid-json"].includes(error.message))) {
+          return response(request, env, { error: error instanceof SyntaxError ? "invalid-json" : error.message }, { status: 400 });
+        }
+        throw error;
+      }
+    }
+    if (request.method === "DELETE" && !deviceMatch[2]) {
+      const result = await removeDevice(env, session.userId, id.data);
+      return response(request, env, result ?? { error: "device-not-found" },
+        { status: !result ? 404 : result.disconnectRequested ? 200 : 202 });
+    }
+  }
+  const writeConnector = /^\/api\/connectors\/([^/]+)\//u.exec(path);
+  if (request.method !== "GET" && writeConnector) {
+    const id = connectorIdSchema.safeParse(pathValue(writeConnector[1]));
+    if (id.success && (await connectorForUser(env, session.userId, id.data))?.removed_at) {
+      return response(request, env, { error: "device-removed" }, { status: 409 });
+    }
+  }
   if (request.method === "GET" && path === "/api/me") {
     const [user, identities] = await Promise.all([
       env.DB.prepare(
@@ -349,8 +385,9 @@ export async function handleApi(
       `SELECT c.id, c.display_name, c.agent_name, c.agent_version,
         c.capabilities_json, c.status, c.connected_at, c.disconnected_at,
         c.last_seen_at, c.created_at, c.connection_id, c.session_sync_state,
-        c.session_sync_error, COUNT(s.id) AS session_count
+        c.session_sync_error, d.removed_at, d.disconnect_requested_at, COUNT(s.id) AS session_count
        FROM connectors c
+       JOIN devices d ON d.user_id = c.user_id AND d.id = c.id
        LEFT JOIN agent_sessions s
          ON s.user_id = c.user_id AND s.connector_id = c.id
        WHERE c.user_id = ?1
@@ -380,6 +417,8 @@ export async function handleApi(
       connectionId: connector.connection_id,
       sessionSyncState: connector.session_sync_state,
       sessionSyncError: connector.session_sync_error,
+      removedAt: connector.removed_at,
+      disconnectRequestedAt: connector.disconnect_requested_at,
     })));
   }
 
