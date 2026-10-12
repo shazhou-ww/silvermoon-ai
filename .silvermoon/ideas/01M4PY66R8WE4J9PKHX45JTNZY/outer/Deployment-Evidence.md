@@ -1,6 +1,6 @@
 # 设备管理生产发布证据
 
-## 发布结果：成功，等待登录后的端到端验证
+## 首次发布结果：成功，等待登录后的端到端验证
 
 - 环境：`https://silvermoon.work` / `https://relay.silvermoon.work`。
 - 已发布提交：`0d25cd8fd4722815e07e3b2a467871c464158f8e`，包含设备管理及“新增草稿已展开”焦点修复，保留 main/release 的并发历史。
@@ -20,6 +20,17 @@
   - `index-Cc4YlTW0.css`：`8b7137b8a4a477dbe0d9090f8c47db2ccc017bc2cf0081afd6e5cdfcf3d36257`。
 - 匿名 GET `/api/me`、POST `/api/devices/device-management-verification-nonexistent/rename` 与 DELETE 同一明确不存在的测试 ID 均返回 401；未访问、修改或撤销任何真实设备/凭据。
 - 集成浏览器刷新生产 Settings 后仍为未登录。匿名探测不是重命名、在线断开或历史只读的生产端到端证据；不将本地/模拟浏览器用例冒充线上结果。
+
+## 长标题反馈修正：已发布
+
+- 已发布提交：`809e71abdf1dfde9ee702107b5621bf9f7dda113`；[Check and deploy #38202522318](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38202522318) 完整 check 与 deploy 成功，Pages 于 2026-10-12 04:13:36 UTC 发布。
+- 设备管理弹窗不再显示右上角 Close；删除标题单行省略，完整名称保留为可访问文本与悬停提示。取消、Escape、操作中关闭保护和焦点返回保持原行为；其他弹窗的关闭按钮不变。
+- 本地三视口设备回归 21 项通过；本次 release 全量 113 项单元/集成测试、157 项浏览器测试通过，2 项按场景跳过。新增 79 字符名称测试断言真实溢出省略、单行高度、标题与弹窗均不越界，不以仅存在 CSS 类名代替验证。
+- 无新增数据库迁移，发布日志明确 `No migrations to apply`。Worker 版本为 `5885e9a6-cbbd-49f3-9ff1-39b4f16304b0`，Pages 为 [c254ebe4.silvermoon-work.pages.dev](https://c254ebe4.silvermoon-work.pages.dev)。
+- 2026-10-12 04:14:33 UTC 生产 `/settings` 返回 200；生产 HTML 的最终资源与本地修正后构建 SHA-256 逐字节一致：
+  - `index-BVNwOaAz.js`：`ff2eb704a348e1b58394a5287c60d917aafecb4983c70a282d7709e869bc58be`。
+  - `index-CJhxa6fA.css`：`7e20f0c8498ae466eeab87b3058b292b1135c8660ac2cef9f8898edf5bb2bc11`。
+- 本次修正不操作真实设备/token，不将模拟数据浏览器测试记作登录后的真实设备验证。
 
 ## 尚未完成
 
