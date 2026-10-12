@@ -2,7 +2,8 @@
 
 ## 实施结果
 
-- 已授权 release candidate 为 `@silvermoon-ai/connector@0.3.0-canary.1`；manifest 与 lockfile 使用该精确版本。此版本只准备 canary，不移动 `latest`。
+- `0.3.0-canary.1` 发布后生产 create smoke 暴露 deferred backing 顺序缺陷：Host 只有收到 first send 才转为 ready，Connector 却先等待 ready，导致 15 秒超时。修复将顺序改为 create → subscribe → title → first send → wait ready → refresh，并以 lifecycle 初始为 Creating 的 wire fixture 防回归。
+- 已授权修复 release candidate 为 `@silvermoon-ai/connector@0.3.0-canary.2`；manifest 使用该精确版本。此版本只准备 canary，不移动 `latest`，也不移动或删除不可变的 `.1`。
 - `VsCodeAgentHostProvider` 现在直接实现完整 `AgentAdapter`，声明 list/create/send/stream/archive 能力。
 - 创建流程在唯一兼容 Agent Host 上发送 AHP `createSession`，使用新的 `ahp-session:/<uuid>` URI，按需派发 `session/titleChanged`，再向默认 chat 派发首条消息。
 - inventory、send、history、实时事件、input request 与原生 archive 均沿已有 AHP connection 和 Session/chat resource 执行。

@@ -1342,7 +1342,7 @@ class AgentHostConnection {
         ? { workingDirectories: [input.workingDirectoryUri] }
         : {}),
     });
-    const session = await this.waitForReadySession(resource);
+    const session = await this.ensureSession(resource);
     if (input.title) {
       await this.dispatchSessionAction(session, {
         type: ActionType.SessionTitleChanged,
@@ -1354,6 +1354,7 @@ class AgentHostConnection {
       resource,
       input.prompt,
     );
+    await this.waitForReadySession(session);
     await this.refreshCatalog(false);
     return resource;
   }
@@ -1472,19 +1473,22 @@ class AgentHostConnection {
     return pending;
   }
 
-  private async waitForReadySession(resource: string): Promise<TrackedSession> {
-    const session = await this.ensureSession(resource);
+  private async waitForReadySession(
+    session: TrackedSession,
+  ): Promise<TrackedSession> {
     const deadline = Date.now() + AHP_REQUEST_TIMEOUT_MS;
     while (session.state.lifecycle === SessionLifecycle.Creating) {
       if (Date.now() >= deadline) {
-        throw new Error(`Timed out waiting for Agent Host session creation: ${resource}`);
+        throw new Error(
+          `Timed out waiting for Agent Host session creation: ${session.resource}`,
+        );
       }
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
     }
     if (session.state.lifecycle === SessionLifecycle.Failed) {
       throw new Error(
         session.state.creationError?.message
-          ?? `Agent Host session creation failed: ${resource}`,
+          ?? `Agent Host session creation failed: ${session.resource}`,
       );
     }
     return session;

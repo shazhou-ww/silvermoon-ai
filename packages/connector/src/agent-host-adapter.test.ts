@@ -86,6 +86,17 @@ async function fixture(hostCount = 1) {
             },
           },
         }));
+        if (action.data.type === ActionType.ChatTurnStarted && summary) {
+          socket.send(JSON.stringify({
+            jsonrpc: "2.0",
+            method: "action",
+            params: {
+              channel: summary.resource,
+              serverSeq: ++sequence,
+              action: { type: ActionType.SessionReady },
+            },
+          }));
+        }
         return;
       }
       if (frame.id === undefined) return;
@@ -131,7 +142,7 @@ async function fixture(hostCount = 1) {
             state: channel === summary.resource
               ? {
                   ...summary,
-                  lifecycle: SessionLifecycle.Ready,
+                  lifecycle: SessionLifecycle.Creating,
                   activeClients: [],
                 }
               : {
