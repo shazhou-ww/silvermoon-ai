@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>窄屏 Settings 返回流程对比</title>
+  <link rel="stylesheet" href="review.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <div>
+      <h1>点击 Settings 左上角入口后的结果</h1>
+      <p>同一账户、Sessions 数据与 320×640 产品视口；展示点击后的决定性状态。</p>
+    </div>
+    <ul class="callouts" aria-label="可见变化">
+      <li>入口名称：Open → Back</li>
+      <li>结果：drawer → 完整列表</li>
+    </ul>
+  </header>
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label">
+        <strong id="before-title">Before</strong>
+        <span>320×640 · Settings 点击后</span>
+      </header>
+      <div class="product-surface">
+        <div class="phone">
+          <div class="topbar">
+            <button class="nav-button" type="button" aria-label="Open Sessions">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+            </button>
+            <span class="moon" aria-hidden="true">S</span>
+            <h2>Settings</h2>
+            <span class="avatar" aria-label="Reviewer account">RV</span>
+          </div>
+          <div class="settings" aria-hidden="true">
+            <section class="card">
+              <div class="card-head"><div><strong>Devices</strong><small>Add and manage devices.</small></div><span class="outline">Add device</span></div>
+              <div class="row"><span class="dot"></span><div class="row-copy"><strong>Studio</strong><small>Online · 3 Sessions</small></div></div>
+            </section>
+            <section class="card"><div class="card-head"><div><strong>Linked identities</strong><small>Manage sign-in providers.</small></div></div></section>
+          </div>
+          <div class="drawer-scrim" aria-hidden="true"></div>
+          <aside class="drawer" aria-label="Sessions drawer">
+            <div class="rail-head"><div><h3>Sessions</h3><p>3 matching Sessions</p></div><span class="close" aria-label="Close Sessions">×</span></div>
+            <div class="search">Search Sessions</div>
+            <div class="session-list">
+              <div class="session-item is-active"><span class="glyph">UI</span><div class="session-copy"><strong>Fix mobile navigation</strong><span>Settings return behavior</span></div><span class="time">Now</span></div>
+              <div class="session-item"><span class="glyph">API</span><div class="session-copy"><strong>Review connector status</strong><span>Saved activity remains visible</span></div><span class="time">12m</span></div>
+              <div class="session-item"><span class="glyph">REL</span><div class="session-copy"><strong>Release desktop client</strong><span>Waiting for input</span></div><span class="time">1h</span></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label">
+        <strong id="after-title">After</strong>
+        <span>320×640 · Settings 点击后</span>
+      </header>
+      <div class="product-surface">
+        <div class="phone">
+          <div class="topbar">
+            <button class="nav-button" type="button" aria-label="Back to Sessions">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <span class="moon" aria-hidden="true">S</span>
+            <h2>Settings</h2>
+            <span class="avatar" aria-label="Reviewer account">RV</span>
+          </div>
+          <div class="flow-step">点击 Back to Sessions 后</div>
+          <div class="topbar destination-topbar">
+            <span class="moon" aria-hidden="true">S</span>
+            <h2>Sessions</h2>
+            <span class="avatar" aria-label="Reviewer account">RV</span>
+          </div>
+          <section class="list-view" aria-label="Sessions list">
+            <div class="rail-head"><div><h3>Sessions</h3><p>3 matching Sessions</p></div><span class="outline">New</span></div>
+            <div class="search">Search Sessions</div>
+            <div class="session-list">
+              <div class="session-item is-active"><span class="glyph">UI</span><div class="session-copy"><strong>Fix mobile navigation</strong><span>Settings return behavior</span></div><span class="time">Now</span></div>
+              <div class="session-item"><span class="glyph">API</span><div class="session-copy"><strong>Review connector status</strong><span>Saved activity remains visible</span></div><span class="time">12m</span></div>
+              <div class="session-item"><span class="glyph">REL</span><div class="session-copy"><strong>Release desktop client</strong><span>Waiting for input</span></div><span class="time">1h</span></div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({ type: "ui-review:height", height: document.documentElement.scrollHeight }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>

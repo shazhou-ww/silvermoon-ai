@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>桌面 Settings 边界对比</title>
+  <link rel="stylesheet" href="review.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <div>
+      <h1>桌面 Settings 保持既有双栏导航</h1>
+      <p>同一账户、Sessions 数据与桌面外壳；本决定不改变桌面入口或布局。</p>
+    </div>
+    <ul class="callouts" aria-label="可见变化">
+      <li>左侧 Sessions rail 保留</li>
+      <li>Settings 内容不重设计</li>
+    </ul>
+  </header>
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before</strong><span>1440×900 产品视口</span></header>
+      <div class="product-surface">
+        <div class="desktop">
+          <div class="desktop-brand"><span class="moon">S</span>Silvermoon Relay</div>
+          <div class="desktop-top"><div><strong>Settings</strong><small>Account and connections</small></div><span class="avatar">RV</span></div>
+          <aside class="desktop-rail">
+            <div class="rail-head"><div><h3>Sessions</h3><p>3 matching Sessions</p></div></div>
+            <div class="session-list">
+              <div class="session-item is-active"><span class="glyph">UI</span><div class="session-copy"><strong>Fix mobile navigation</strong><span>Settings return behavior</span></div></div>
+              <div class="session-item"><span class="glyph">API</span><div class="session-copy"><strong>Review connector status</strong><span>Saved activity</span></div></div>
+            </div>
+          </aside>
+          <section class="desktop-content">
+            <div class="settings">
+              <section class="card"><div class="card-head"><div><strong>Devices</strong><small>Add and manage devices.</small></div><span class="outline">Add device</span></div><div class="row"><span class="dot"></span><div class="row-copy"><strong>Studio</strong><small>Online · 3 Sessions</small></div></div></section>
+              <section class="card"><div class="card-head"><div><strong>Linked identities</strong><small>Manage sign-in providers.</small></div></div></section>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After</strong><span>1440×900 产品视口</span></header>
+      <div class="product-surface">
+        <div class="desktop">
+          <div class="desktop-brand"><span class="moon">S</span>Silvermoon Relay</div>
+          <div class="desktop-top"><div><strong>Settings</strong><small>Account and connections</small></div><span class="avatar">RV</span></div>
+          <aside class="desktop-rail">
+            <div class="rail-head"><div><h3>Sessions</h3><p>3 matching Sessions</p></div></div>
+            <div class="session-list">
+              <div class="session-item is-active"><span class="glyph">UI</span><div class="session-copy"><strong>Fix mobile navigation</strong><span>Settings return behavior</span></div></div>
+              <div class="session-item"><span class="glyph">API</span><div class="session-copy"><strong>Review connector status</strong><span>Saved activity</span></div></div>
+            </div>
+          </aside>
+          <section class="desktop-content">
+            <div class="settings">
+              <section class="card"><div class="card-head"><div><strong>Devices</strong><small>Add and manage devices.</small></div><span class="outline">Add device</span></div><div class="row"><span class="dot"></span><div class="row-copy"><strong>Studio</strong><small>Online · 3 Sessions</small></div></div></section>
+              <section class="card"><div class="card-head"><div><strong>Linked identities</strong><small>Manage sign-in providers.</small></div></div></section>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({ type: "ui-review:height", height: document.documentElement.scrollHeight }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>
