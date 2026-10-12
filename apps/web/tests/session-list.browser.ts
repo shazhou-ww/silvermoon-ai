@@ -96,6 +96,7 @@ async function fixture(
     gate: Promise<void>
     requests: string[]
     removed: boolean
+    titles?: Map<string, string>
   } = { values: new Map(), failure: false, gate: Promise.resolve(), requests: [], removed: false },
 ) {
   let historySyncRequests = 0
@@ -199,7 +200,7 @@ async function fixture(
         .map((session) => ({
           ...session,
           workState: workStatus.values.get(`${connectorId}:${session.id}`) ?? "open",
-          title: session.title,
+          title: workStatus.titles?.get(session.id) ?? session.title,
           createdAt: session.lastActivityAt,
           updatedAt: session.lastActivityAt,
           lastMessagePreview: `${session.title} preview`,
@@ -235,6 +236,7 @@ const preferencesKey = "silvermoon:session-view-preferences:user"
 function workStatusFixture() {
   return {
     values: new Map<string, SessionWorkState>(),
+    titles: new Map<string, string>(),
     failure: false, gate: Promise.resolve(), requests: [] as string[], removed: false,
   }
 }
@@ -244,10 +246,170 @@ async function showCompleted(page: Page) {
   await page.getByRole("menuitemcheckbox", { name: "Show completed", exact: true }).click()
 }
 
+test("detail work state completes and reactivates in place with history, draft and focus preserved", async ({ page }, testInfo) => {
+  const state = workStatusFixture()
+  await fixture(page, undefined, undefined, undefined, undefined, state)
+  await page.locator(".session-item-select").filter({ hasText: "Release desktop client" }).click()
+  await page.locator("#session-follow-up").fill("Keep this draft while organizing work")
+  const originalUrl = page.url()
+  const action = page.locator(".session-work-action.is-detail:visible button")
+  await expect(action).toHaveAccessibleName("Mark completed: Release desktop client")
+  await action.focus()
+  const tooltip = page.locator(".session-work-tooltip:visible")
+  await expect(tooltip).toContainText("Does not stop the Agent")
+  await page.screenshot({ path: testInfo.outputPath("detail-open.png") })
+  await action.press("Enter")
+  await expect(action).toHaveAccessibleName("Reactivate: Release desktop client")
+  await expect(action).toBeEnabled()
+  await expect(action).toBeFocused()
+  const actionBounds = await action.boundingBox()
+  const noticeBounds = await page.locator(".relay-notice.is-success").boundingBox()
+  expect(noticeBounds!.y).toBeGreaterThanOrEqual(actionBounds!.y + actionBounds!.height)
+  expect(page.url()).toBe(originalUrl)
+  await expect(page.locator("#session-follow-up")).toBeDisabled()
+  await expect(page.locator("#session-follow-up")).toHaveValue("Keep this draft while organizing work")
+  await expect(page.getByText("This Session is completed in Relay.", { exact: true })).toBeVisible()
+  await expect(page.locator(".session-list .session-item-title").filter({ hasText: "Release desktop client" })).toHaveCount(0)
+  await expect(page.locator(".session-list .session-item-title").filter({ hasText: "Confirm signing identity" })).toHaveCount(1)
+  await action.focus()
+  await expect(tooltip).toContainText("Does not send a message")
+  await page.screenshot({ path: testInfo.outputPath("detail-completed.png") })
+  await action.press("Enter")
+  await expect(action).toHaveAccessibleName("Mark completed: Release desktop client")
+  await expect(page.locator("#session-follow-up")).toBeEnabled()
+  await expect(page.locator("#session-follow-up")).toHaveValue("Keep this draft while organizing work")
+  expect(page.url()).toBe(originalUrl)
+  expect(state.requests).toHaveLength(2)
+  expect(state.values.get("studio:release")).toBe("open")
+  await page.reload()
+  await expect(action).toHaveAccessibleName("Mark completed: Release desktop client")
+  await expect(page.locator("#session-follow-up")).toHaveValue("Keep this draft while organizing work")
+})
+
+test("detail work state shares pending and failure feedback with list actions", async ({ page }) => {
+  const state = workStatusFixture()
+  let release!: () => void
+  state.gate = new Promise(resolve => { release = resolve })
+  state.failure = true
+  await fixture(page, undefined, undefined, undefined, undefined, state)
+  await showCompleted(page)
+  await page.locator(".session-item-select").filter({ hasText: "Release desktop client" }).click()
+  const detail = page.locator(".session-work-action.is-detail:visible button")
+  const row = page.locator(".session-list-item").filter({ has: page.locator(".session-item-title", { hasText: "Release desktop client" }) })
+  const list = row.locator(".session-work-glyph")
+  await detail.click()
+  await expect(detail).toBeDisabled()
+  await expect(list).toBeDisabled()
+  await list.evaluate(button => (button as HTMLButtonElement).click())
+  expect(state.requests).toHaveLength(1)
+  release()
+  await expect(page.getByText("Work status could not be saved.", { exact: true })).toBeVisible()
+  await expect(detail).toBeEnabled()
+  await expect(list).toBeEnabled()
+  await expect(detail).toHaveAccessibleName("Mark completed: Release desktop client")
+  await expect(list).toHaveAttribute("aria-label", "Mark completed: Release desktop client")
+  await expect(page.getByText(/Marked "Release desktop client" completed/)).toHaveCount(0)
+  state.failure = false
+  await detail.click()
+  await expect(detail).toHaveAccessibleName("Reactivate: Release desktop client")
+  await expect(list).toHaveAttribute("aria-label", "Reactivate: Release desktop client")
+  const back = page.getByRole("button", { name: "Back to Sessions", exact: true })
+  if (await back.isVisible()) await back.click()
+  await list.click()
+  await expect(list).toHaveAccessibleName("Mark completed: Release desktop client")
+  for (const action of await page.locator(".session-work-action.is-detail button").all()) {
+    await expect(action).toHaveAttribute("aria-label", "Mark completed: Release desktop client")
+  }
+  expect(state.requests).toHaveLength(3)
+})
+
+test("detail work state completion does not steal focus after navigating to another Session", async ({ page }) => {
+  const state = workStatusFixture()
+  let release!: () => void
+  state.gate = new Promise(resolve => { release = resolve })
+  await fixture(page, undefined, undefined, undefined, undefined, state)
+  await page.locator(".session-item-select").filter({ hasText: "Release desktop client" }).click()
+  await page.locator(".session-work-action.is-detail:visible button").click()
+  const back = page.getByRole("button", { name: "Back to Sessions", exact: true })
+  if (await back.isVisible()) await back.click()
+  await page.locator(".session-item-select").filter({ hasText: "Investigate browser tests" }).click()
+  await page.locator("#session-follow-up").fill("Keep focus in this other Session")
+  const currentUrl = page.url()
+  release()
+  await expect(page.locator(".session-work-action.is-detail:visible button")).toBeEnabled()
+  await expect(page.locator(".session-work-action.is-detail:visible button")).toHaveAccessibleName("Mark completed: Investigate browser tests")
+  await expect(page.locator("#session-follow-up")).toBeFocused()
+  await expect(page.locator("#session-follow-up")).toHaveValue("Keep focus in this other Session")
+  expect(page.url()).toBe(currentUrl)
+  expect(state.requests).toHaveLength(1)
+})
+
+test("detail work state Reactivate preserves native archive and read-only history", async ({ page }) => {
+  const state = workStatusFixture()
+  state.values.set("studio:ended", "completed")
+  await fixture(page, undefined, undefined, undefined, undefined, state)
+  await showCompleted(page)
+  await openViewOptions(page)
+  await page.getByRole("menuitemcheckbox", { name: "Show ended", exact: true }).click()
+  await page.locator(".session-item-select").filter({ hasText: "Completed migration" }).click()
+  const action = page.locator(".session-work-action.is-detail:visible button")
+  await expect(action).toHaveAccessibleName("Reactivate: Completed migration")
+  await expect(page.getByText("Saved activity remains visible.", { exact: true })).toBeVisible()
+  await action.click()
+  await expect(action).toHaveAccessibleName("Mark completed: Completed migration")
+  await expect(page.locator("#session-follow-up")).toBeDisabled()
+  await expect(page.getByText("This Session is archived and read-only.", { exact: true })).toBeVisible()
+  await expect(page.getByText("Saved activity remains visible.", { exact: true })).toBeVisible()
+  expect(state.requests).toHaveLength(1)
+})
+
+test("detail work state and list glyphs keep reachable targets with long titles and coarse pointers", async ({ page, browser }, testInfo) => {
+  const state = workStatusFixture()
+  const title = "A long Session title for checking the deployment and preserving all validation records without losing the action"
+  state.titles.set("release", title)
+  await fixture(page, undefined, undefined, undefined, undefined, state)
+  const list = page.locator(".session-list").getByRole("button", { name: `Mark completed: ${title}`, exact: true })
+  const listBounds = await list.boundingBox()
+  expect(listBounds).not.toBeNull()
+  if (testInfo.project.name !== "desktop") {
+    expect(listBounds!.width).toBeGreaterThanOrEqual(44)
+    expect(listBounds!.height).toBeGreaterThanOrEqual(44)
+  }
+  await page.locator(".session-item-select").filter({ hasText: title }).click()
+  const detail = page.locator(".session-work-action.is-detail:visible button")
+  const bounds = await detail.boundingBox()
+  expect(bounds).not.toBeNull()
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+  if (testInfo.project.name !== "desktop") {
+    expect(bounds!.width).toBeGreaterThanOrEqual(44)
+    expect(bounds!.height).toBeGreaterThanOrEqual(44)
+  }
+  await detail.focus()
+  await expect(page.locator(".session-work-tooltip:visible")).toContainText("Mark completed")
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath("detail-long-title.png") })
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, hasTouch: true })
+  try {
+    const coarse = await context.newPage()
+    await fixture(coarse, undefined, undefined, undefined, undefined, state)
+    expect(await coarse.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true)
+    for (const surface of [".session-list", ".desktop-session-context"]) {
+      const action = coarse.locator(surface).getByRole("button", { name: `Mark completed: ${title}`, exact: true })
+      const target = await action.boundingBox()
+      expect(target!.width).toBeGreaterThanOrEqual(44)
+      expect(target!.height).toBeGreaterThanOrEqual(44)
+      expect(await action.evaluate(button => getComputedStyle(button).opacity)).toBe("1")
+    }
+  } finally {
+    await context.close()
+  }
+})
+
 test("work state glyph completes running work, preserves open children and reactivates without sending", async ({ page }, testInfo) => {
   const state = workStatusFixture()
   await fixture(page, undefined, undefined, undefined, undefined, state)
-  const complete = page.getByRole("button", { name: "Mark completed: Release desktop client", exact: true })
+  const complete = page.locator(".session-list").getByRole("button", { name: "Mark completed: Release desktop client", exact: true })
   await complete.focus()
   await expect(page.locator("#work-state-studio-release")).toBeVisible()
   await expect(page.locator("#work-state-studio-release")).toContainText("Does not stop the Agent")
@@ -279,7 +441,7 @@ test("work state glyph completes running work, preserves open children and react
     "/api/connectors/studio/sessions/release/work-state",
     "/api/connectors/studio/sessions/release/work-state",
   ])
-  await expect(page.locator(".session-workspace").getByRole("button", { name: /Mark completed|Reactivate/ })).toHaveCount(0)
+  await expect(page.locator(".transcript").getByRole("button", { name: /Mark completed|Reactivate/ })).toHaveCount(0)
   await page.reload()
   await expect(complete).toBeVisible()
   await openViewOptions(page)
@@ -292,7 +454,7 @@ test("work state failures retain the row, block duplicate requests and do not cl
   state.gate = new Promise(resolve => { release = resolve })
   state.failure = true
   await fixture(page, undefined, undefined, undefined, undefined, state)
-  const action = page.getByRole("button", { name: "Mark completed: Release desktop client", exact: true })
+  const action = page.locator(".session-list").getByRole("button", { name: "Mark completed: Release desktop client", exact: true })
   await action.click()
   await expect(action).toBeDisabled()
   expect(state.requests).toHaveLength(1)
@@ -308,7 +470,7 @@ test("work state reactivation preserves native archive and saved history", async
   state.values.set("studio:ended", "completed")
   await fixture(page, undefined, undefined, undefined, undefined, state)
   await showCompleted(page)
-  await expect(page.getByRole("button", { name: "Reactivate: Completed migration" })).toHaveCount(0)
+  await expect(page.locator(".session-list").getByRole("button", { name: "Reactivate: Completed migration" })).toHaveCount(0)
   await openViewOptions(page)
   await page.getByRole("menuitemcheckbox", { name: "Show ended", exact: true }).click()
   await page.locator(".session-item-select").filter({ hasText: "Completed migration" }).click()
@@ -318,7 +480,7 @@ test("work state reactivation preserves native archive and saved history", async
   if (await opener.isVisible()) await opener.click()
   const back = page.getByRole("button", { name: "Back to Sessions", exact: true })
   if (await back.isVisible()) await back.click()
-  await page.getByRole("button", { name: "Reactivate: Completed migration", exact: true }).click()
+  await page.locator(".session-list").getByRole("button", { name: "Reactivate: Completed migration", exact: true }).click()
   await expect(page.locator(".session-list").getByText("Completed migration", { exact: true })).toBeVisible()
   await expect(page.locator("#session-follow-up")).toBeDisabled()
   expect(state.values.get("studio:ended")).toBe("open")
@@ -333,7 +495,7 @@ test("work state is shared across browsers, while glyph actions do not select an
   const back = page.getByRole("button", { name: "Back to Sessions", exact: true })
   if (await back.isVisible()) await back.click()
   const previousUrl = page.url()
-  await page.getByRole("button", { name: "Mark completed: Release desktop client", exact: true }).click()
+  await page.locator(".session-list").getByRole("button", { name: "Mark completed: Release desktop client", exact: true }).click()
   await expect(page.getByText(/Marked "Release desktop client" completed/)).toBeVisible()
   expect(page.url()).toBe(previousUrl)
   const context = await browser.newContext()
@@ -341,7 +503,7 @@ test("work state is shared across browsers, while glyph actions do not select an
     const second = await context.newPage()
     await fixture(second, undefined, undefined, undefined, undefined, state)
     await showCompleted(second)
-    await expect(second.getByRole("button", { name: "Reactivate: Release desktop client", exact: true })).toBeVisible()
+    await expect(second.locator(".session-list").getByRole("button", { name: "Reactivate: Release desktop client", exact: true })).toBeVisible()
   } finally {
     await context.close()
   }
@@ -356,11 +518,16 @@ test("work state changes work offline but removed Device history has no writable
     version: 1, showCompleted: true, showEnded: false, showUnavailable: false, showOffline: true, groupByDevice: false,
   })), preferencesKey)
   await page.reload()
-  await page.getByRole("button", { name: "Mark completed: Release desktop client", exact: true }).click()
-  await page.getByRole("button", { name: "Reactivate: Release desktop client", exact: true }).click()
+  await page.locator(".session-list").getByRole("button", { name: "Mark completed: Release desktop client", exact: true }).click()
+  await page.locator(".session-list").getByRole("button", { name: "Reactivate: Release desktop client", exact: true }).click()
   await page.locator(".session-item-select").filter({ hasText: "Release desktop client" }).click()
   await expect(page.locator("#session-follow-up")).toBeVisible()
   await page.locator("#session-follow-up").fill("Keep this local draft")
+  const detailAction = page.locator(".session-work-action.is-detail:visible button")
+  await detailAction.click()
+  await expect(detailAction).toHaveAccessibleName("Reactivate: Release desktop client")
+  await detailAction.click()
+  await expect(detailAction).toHaveAccessibleName("Mark completed: Release desktop client")
   await expect(page.getByRole("button", { name: "Send follow-up", exact: true })).toBeDisabled()
   state.removed = true
   await page.reload()
@@ -371,7 +538,8 @@ test("work state changes work offline but removed Device history has no writable
   if (await back.isVisible()) await back.click()
   await expect(page.locator(".session-list").getByText("Release desktop client", { exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "Mark completed: Release desktop client", exact: true })).toHaveCount(0)
-  expect(state.requests).toHaveLength(2)
+  await expect(page.locator(".session-work-action.is-detail button")).toHaveCount(0)
+  expect(state.requests).toHaveLength(4)
 })
 
 test("work state is not overwritten by an older inventory response", async ({ page }) => {
@@ -395,12 +563,12 @@ test("work state is not overwritten by an older inventory response", async ({ pa
     await route.fulfill({ json: snapshot })
   })
   await expect.poll(() => pending).toBe(true)
-  await page.getByRole("button", { name: "Mark completed: Release desktop client", exact: true }).click()
+  await page.locator(".session-list").getByRole("button", { name: "Mark completed: Release desktop client", exact: true }).click()
   await expect(page.getByText(/Marked "Release desktop client" completed/)).toBeVisible()
   release()
   await expect(page.locator(".session-list").getByText("Release desktop client", { exact: true })).toHaveCount(0)
   await showCompleted(page)
-  await expect(page.getByRole("button", { name: "Reactivate: Release desktop client", exact: true })).toBeVisible()
+  await expect(page.locator(".session-list").getByRole("button", { name: "Reactivate: Release desktop client", exact: true })).toBeVisible()
 })
 
 const preferenceNames = ["Show ended", "Show unavailable", "Show offline Sessions (1)", "Group by Device"]

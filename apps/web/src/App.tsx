@@ -2100,9 +2100,10 @@ function App() {
     }
   }
 
-  async function changeSessionWorkState(session: AgentSession) {
+  async function changeSessionWorkState(session: AgentSession, source: "list" | "detail", trigger: HTMLButtonElement) {
     if (workStateMutation.current.pending) return
     const epoch = authEpoch.current
+    const restoreDetailFocus = source === "detail" && document.activeElement === trigger
     const key = sessionKey(session)
     const workState = session.workState === "completed" ? "open" : "completed"
     workStateMutation.current = { revision: workStateMutation.current.revision + 1, pending: true }
@@ -2124,7 +2125,7 @@ function App() {
       setNotice(workState === "completed"
         ? `Marked "${sessionLabel(session)}" completed. This does not stop the Agent. Use Show completed to find it.`
         : `Reactivated "${sessionLabel(session)}". Nothing was sent; existing filters and read-only limits still apply.`)
-      if (workState === "completed" && !showCompletedSessions) {
+      if (source === "list" && workState === "completed" && !showCompletedSessions) {
         window.requestAnimationFrame(() =>
           document.querySelector<HTMLButtonElement>(".session-view-trigger")?.focus())
       }
@@ -2137,6 +2138,14 @@ function App() {
         workStateMutation.current = { revision: workStateMutation.current.revision + 1, pending: false }
         setWorkStatePendingKey(null)
         setSessionRefreshAttempt((attempt) => attempt + 1)
+        if (restoreDetailFocus) {
+          window.requestAnimationFrame(() => {
+            if (epoch === authEpoch.current && trigger.isConnected && trigger.getClientRects().length > 0
+              && (document.activeElement === document.body || document.activeElement === trigger)) {
+              trigger.focus()
+            }
+          })
+        }
       }
     }
   }
@@ -2171,6 +2180,45 @@ function App() {
   ).length
   const availableConnectorCount = connectors.filter(connector => !connector.removedAt).length
 
+  const renderSessionWorkAction = (
+    session: AgentSession,
+    surface: "list" | "desktop-detail" | "mobile-detail",
+  ) => {
+    const connector = connectorById.get(session.connectorId)
+    if (!connector || connector.removedAt) return null
+    const completed = session.workState === "completed"
+    const action = completed ? "Reactivate" : "Mark completed"
+    const hint = completed
+      ? "Restore unfinished work. Does not send a message or unarchive the Agent."
+      : "Mark work completed in Relay. Does not stop the Agent."
+    const tipId = `work-state-${encodeURIComponent(session.connectorId)}-${encodeURIComponent(session.id)}${surface === "list" ? "" : `-${surface}`}`
+    return (
+      <span key={sessionKey(session)} className={`session-work-action${surface === "list" ? "" : " is-detail"}`}>
+        <Tooltip.Root>
+          <Tooltip.Trigger asChild>
+            <button
+              type="button"
+              className="session-work-glyph"
+              aria-label={`${action}: ${sessionLabel(session)}`}
+              title={`${action} — ${hint}`}
+              disabled={workStatePendingKey !== null}
+              onClick={(event) => void changeSessionWorkState(session, surface === "list" ? "list" : "detail", event.currentTarget)}
+            >
+              {workStatePendingKey === sessionKey(session)
+                ? <LoaderCircle className="animate-spin" aria-hidden="true" />
+                : completed ? <Undo2 aria-hidden="true" /> : <Check aria-hidden="true" />}
+            </button>
+          </Tooltip.Trigger>
+          <Tooltip.Portal>
+            <Tooltip.Content className="session-work-tooltip" id={tipId} side={surface === "list" ? "left" : "bottom"} sideOffset={6}>
+              <strong>{action}</strong> {hint}
+            </Tooltip.Content>
+          </Tooltip.Portal>
+        </Tooltip.Root>
+      </span>
+    )
+  }
+
   const renderSessionRow = (
     item: OrderedSession<AgentSession>,
     groupedByDevice: boolean,
@@ -2187,11 +2235,6 @@ function App() {
     const isCollapsed = collapsedSessionKeys.has(sessionKey(session))
     const preview = executionStateCurrent ? sessionPreview(session) : session.lastMessagePreview
     const completed = session.workState === "completed"
-    const workStateAction = completed ? "Reactivate" : "Mark completed"
-    const workStateHint = completed
-      ? "Restore unfinished work. Does not send a message or unarchive the Agent."
-      : "Mark work completed in Relay. Does not stop the Agent."
-    const workStateTipId = `work-state-${encodeURIComponent(session.connectorId)}-${encodeURIComponent(session.id)}`
     return (
       <div
         key={`${session.connectorId}:${session.id}`}
@@ -2275,31 +2318,7 @@ function App() {
             {formatRelativeTime(session.lastActivityAt)}
           </time>
         </button>
-        {connector && !connector.removedAt && (
-          <span className="session-work-action">
-            <Tooltip.Root>
-              <Tooltip.Trigger asChild>
-                <button
-                  type="button"
-                  className="session-work-glyph"
-                  aria-label={`${workStateAction}: ${sessionLabel(session)}`}
-                  title={`${workStateAction} — ${workStateHint}`}
-                  disabled={workStatePendingKey !== null}
-                  onClick={() => void changeSessionWorkState(session)}
-                >
-                  {workStatePendingKey === sessionKey(session)
-                    ? <LoaderCircle className="animate-spin" aria-hidden="true" />
-                    : completed ? <Undo2 aria-hidden="true" /> : <Check aria-hidden="true" />}
-                </button>
-              </Tooltip.Trigger>
-              <Tooltip.Portal>
-                <Tooltip.Content className="session-work-tooltip" id={workStateTipId} side="left" sideOffset={6}>
-                  <strong>{workStateAction}</strong> {workStateHint}
-                </Tooltip.Content>
-              </Tooltip.Portal>
-            </Tooltip.Root>
-          </span>
-        )}
+        {renderSessionWorkAction(session, "list")}
       </div>
     )
   }
@@ -2360,6 +2379,7 @@ function App() {
                       nativeStatus={selectedConfirmationCurrent && selectedAgentSession.executionStateKnown
                         ? selectedAgentSession.nativeStatus : null}
                     />
+                    {renderSessionWorkAction(selectedAgentSession, "desktop-detail")}
                   </>
                 )
               : (
@@ -2738,17 +2758,20 @@ function App() {
             : (
                 <>
                   <div className="mobile-session-meta">
-                    <div>
+                    <div className="mobile-session-heading">
                       <h1>{sessionLabel(selectedAgentSession)}</h1>
                       <span>
                         {selectedConnector?.displayName ?? "Unknown device"}
                       </span>
                     </div>
-                    <SessionStatus
-                      status={selectedDisplayStatus}
-                      nativeStatus={selectedConfirmationCurrent && selectedAgentSession.executionStateKnown
-                        ? selectedAgentSession.nativeStatus : null}
-                    />
+                    <span className="mobile-session-status">
+                      <SessionStatus
+                        status={selectedDisplayStatus}
+                        nativeStatus={selectedConfirmationCurrent && selectedAgentSession.executionStateKnown
+                          ? selectedAgentSession.nativeStatus : null}
+                      />
+                    </span>
+                    {renderSessionWorkAction(selectedAgentSession, "mobile-detail")}
                   </div>
 
                   {["offline", "removed", "unknown-device", "syncing", "sync-failed", "unsupported", "unconfirmed"].includes(selectedDisplayStatus) && (
@@ -2831,7 +2854,7 @@ function App() {
                       {selectedSessionCompleted && (
                         <div className="history-state-notice" role="status">
                           <strong>This Session is completed in Relay.</strong>
-                          <span>Read its saved history. Use Show completed and the Reactivate icon in the Session list to continue; native read-only limits still apply.</span>
+                          <span>Read its saved history. Use Reactivate at the top of this Session to continue; native read-only limits still apply.</span>
                         </div>
                       )}
                       {selectedSessionArchived && selectedConfirmationCurrent && (
@@ -2971,7 +2994,7 @@ function App() {
                           }}
                           placeholder={
                             selectedSessionCompleted
-                              ? "Reactivate from the Session list before sending"
+                              ? "Reactivate this Session before sending"
                               : selectedConfirmationCurrent && selectedAgentSession.canSendMessage === false
                               ? "This Session is read-only"
                               : hasCurrentPendingInput
@@ -2999,7 +3022,7 @@ function App() {
                                   </>
                                 )
                               : selectedSessionCompleted
-                              ? <span>Completed · Reactivate from the Session list to continue.</span>
+                              ? <span>Completed · Reactivate this Session to continue.</span>
                               : selectedDisplayStatus === "offline"
                               ? (
                                   <>

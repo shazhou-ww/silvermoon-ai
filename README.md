@@ -145,10 +145,14 @@ or accept messages. Relay is not a general permission-approval interface.
 ## Complete and reactivate work
 
 Use the small **Mark completed** check icon at the right of a Session list
-item to hide finished work from the daily list. Hover or focus a row to see
-its action; on touch screens the icon stays visible. Enable **Show completed**
+item or at the top of its detail view to hide finished work from the daily
+list. Hover or focus a row to see its action; detail actions stay visible.
+On phones and touch screens, both actions stay visible with a touch target
+of at least 44 by 44 CSS pixels. Enable **Show completed**
 in Session view options to read completed history and use the **Reactivate**
-return-arrow icon to mark the same Session unfinished again. Existing search,
+return-arrow icon in the list or detail header to mark the same Session
+unfinished again. You can complete and reactivate without leaving the detail
+view; saved history and local drafts remain available. Existing search,
 status, ended, unavailable and offline filters still apply.
 
 This is an account-owned Relay work marker, shared across browsers and devices.

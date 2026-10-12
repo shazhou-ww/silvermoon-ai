@@ -448,12 +448,14 @@ textarea:focus-visible {
 .desktop-session-context {
   display: flex;
   min-width: 0;
+  flex: 1;
   align-items: center;
   gap: 0.75rem;
 }
 
 .session-heading-copy {
   min-width: 0;
+  flex: 1;
 }
 
 .session-heading-copy h1 {
@@ -1042,6 +1044,7 @@ textarea:focus-visible {
 
 .session-work-action {
   position: relative;
+  flex: 0 0 auto;
   align-self: center;
 }
 
@@ -1066,6 +1069,7 @@ textarea:focus-visible {
 .session-list-item:hover .session-work-glyph,
 .session-list-item:focus-within .session-work-glyph,
 .session-list-item.is-selected .session-work-glyph,
+.session-work-action.is-detail .session-work-glyph,
 .session-work-glyph:disabled {
   opacity: 1;
 }
@@ -1093,7 +1097,7 @@ textarea:focus-visible {
 }
 
 @media (hover: none), (pointer: coarse) {
-  .session-work-glyph { width: 2.25rem; height: 2.25rem; opacity: 1; }
+  .session-work-glyph { width: 44px; height: 44px; opacity: 1; }
 }
 
 .session-device-group + .session-device-group {
@@ -2660,8 +2664,8 @@ textarea:focus-visible {
   }
 
   .session-work-glyph {
-    width: 2.25rem;
-    height: 2.25rem;
+    width: 44px;
+    height: 44px;
     opacity: 1;
   }
 
@@ -2670,19 +2674,32 @@ textarea:focus-visible {
   }
 
   .mobile-session-meta {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     min-width: 0;
     flex: 0 0 auto;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.8rem;
+    gap: 0.2rem 0.8rem;
     min-height: 4.15rem;
     padding: 0.65rem 0.85rem;
     border-bottom: 1px solid var(--border);
   }
 
-  .mobile-session-meta > div {
+  .mobile-session-heading {
     min-width: 0;
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .mobile-session-status {
+    display: flex;
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .mobile-session-meta > .session-work-action {
+    grid-column: 2;
+    grid-row: 1 / span 2;
   }
 
   .mobile-session-meta h1 {
@@ -2749,6 +2766,10 @@ textarea:focus-visible {
     top: 4.35rem;
     right: 0.7rem;
     width: calc(100vw - 1.4rem);
+  }
+
+  .relay-app.mobile-view-session ~ .relay-notifications {
+    top: calc(3.75rem + 4.15rem + 0.6rem);
   }
 
   .settings-page {
