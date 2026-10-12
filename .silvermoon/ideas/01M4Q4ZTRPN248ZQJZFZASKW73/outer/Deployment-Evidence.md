@@ -43,3 +43,26 @@ repository `silvermoon-ai`、workflow `publish-npm.yml`、environment `npm`，
 列出的最小 GitHub 保护方案。npm 配置属于维护者确认，真实 OIDC 接受仍待
 canary 发布验证；此授权只涵盖 GitHub environment 与保护规则，不涵盖具体
 canary 版本选择、版本修改或发布 tag 创建。
+
+## D-S01 / D-AC01：已配置并回读确认
+
+依据已同步部署 revision `9a3d8f583aeff6308e566310c5c95790678d92d2`，
+在用户明确确认方案后应用以下外部设置，并通过 GitHub API 回读核对：
+
+| 设置 | 公开标识 | 实际结果 |
+| --- | --- | --- |
+| `npm` environment | policy `62745916` | custom deployment policy；唯一条目 `npm/*/*`，type 为 `tag`，无 branch 条目或 reviewer |
+| main 历史保护 | ruleset `24908461` | active；仅 `refs/heads/main`；禁止 non-fast-forward 和删除，无 bypass |
+| npm tag 创建限制 | ruleset `24908462` | active；`refs/tags/npm/**`；creation 限制，仅 User `242885595`（`shazhou-ww`）always bypass |
+| npm tag 不可变 | ruleset `24908463` | active；`refs/tags/npm/**`；update/deletion 限制，无 bypass |
+
+`rules/branches/main` 返回两条有效规则，来源均为 `24908461`。
+发布工作流 `publish-npm.yml` 状态为 `active`。
+没有添加 required PR、required checks、deploy key 或 npm credential。
+主线普通非 force push 路径保持不变。npm Trusted Publisher 身份由用户确认；
+OIDC 是否被 npm 实际接受仍不视为已证明。
+
+D-S01 / D-AC01 的配置前提已满足。随后 registry 查询仍为
+`latest=0.2.0`，无 canary。Connector 当前 manifest 为 `0.1.0`，不能作为新发布版本。
+下一步等待具体未发布 canary 版本/tag 与版本准备的明确授权；在此之前不创建 tag，
+不执行发布，也不勾选真实发布及公开包验证条目。
