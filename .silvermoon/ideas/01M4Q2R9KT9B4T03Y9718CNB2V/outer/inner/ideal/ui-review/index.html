@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relay Session 完成与 Reactivate 评审</title>
+  <link rel="stylesheet" href="review.css">
+</head>
+<body class="review-index">
+  <a class="skip-link" href="#review">跳到对比</a>
+  <header>
+    <h1>从 Relay 完成并重新激活 Session</h1>
+    <p>待批准：在 Relay 整理工作，不改变原机器上的执行或归档状态。</p>
+  </header>
+  <main id="review">
+    <section class="decision" aria-label="待批准的决定">
+      <strong>Completed 是独立工作标记，不是 Agent 的 Ended 状态。</strong>
+      <ul><li>完成项默认隐藏，可通过 Show completed 查看。</li><li>Reactivate 恢复日常列表，不自动发消息或解除原生归档。</li></ul>
+    </section>
+    <nav class="tabs" role="tablist" aria-label="评审场景">
+      <a class="tab" role="tab" aria-selected="true" href="scenarios/01-complete.html" target="scenario-frame">标记完成入口</a>
+      <a class="tab" role="tab" aria-selected="false" href="scenarios/02-reactivate.html" target="scenario-frame">完成后查看与恢复</a>
+    </nav>
+    <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-complete.html" title="标记完成入口对比"></iframe>
+    <section class="review-end">
+      <p>说明性评审材料，不是生产 UI 或规范性行为契约。产品区域仅为受影响区域示意，操作控件是静态状态。</p>
+      <p>依据当前 App.tsx 与 session-list.ts 的列表、状态、Show ended 和历史阅读流程；两侧使用相同设备、Session 与消息。</p>
+      <p><a href="../Idea.md">构想契约</a> · <a href="../Business-Data-Model-Review.md">业务模型与范围</a></p>
+      <p>待确认：采用 Relay 独立标记，而非同步 VS Code/Copilot 原生归档。</p>
+      <strong>是否接受此完成 / Reactivate 的交互方向？</strong>
+    </section>
+  </main>
+  <script>
+    const frame = document.querySelector("#scenario-frame");
+    const tabs = [...document.querySelectorAll(".tab")];
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => {
+        tabs.forEach((item) => item.setAttribute("aria-selected", String(item === tab)));
+        frame.title = `${tab.textContent.trim()}对比`;
+      });
+      tab.addEventListener("keydown", (event) => {
+        let next = null;
+        if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+        if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+        if (event.key === "Home") next = 0;
+        if (event.key === "End") next = tabs.length - 1;
+        if (next === null) return;
+        event.preventDefault();
+        tabs[next].click();
+        tabs[next].focus();
+      });
+    });
+    window.addEventListener("message", (event) => {
+      if (event.source !== frame.contentWindow || event.data?.type !== "ui-review:height") return;
+      if (Number.isFinite(event.data.height)) frame.style.height = `${Math.max(320, event.data.height)}px`;
+    });
+  </script>
+</body>
+</html>

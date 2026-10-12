@@ -1,0 +1,48 @@
+:root { color-scheme: light; --ink: #17212b; --muted: #687487; --border: #d8dfe8; --primary: #3454d1; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 18px; color: var(--ink); background: #fbfcfd; font: 14px/1.5 "Aptos", "Segoe UI", sans-serif; }
+h1 { font-size: 23px; margin: 0 0 6px; }
+h2 { font-size: 17px; margin: 0; }
+p { margin: 8px 0; }
+a { color: var(--primary); }
+a:focus-visible, button:focus-visible, iframe:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+button { font: inherit; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; color: var(--ink); background: #fff; }
+.review-index { max-width: 1480px; margin: auto; background: #f3f5f7; }
+.skip-link { position: absolute; transform: translateY(-200%); background: white; padding: 8px; }
+.skip-link:focus { transform: none; }
+.decision, .review-end { background: #fff; padding: 14px 18px; border: 1px solid var(--border); border-radius: 8px; margin: 16px 0; }
+.decision ul { margin-bottom: 0; padding-left: 20px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 12px; }
+.tab { padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px; text-decoration: none; }
+.tab[aria-selected="true"] { background: #fff; color: var(--ink); font-weight: 650; }
+iframe { display: block; width: 100%; min-height: 320px; border: 0; box-shadow: 0 0 0 1px var(--border); border-radius: 8px; background: white; }
+.scenario-heading { margin-bottom: 16px; }
+.callouts { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; list-style: none; }
+.callouts li { padding: 5px 8px; background: #e3e8fb; color: #243b95; border-radius: 5px; }
+.comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.state { min-width: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.state-label { display: flex; gap: 12px; justify-content: space-between; padding: 12px; background: #edf0f3; border-bottom: 1px solid var(--border); }
+.state-label span, .muted { color: var(--muted); }
+.product-surface { padding: 16px; min-height: 460px; background: #fbfcfd; }
+.brand { font-weight: 650; margin-bottom: 12px; }
+.product-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 0; }
+.filters span { background: #edf0f3; padding: 4px 8px; border-radius: 6px; }
+.options { margin: 8px 0 12px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); }
+.options div { padding: 3px 0; }
+.session { border-left: 3px solid var(--primary); padding: 12px; background: #e3e8fb; border-radius: 4px; }
+.session small { display: block; color: var(--muted); }
+.badge { display: inline-block; background: #edf0f3; border: 1px solid var(--border); padding: 2px 7px; border-radius: 6px; font-size: 12px; }
+.badge.running { background: #e1f2eb; color: #176149; }
+.notice { padding: 12px; background: #fff0d9; color: #765016; border-radius: 6px; margin: 12px 0; }
+.history { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 16px; }
+.message { background: #edf0f3; padding: 12px; border-radius: 6px; }
+.primary { background: var(--primary); color: white; border-color: var(--primary); }
+.composer { margin-top: 18px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); }
+@media (max-width: 760px) {
+  body { padding: 12px; }
+  .comparison { grid-template-columns: 1fr; }
+  .state-label { flex-wrap: wrap; }
+  .product-surface { min-height: 420px; }
+  h1 { font-size: 21px; }
+}

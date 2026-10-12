@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>完成后查看与恢复</title>
+  <link rel="stylesheet" href="../review.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <h1>完成后查看与恢复</h1>
+    <p>同一段已保存历史、相同 Available 执行状态；After 是已标记完成且开启 Show completed 的状态。</p>
+    <ul class="callouts"><li>Completed 与 Available 分开显示</li><li>Reactivate 后恢复日常列表及原有能力检查</li></ul>
+  </header>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before</strong><span>同一 Session · Available</span></header>
+      <div class="product-surface">
+        <div class="brand">Silvermoon Relay / Sessions</div>
+        <div class="filters"><span>All</span><span>Session view options</span></div>
+        <div class="options"><div>Show ended: off</div><div>Show unavailable: off</div><div>Show offline Sessions: off</div><div>Group by Device: off</div></div>
+        <div class="session"><strong>检查发布结果</strong><small>copilot-sdk-test</small><span class="badge">Available</span></div>
+        <div class="history">
+          <h2>检查发布结果</h2><p class="muted">Session opened on copilot-sdk-test</p>
+          <div class="message">发布检查已结束。</div>
+          <div class="composer">Follow-up message</div>
+        </div>
+      </div>
+    </section>
+    <section class="state" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After</strong><span>同一 Session · Available</span></header>
+      <div class="product-surface">
+        <div class="brand">Silvermoon Relay / Sessions</div>
+        <div class="filters"><span>All</span><span>Session view options</span></div>
+        <div class="options"><div>Show completed: on</div><div>Show ended: off</div><div>Show unavailable: off</div><div>Show offline Sessions: off</div><div>Group by Device: off</div></div>
+        <div class="session"><strong>检查发布结果</strong><small>copilot-sdk-test</small><span class="badge">Completed</span> <span class="badge">Available</span></div>
+        <div class="history">
+          <div class="product-toolbar"><h2>检查发布结果</h2><button type="button" class="primary" aria-disabled="true">Reactivate</button></div>
+          <p class="muted">Session opened on copilot-sdk-test</p>
+          <div class="message">发布检查已结束。</div>
+          <div class="composer">已完成。请先 Reactivate，再继续对话。</div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="../resize.js"></script>
+</body>
+</html>

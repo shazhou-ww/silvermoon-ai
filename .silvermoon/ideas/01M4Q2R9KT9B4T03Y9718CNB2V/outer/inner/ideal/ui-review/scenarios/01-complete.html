@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>标记完成入口</title>
+  <link rel="stylesheet" href="../review.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <h1>标记完成入口</h1>
+    <p>相同设备与执行中的 Session；After 新增整理操作，而不是停止操作。</p>
+    <ul class="callouts"><li>Mark completed 独立入口</li><li>执行中明确告知 Agent 不会停止</li></ul>
+  </header>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before</strong><span>同一 Session · Running</span></header>
+      <div class="product-surface">
+        <div class="brand">Silvermoon Relay / Sessions</div>
+        <div class="filters"><span>All</span><span>Active 1</span></div>
+        <div class="session"><strong>检查发布结果</strong><small>copilot-sdk-test</small><span class="badge running">Running</span></div>
+        <div class="history">
+          <div class="product-toolbar"><h2>检查发布结果</h2><span class="badge running">Running</span></div>
+          <p class="muted">Session opened on copilot-sdk-test</p>
+          <div class="message">正在检查发布结果。</div>
+          <div class="composer">Follow-up message</div>
+        </div>
+      </div>
+    </section>
+    <section class="state" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After</strong><span>同一 Session · Running</span></header>
+      <div class="product-surface">
+        <div class="brand">Silvermoon Relay / Sessions</div>
+        <div class="filters"><span>All</span><span>Active 1</span></div>
+        <div class="session"><strong>检查发布结果</strong><small>copilot-sdk-test</small><span class="badge running">Running</span></div>
+        <div class="history">
+          <div class="product-toolbar"><h2>检查发布结果</h2><span class="badge running">Running</span><button type="button" aria-disabled="true">Mark completed</button></div>
+          <div class="notice">此 Session 仍在运行。标记完成只整理 Relay 列表，不会停止 Agent。</div>
+          <p class="muted">Session opened on copilot-sdk-test</p>
+          <div class="message">正在检查发布结果。</div>
+          <div class="composer">Follow-up message</div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="../resize.js"></script>
+</body>
+</html>

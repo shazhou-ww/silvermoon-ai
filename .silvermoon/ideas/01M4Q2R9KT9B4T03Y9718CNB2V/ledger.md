@@ -1,0 +1,27 @@
+# Ledger
+
+## Implementation
+
+### Implementation steps
+
+- [ ] **I-S01:** 分离 Relay 工作状态与执行状态
+- [ ] **I-S02:** 提供完成与重新激活交互
+- [ ] **I-S03:** 验证状态与交互一致性
+
+### Implementation acceptance criteria
+
+- [ ] **I-AC01:** 状态边界可靠
+- [ ] **I-AC02:** 工作整理可逆且非破坏
+- [ ] **I-AC03:** UI 状态和失败明确
+
+## Deployment
+
+### Deployment steps
+
+- [ ] **D-S01:** 兼容发布工作状态支持
+- [ ] **D-S02:** 补验生产双向操作
+
+### Deployment acceptance criteria
+
+- [ ] **D-AC01:** 兼容部署成功
+- [ ] **D-AC02:** 生产工作状态可逆
