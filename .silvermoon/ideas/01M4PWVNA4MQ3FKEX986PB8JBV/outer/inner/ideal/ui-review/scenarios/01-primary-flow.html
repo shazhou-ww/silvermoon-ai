@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>刷新与标签页</title>
+  <link rel="stylesheet" href="surface.css">
+</head>
+<body>
+  <h1>刷新后，同账号保留已选组合</h1>
+  <p class="context">相同账号、相同列表数据（1 个离线 Session）、相同区域比例。刷新前选择 Show ended、Show offline Sessions、Group by Device，关闭 Show unavailable。</p>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before：刷新后回到默认</strong></header>
+      <div class="product-surface">
+        <div class="list-heading">Sessions</div>
+        <div class="filters"><span class="pill">All</span><span class="trigger" aria-label="Session view options">...</span></div>
+        <div class="menu" aria-label="当前菜单静态示意">
+          <div class="item"><span class="check" aria-label="关闭"></span>Show ended</div>
+          <div class="item"><span class="check" aria-label="关闭"></span>Show unavailable</div>
+          <div class="item"><span class="check" aria-label="关闭"></span>Show offline Sessions (1)</div>
+          <hr class="separator">
+          <div class="item"><span class="check" aria-label="关闭"></span>Group by Device</div>
+        </div>
+        <p class="hint">1 offline Sessions hidden · View options</p>
+      </div>
+    </section>
+    <section class="state" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After：刷新后恢复选择</strong></header>
+      <div class="product-surface">
+        <div class="list-heading">Sessions</div>
+        <div class="filters"><span class="pill">All</span><span class="trigger active" aria-label="Session view options，存在自定义视图">...</span></div>
+        <div class="menu" aria-label="拟议菜单静态示意">
+          <div class="item"><span class="check" aria-label="开启">✓</span>Show ended</div>
+          <div class="item"><span class="check" aria-label="关闭"></span>Show unavailable</div>
+          <div class="item"><span class="check" aria-label="开启">✓</span>Show offline Sessions (1)</div>
+          <hr class="separator">
+          <div class="item"><span class="check" aria-label="开启">✓</span>Group by Device</div>
+        </div>
+        <p class="hint">离线可见，按 Device 分组；不重设计列表。</p>
+      </div>
+    </section>
+  </main>
+  <p>同账号另一标签页实时反映成功保存的开关；搜索、状态筛选和展开状态不参与同步。退出后再登录同账号仍恢复，其他账号使用自己的记录。</p>
+  <p class="hint">说明性评审材料，不是生产 UI 或规范性契约。来源：当前 App.tsx 四项 useState(false) 与 Session view options 菜单；规范性来源为上级 Idea.md。</p>
+  <script>
+    function reportHeight() { window.parent.postMessage({ type: "ui-review:height", height: document.body.scrollHeight }, "*"); }
+    new ResizeObserver(reportHeight).observe(document.body);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>

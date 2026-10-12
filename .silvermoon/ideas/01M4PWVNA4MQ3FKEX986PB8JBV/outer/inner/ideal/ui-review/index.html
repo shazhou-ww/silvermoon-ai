@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session 视图偏好评审</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #1b1d1f; background: #f4f5f6; font: 14px/1.5 "Segoe UI", sans-serif; }
+    header, main, footer { width: min(1480px, calc(100% - 32px)); margin: auto; }
+    header { padding: 24px 0 16px; }
+    h1 { margin: 0; font-size: 26px; }
+    h2 { margin: 0; font-size: 18px; }
+    p { margin: 8px 0; }
+    .decision, .frame-shell { padding: 16px; background: white; border: 1px solid #d8dcdf; border-radius: 8px; }
+    .deltas { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; list-style: none; }
+    .deltas li { padding: 5px 8px; color: #125d55; background: #e8f3f1; border-radius: 5px; }
+    nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+    nav a { padding: 8px 12px; color: #125d55; border-radius: 5px; }
+    nav a[aria-current="true"] { background: #e8f3f1; font-weight: 700; }
+    a:focus-visible, iframe:focus-visible { outline: 3px solid #176b62; outline-offset: 3px; }
+    .frame-shell { padding: 0; overflow: hidden; }
+    iframe { display: block; width: 100%; height: 620px; border: 0; }
+    footer { padding: 16px 0 24px; }
+    .skip { position: absolute; left: 8px; top: -80px; background: white; padding: 8px; }
+    .skip:focus { top: 8px; }
+    @media (max-width: 720px) { h1 { font-size: 22px; } iframe { height: 1100px; } }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#review">跳到评审</a>
+  <header>
+    <h1>保留 Session 列表视图偏好</h1>
+    <p>说明性评审材料，不是生产 UI 或规范性行为契约。对比基于当前 App.tsx 的四项默认值、菜单与列表样式；没有运行产品存储。</p>
+  </header>
+  <main id="review">
+    <section class="decision">
+      <h2>待评审决定：保存四项视图偏好并按账号恢复、同步</h2>
+      <ul class="deltas" aria-label="重要变化">
+        <li>刷新后不再全关</li><li>同账号标签页实时同步</li><li>存储异常明确提示，列表仍可用</li>
+      </ul>
+      <p>同浏览器、同站点按账号隔离；退出后保留。不改变搜索、状态筛选、Session 选择、展开/折叠或草稿。</p>
+    </section>
+    <nav aria-label="选择评审场景">
+      <a aria-current="true" href="scenarios/01-primary-flow.html" target="scenario-frame">刷新与标签页</a>
+      <a aria-current="false" href="scenarios/02-error-state.html" target="scenario-frame">存储写入失败</a>
+    </nav>
+    <div class="frame-shell">
+      <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-primary-flow.html" title="刷新与标签页对比"></iframe>
+    </div>
+  </main>
+  <footer>
+    <p>规范性来源：<a href="../Idea.md">Idea.md</a>。提示文案为示意，实施时沿用产品语言及错误反馈模式。无待定范围选择。</p>
+    <strong>是否接受保存这四项视图偏好及上述隔离、保留、同步和降级边界？</strong>
+  </footer>
+  <script>
+    const frame = document.querySelector("#scenario-frame");
+    const links = [...document.querySelectorAll("nav a")];
+    links.forEach((link) => link.addEventListener("click", () => {
+      links.forEach((candidate) => candidate.setAttribute("aria-current", String(candidate === link)));
+      frame.title = `${link.textContent.trim()}对比`;
+    }));
+    window.addEventListener("message", (event) => {
+      if (event.source !== frame.contentWindow || event.data?.type !== "ui-review:height") return;
+      const height = Number(event.data.height);
+      if (Number.isFinite(height) && height > 0) frame.style.height = `${Math.max(320, height)}px`;
+    });
+  </script>
+</body>
+</html>

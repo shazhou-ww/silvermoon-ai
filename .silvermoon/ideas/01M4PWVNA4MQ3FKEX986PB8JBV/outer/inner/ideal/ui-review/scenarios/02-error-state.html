@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>存储写入失败</title>
+  <link rel="stylesheet" href="surface.css">
+</head>
+<body>
+  <h1>存储受限，当前页仍能使用视图开关</h1>
+  <p class="context">相同账号、相同列表数据（1 个离线 Session）、相同区域比例。用户在当前页开启 Show ended，其余关闭，浏览器禁止存储写入。</p>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before：仅内存状态，无偏好存储提示</strong></header>
+      <div class="product-surface">
+        <div class="list-heading">Sessions</div>
+        <div class="filters"><span class="pill">All</span><span class="trigger active" aria-label="Session view options，存在自定义视图">...</span></div>
+        <div class="menu" aria-label="当前菜单静态示意">
+          <div class="item"><span class="check" aria-label="开启">✓</span>Show ended</div>
+          <div class="item"><span class="check" aria-label="关闭"></span>Show unavailable</div>
+          <div class="item"><span class="check" aria-label="关闭"></span>Show offline Sessions (1)</div>
+          <hr class="separator">
+          <div class="item"><span class="check" aria-label="关闭"></span>Group by Device</div>
+        </div>
+        <p class="hint">1 offline Sessions hidden · View options</p>
+      </div>
+    </section>
+    <section class="state" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After：保留当前选择并提示未保存</strong></header>
+      <div class="product-surface">
+        <div class="list-heading">Sessions</div>
+        <div class="filters"><span class="pill">All</span><span class="trigger active" aria-label="Session view options，存在自定义视图">...</span></div>
+        <div class="menu" aria-label="拟议菜单静态示意">
+          <div class="item"><span class="check" aria-label="开启">✓</span>Show ended</div>
+          <div class="item"><span class="check" aria-label="关闭"></span>Show unavailable</div>
+          <div class="item"><span class="check" aria-label="关闭"></span>Show offline Sessions (1)</div>
+          <hr class="separator">
+          <div class="item"><span class="check" aria-label="关闭"></span>Group by Device</div>
+        </div>
+        <p class="hint">1 offline Sessions hidden · View options</p>
+        <div class="alert" role="alert">View preferences could not be saved. You can still change this view, but refreshing may not keep your choices.</div>
+      </div>
+    </section>
+  </main>
+  <p>读取失败或损坏时使用四项关闭默认值，并提示无法恢复。写入失败不声称已保存或已同步；记录错误但不阻断列表。</p>
+  <p class="hint">说明性评审材料，不是生产 UI 或规范性契约。提示位置及英文文案为示意，实施时沿用产品错误反馈模式；规范性来源为上级 Idea.md。</p>
+  <script>
+    function reportHeight() { window.parent.postMessage({ type: "ui-review:height", height: document.body.scrollHeight }, "*"); }
+    new ResizeObserver(reportHeight).observe(document.body);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>
