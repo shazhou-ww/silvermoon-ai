@@ -2,7 +2,7 @@
 
 ## 当前结果
 
-2026-10-12 已按用户授权推进既有 release 流程，首次交付受 CI 阻塞。独立维护修复已同步 main；另一条并发流程已推进 release，其外部部署正在观察中。用户随后共享登录后的内置浏览器并授权实际验收。所有 D-* 条目在完整证据就绪前保持未完成，不记录 `submitOuter` 或推断部署验收。
+2026-10-12 已成功交付并完成真实账号的偏好验收，唯独真实账号切换按用户明确决定跳过。独立 CI 修复已同步 main，并由另一条并发 release 流程包含和交付。D-S02、D-AC02 已有实际证据；D-S01、D-AC01 因账号切换证据延期保持未完成，不记录 `submitOuter` 或推断部署验收。
 
 ## 交付边界
 
@@ -28,7 +28,7 @@
 
 断言要求 `register` 调用数恰好为 2，首次实际为 10，重跑实际为 5；同一提交的 check job 已通过此测试。当前证据说明是重复检查中的重连测试阻塞，不足以确定其根因；没有将问题静默忽略或在 deployment 阶段修改测试/产品代码。
 
-## 公开站点检查
+## 首次失败后的公开站点检查
 
 2026-10-12T03:31:40.045Z 在集成浏览器重新加载 https://silvermoon.work/，无真实登录账号：
 
@@ -51,9 +51,41 @@
 
 - 用户选择仅移植上述修复到原 release，不把新增设备管理功能及 migration 纳入本次主动交付。
 - 刷新远端后发现另一条流程已将 release 推进到 `f0e319897e99c73a839918d8536b7dd55542d005`，该提交已经包含本次修复和并发设备管理变更。[工作流 38201102932](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38201102932) 已运行。
-- 本任务未创建或推送该 release 提交，未覆盖、回退或重复触发其部署。2026-10-12 观察到该流程 Ubuntu `pnpm check` 成功，浏览器测试仍在执行；后续外部结果以实际观测补充。
-- 已共享真实登录页，但当前页面仍加载旧资产 `index-DccAhzrw.js`；等待交付产物可用后再执行偏好验收，避免把旧产物结果归到新实现。
+- 本任务未创建或推送这些并发 release 提交，未覆盖、回退或重复触发其部署；本 idea 只验收 Session 视图偏好，不替设备管理或其他产品变化作验收。
+- `38201102932` 在浏览器测试期间被更新的 release 工作流取代而取消，不是 Connector 测试再次失败；deploy 未执行。
+- 后继 [38201298329](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38201298329) 对 `0d25cd8fd4722815e07e3b2a467871c464158f8e` 完整成功：Ubuntu `pnpm check`、浏览器测试、本地 migration 检查通过；deploy 仅构建同提交，D1、Worker、Pages 步骤全部成功。Worker version 为 `22ecd322-0b55-4f44-b8d8-d624099c5810`，Pages 为 https://adace98e.silvermoon-work.pages.dev。
+- 2026-10-12T03:56:27.386Z，真实登录页加载 `/assets/index-Cs5No2FO.js`，无缓存读取 HTTP 200，包含偏好命名空间及错误事件标识，随后执行下列验收。
+- 验收期间另一条流程又交付设备弹窗标题修正：[38202522318](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38202522318)，commit `809e71abdf1dfde9ee702107b5621bf9f7dda113`，结果成功；Worker version 为 `5885e9a6-cbbd-49f3-9ff1-39b4f16304b0`，Pages 为 https://c254ebe4.silvermoon-work.pages.dev。比较两次交付的 `App.tsx`、偏好模块及其单元测试，没有差异。
+- 最终 2026-10-12T04:29:33.890Z，原账号页面实际加载 `/assets/index-BVNwOaAz.js`，无缓存读取 HTTP 200，仍包含 `silvermoon:session-view-preferences:` 和 `session-view-preferences-error`；最终原偏好恢复检查在该产物上完成。
+
+## 真实账号浏览器验收
+
+通过共享浏览器的真实认证、真实 API 与生产页面验证，没有模拟账号或替换 API。账号比较只返回相等/不相等，不在仓库记录身份、Session 内容或凭据。
+
+| 场景 | 实际结果 |
+| --- | --- |
+| 四项开关全部 16 种组合 | 通过菜单逐项设置 mask 0–15，每组刷新后逐项核对勾选状态，全部恢复正确 |
+| 无关存储 | 16 组验证后，其他 localStorage 和 sessionStorage 记录与验证前完全相同 |
+| 重新打开 | 同一真实账号的新标签页恢复全部四项，不依赖原页面内存 |
+| 多标签页同步 | 第二页修改 Show ended 后原页同步；原页修改 Show unavailable 后第二页同步；第二页搜索文本不受同步影响 |
+| 分组恢复 | 实际存在 6 个可见设备组；收起初始展开组后刷新，分组重新按初始化规则展开 |
+| 离线快捷入口 | 隐藏离线历史后从 Active 使用 View offline history (switch to All)，刷新后 Show offline Sessions 保持开启 |
+| 桌面与窄屏菜单 | 1440×900、390×844 均可操作；菜单和窄屏警告场景 `scrollWidth > innerWidth` 均为 false |
+| 损坏记录 | 临时写入损坏 JSON 后刷新，四项回退默认，恢复警告可见；结束后恢复原记录 |
+| 写入不可用 | 临时限制偏好存储写入，当前 Show ended 选择仍保留，保存警告可见，无横向溢出，捕获 1 条结构化 save 错误 |
+| 读取不可用 | 在已登录页面临时限制 localStorage 读取并触发 storage 通知，四项回退默认；之后仍能修改当前视图，恢复/保存警告可见，分别捕获 1 条 restore/save 错误，窄屏无横向溢出 |
+| 退出重登 | 实际 Sign out 后偏好记录保持；用户通过第三方登录回到同一 Relay 账号，逐项恢复 `[false, false, true, true]` |
+| 真实账号切换 | 未验证：Google 自动返回原账号，临时强制选择尝试未完成；用户明确要求跳过并另建问题记录 |
+
+浏览器后台状态曾导致点击/等待超时；实际通过的自动化操作使用临时 Chrome focus emulation，完成后撤销，不将工具超时当作产品验证失败。存储异常仅通过浏览器临时注入，不改产品代码；注入、临时标签页、路由拦截均已清理。新文档初始化注入没有生效的尝试不计作读取受限证明，表中的读取受限结果明确是运行中 storage 同步场景。
+
+## 恢复与延期
+
+- 2026-10-12T04:24:45.052Z 确认重新回到原真实账号，恢复验证前四项全 false 和原先不存在的偏好记录；当前页刷新后默认状态正确。
+- 原页面视口仍为 1334×815；再次确认所有无关 localStorage、sessionStorage 记录不变，并移除浏览器中的临时偏好备份。没有发送 Session 指令、创建设备、修改历史或发布 npm。
+- 用户原话：“这个场景先不验了，直接跳过即可。你新建一个IDEA用来记录这个不能切换账号的bug，我们后续处理”。仅将账号切换标为延期，不把该决定当作账号隔离通过或 `acceptOuter`。
+- 已在独立 worktree 登记 [google-account-selection](../../01M4Q5Q9YZF48QNBB8N5V4KX7D/outer/inner/ideal/Idea.md)，ID `01M4Q5Q9YZF48QNBB8N5V4KX7D`；当前 preparing、未提交构想验收、未修改登录实现。该问题记录明确区分登录选择受阻与尚未证明的偏好隔离问题。
 
 ### 剩余条件
 
-先确认完整工作流成功和目标站点加载新产物，再完成 D-AC01、D-AC02 并恢复验证前偏好。仅对可操作的真实账号记录结果；缺少第二个真实账号或重新登录能力时保留对应未完成项。完整证据同步 primary 后方可提交 `submitOuter`。
+后续在 Google 账号选择问题解决且两个真实账号可操作时，补做账号间隔离的生产验证并同步证据，完成 D-S01、D-AC01 后方可提交 `submitOuter`。本轮不再尝试该场景。
