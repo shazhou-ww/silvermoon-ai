@@ -4,21 +4,21 @@
 
 ### D-S01: 记录 AHP 切换基线
 
-保存当前 connector 版本、200 行 Session、102 行未知状态及两个指定记录的只读生产基线，并确认旧数据不在部署变更范围。
+保存 `latest=0.2.1`、`canary=0.2.1-canary.1`、200 行 Session、102 行未知状态及两个指定记录的只读生产基线，并确认旧数据不在部署变更范围。
 
 ### D-S02: 发布 AHP-only Connector
 
-通过既有 npm 与 Connector 升级路径发布移除 Copilot SDK 的版本；Relay/Worker 无 schema 迁移时不部署无关服务。
+通过 tag `npm/connector/v0.3.0-canary.1` 和既有 Trusted Publishing workflow 发布 `@silvermoon-ai/connector@0.3.0-canary.1` 到 `canary`；不得移动 `latest=0.2.1`。Relay/Worker 无 schema 迁移时不部署无关服务。
 
 ### D-S03: 验证单一来源并观察回退
 
-重连 `copilot-sdk-test` 后验证新 inventory、create、send、history、status 与 archive 均来自 AHP；观察 Host 断开时只出现 offline/error，并保留应用版本回滚路径。
+从官方 registry clean-install 精确 canary，升级并重连 `copilot-sdk-test` 后验证新 inventory、create、send、history、status 与 archive 均来自 AHP；观察 Host 断开时只出现 offline/error，并保留回滚到 `0.2.1` 的应用版本路径。
 
 ## Acceptance criteria
 
 ### D-AC01: 不再产生 SDK 投影
 
-生产只读查询证明升级后新增或更新的 Session 只有 AHP 身份，未再产生新的 metadata-only `execution_state_known=0` 行。
+Actions 与 registry 证明精确 canary 发布成功且 `latest` 未变；生产只读查询证明升级后新增或更新的 Session 只有 AHP 身份，未再产生新的 metadata-only `execution_state_known=0` 行。
 
 ### D-AC02: AHP 操作端到端成功
 
