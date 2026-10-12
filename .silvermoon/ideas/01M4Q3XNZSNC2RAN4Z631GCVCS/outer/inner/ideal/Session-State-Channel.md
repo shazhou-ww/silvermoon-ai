@@ -1,16 +1,17 @@
-# 第一信道：Session 状态消息的最小候选
+# 上行反馈：Session 状态与历史的最小候选
 
 ## 结论与定位
 
-本文独立评审第一信道，按当前源码功能检查覆盖与冗余，只给消息类型和职责，不定义字段、schema 或协议版本。
+本文评审上行反馈中的 Session 状态与历史职责，按既有源码调查检查覆盖与冗余，不定义字段、schema 或协议版本。文件名保留以维持链接，不再表示独立的“第一信道”。
 
 **已明确的方向：**
 
-- 第一信道只上行：Connector → 中继 → 前端；反向请求与回复走第二信道。
-- 可重放历史为 Agent Session JSONL 级记录，不包括流式 token/chunk；第三信道的可订阅临时消息本期不实现。
+- 只有两个方向信道：请求下行，结果、错误和更新上行；不再按状态、命令和订阅划分三个信道。
+- 带观察基准的 long poll 统一补历史与等待实时更新；Connector 可短时续推，续拉与续推重叠按内容身份去重。
+- 可重放历史为 Agent Session JSONL 级记录，不包括流式 token/chunk；临时更新是上行反馈的独立内容类别，不占历史游标。
 - 中继只承担缓存角色，按整个 Session 淘汰，不截断 Session 的旧历史。
 
-**精简候选：第一信道保留四种消息。** 其中只有历史批次内的记录属于不可变历史；其余是目录、当前观察及同步结果。四种消息及其名称尚未批准。
+**精简候选：状态与历史保留四种内容职责。** 其中只有历史批次内的记录属于不可变历史；其余是目录、当前观察及同步结果。它们可以包含在同一读取反馈中，不要求四个独立 wire 操作。临时更新另有类别，不纳入这份历史分类；名称尚未批准。
 
 | 候选消息类型 | 职责 | 是否为不可变领域历史 |
 | --- | --- | --- |
@@ -21,7 +22,7 @@
 
 原则：有独立消费职责才增加消息类型，不为每个状态值、字段变化、错误原因或传输优化增加类型。
 
-源码基线：本 worktree 的 `0d25cd8fd4722815e07e3b2a467871c464158f8e`，不是调查期间持续前进的 remote main。本文未修改产品代码。[现状清单](./Current-WebSocket-Primitives.md) 不变，[三信道草案](./Ideal-Channel-Primitives.md) 提供整体上下文。
+源码调查基线：`0d25cd8fd4722815e07e3b2a467871c464158f8e`，不是持续前进的 remote main。本文未修改产品代码。[现状清单](./Current-WebSocket-Primitives.md) 不变，[两信道与统一读取草案](./Ideal-Channel-Primitives.md) 提供整体上下文。
 
 ## 1. 四种消息为何必要
 
@@ -74,7 +75,7 @@
 - 缓存未命中后的回源完成与回源不可用。
 - 只收到尾部、存在缺口与已有完整连续历史。
 
-第二信道 RPC result 回答“本次读取命令执行得怎样”；本消息描述第一信道已传输历史的覆盖情况。两者是不同职责，不重复携带整份历史或复制错误详情。具体能否把终点放在最后批次中、进度是否需要多次上报，是后续编码选择，不是现在增加类型的理由。
+读取反馈同时说明批次及其覆盖情况，无需跨信道复制结果。history.sync 是完整性职责，可以嵌入读取结果或更新通知；一次 long poll 已返回不代表全部历史已同步。等待超时仅说明没有新更新，不能伪装为完整空历史；续推丢弃不推进已处理游标。
 
 当前只有命令完成与 `history_synced_at`，不足以声明目标模型的完整覆盖保证；不能据此把新同步消息描述成当前已经存在。
 
@@ -108,9 +109,9 @@
 | closed/归档 | Agent Host archived 映射 closed，SDK shutdown 可更新摘要 | session.updated | 覆盖现有显示；归档/关闭是否进一步分离待有需求再决定，不加 archived 事件 |
 | gone/不可用 | Agent Host 发现绑定消失时上报 gone | session.updated | 覆盖；gone 不等于数据删除，不能触发历史清除 |
 | unknown/状态可信度 | SDK saved metadata 为 unknown；executionStateKnown 与当前连接确认分开判断 | session.updated + 连接有效性 | 覆盖；未知状态不能默认 idle，不需独立 unknown 事件 |
-| offline/removed/unknown-device | Web 根据设备连接、删除信息及查询失败派生 | 中继连接/设备管理信息，不属于 Session 历史 | 不增加第一信道领域 event；中继离线时 Connector 无法发送 offline 事实 |
-| syncing/sync-failed/unsupported/unconfirmed | 当前取决于 connector sessionSyncState 与连接确认 | 目录完成边界、第二信道结果及中继确认状态 | 不新增 Session 领域类型；应保持旧观察失效与同步失败可见 |
-| 是否可发送 follow-up | 当前连接确认、capabilityConfirmed、设备 sendMessage 与 Session canSendMessage 联合判断 | session.updated 的可写观察 + 第二信道能力/连接信息 | 覆盖；不能只看 running/idle，也不能把旧历史当成可写确认 |
+| offline/removed/unknown-device | Web 根据设备连接、删除信息及查询失败派生 | 中继连接/设备管理信息，不属于 Session 历史 | 不增加 Session 历史 event；中继离线时 Connector 无法发送 offline 事实 |
+| syncing/sync-failed/unsupported/unconfirmed | 当前取决于 connector sessionSyncState 与连接确认 | 目录完成边界、上行结果及中继确认状态 | 不新增 Session 领域类型；应保持旧观察失效与同步失败可见 |
+| 是否可发送 follow-up | 当前连接确认、capabilityConfirmed、设备 sendMessage 与 Session canSendMessage 联合判断 | session.updated 的可写观察 + 能力/连接信息 | 覆盖；不能只看 running/idle，也不能把旧历史当成可写确认 |
 | 等待输入、问题与答案显示 | pendingInputRequest；worker 从 input 历史推导，Web 要求当前 waiting | session.updated 的当前 pending + input 历史 | 必要信息覆盖；当前 provider 摘要/worker 存储并未完整直通 pending，目标实现需另核对，不能声称直接换名即完成 |
 | message-flow、工具折叠与计数 | Web 折叠 part 快照；SDK 工具开始/完成为分立事件 | message/tool 历史及来源关联 | 类型覆盖；归约语义需调整，当前快照覆盖机制不是不可变 JSONL 历史保证 |
 | activity、system、error | SDK intent/error；Agent Host system/error | 六类历史中的对应语义 | 保留已支持内容，不以“精简”为由默默删信息 |
@@ -144,5 +145,6 @@
 2. 当前观察与历史游标分离；旧连接观察如何失效，未知、未提供及显式清除如何区别。
 3. provider 提供稳定 JSONL 级身份与顺序的边界；不能从最终 part 伪造中间日志，也不能把当前 event upsert 当作不可变记录。
 4. pending input、消息/tool 关联如何保持消费一致；能力不足显式说明，不默默补默认值。
+5. long poll 的观察基准、短时续推的来源/版本及有界窗口；临时更新过期显式报告缺口，不能靠历史游标掩盖丢失。
 
 **建议当前只审阅这一精简候选，不视为已批准协议。** 后续首先确认“Session 当前观察”与“不可变历史”是否按本文分开表达，再逐项讨论必要内容；不要求先批准详细字段。
