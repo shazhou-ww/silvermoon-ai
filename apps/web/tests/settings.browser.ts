@@ -253,6 +253,7 @@ test("Device rename cancels without IO, retains failed input and updates attribu
   const rename = row.getByRole("button", { name: "Rename", exact: true })
   await rename.click()
   const dialog = page.getByRole("dialog", { name: "Rename Device" })
+  await expect(dialog.getByRole("button", { name: "Close", exact: true })).toHaveCount(0)
   await expect(dialog.getByLabel("Device name")).toBeFocused()
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click()
   await expect(rename).toBeFocused()
@@ -320,6 +321,45 @@ test("Device deletion retains read-only history and exposes persistent disconnec
   await expect(workspace.getByText("First message 39", { exact: true })).toBeVisible()
   await expect(input(page)).not.toBeVisible()
   expect(state.requests.filter(request => request.endsWith("/messages"))).toHaveLength(0)
+})
+
+test("long Device deletion titles ellipsize without a redundant close button", async ({ page }) => {
+  const state = await fixture(page)
+  state.deviceName = "Device-" + "LongName".repeat(9)
+  await page.goto("/settings")
+  const opener = page.locator(".device-settings-row").filter({ hasText: state.deviceName })
+    .getByRole("button", { name: "Delete", exact: true })
+  await opener.click()
+  const fullTitle = `Delete ${state.deviceName}?`
+  const dialog = page.getByRole("dialog", { name: fullTitle, exact: true })
+  const title = dialog.getByRole("heading", { name: fullTitle, exact: true })
+  await expect(title).toHaveAttribute("title", fullTitle)
+  await expect(dialog.getByRole("button", { name: "Close", exact: true })).toHaveCount(0)
+  const geometry = await title.evaluate(element => {
+    const style = getComputedStyle(element)
+    const titleRect = element.getBoundingClientRect()
+    const dialogRect = element.closest("[role='dialog']")!.getBoundingClientRect()
+    return {
+      ellipsis: style.textOverflow,
+      whiteSpace: style.whiteSpace,
+      overflow: style.overflowX,
+      truncated: element.scrollWidth > element.clientWidth,
+      insideDialog: titleRect.left >= dialogRect.left && titleRect.right <= dialogRect.right,
+      insideViewport: dialogRect.left >= 0 && dialogRect.right <= innerWidth,
+      singleLine: titleRect.height <= parseFloat(style.lineHeight) + 1,
+    }
+  })
+  expect(geometry).toEqual({
+    ellipsis: "ellipsis", whiteSpace: "nowrap", overflow: "hidden",
+    truncated: true, insideDialog: true, insideViewport: true, singleLine: true,
+  })
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click()
+  await expect(opener).toBeFocused()
+  expect(state.requests).not.toContain("DELETE /api/devices/one")
+  await opener.click()
+  await page.keyboard.press("Escape")
+  await expect(dialog).toHaveCount(0)
+  await expect(opener).toBeFocused()
 })
 
 test("Device deletion returns focus to an open Add device form without clearing its draft", async ({ page }) => {
