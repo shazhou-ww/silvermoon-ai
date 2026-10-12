@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>实时来源离线</title>
+  <link rel="stylesheet" href="product.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <div>
+      <h1>实时来源离线</h1>
+      <p>同一逻辑 Session 失去 Agent Host 状态，但 SDK 持久化记录仍可恢复。</p>
+    </div>
+    <ul class="callouts" aria-label="可见变化">
+      <li>不删除历史行</li>
+      <li>状态局限仍明确</li>
+    </ul>
+  </header>
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before</strong><span>实时投影消失后</span></header>
+      <div class="product-surface">
+        <div class="app-shell">
+          <div class="toolbar"><strong>Sessions</strong><span>copilot-sdk-test · Online</span></div>
+          <div class="session-list">
+            <div class="session-row selected">
+              <span class="dot"></span>
+              <div class="row-main">
+                <div class="title">这是从 daily discussion 拆出的独立 Silvermoon Relay 工作 session…</div>
+                <div class="meta"><span>Execution state unknown</span><span>GitHub Copilot</span></div>
+                <div class="preview">这是从 daily discussion 拆出的独立 Silvermoon Relay 工作 session…</div>
+              </div>
+              <span class="time">7h</span>
+            </div>
+            <div class="empty-space"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After</strong><span>实时投影消失后</span></header>
+      <div class="product-surface">
+        <div class="app-shell">
+          <div class="toolbar"><strong>Sessions</strong><span>copilot-sdk-test · Online</span></div>
+          <div class="session-list">
+            <div class="session-row selected">
+              <span class="dot"></span>
+              <div class="row-main">
+                <div class="title">跟进 Relay Session 完成与 Reactivate</div>
+                <div class="meta"><span>Execution state unknown</span><span>GitHub Copilot</span></div>
+                <div class="preview">这是从 daily discussion 拆出的独立 Silvermoon Relay 工作 session…</div>
+              </div>
+              <span class="time">7h</span>
+            </div>
+            <div class="empty-space"></div>
+          </div>
+          <div class="source-note">逻辑 Session 继续存在并使用 SDK fallback；没有实时证据时不会伪造 Running 或 Idle。</div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({ type: "ui-review:height", height: document.documentElement.scrollHeight }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>

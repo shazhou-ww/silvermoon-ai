@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session 双来源展示评审</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #f4f5f6;
+      --surface: #fff;
+      --ink: #1b1d1f;
+      --muted: #62686e;
+      --border: #d8dcdf;
+      --accent: #3454d1;
+      --accent-soft: #edf0ff;
+      --warning: #8a5a08;
+    }
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--canvas); }
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", sans-serif;
+    }
+    a, button { font: inherit; }
+    a:focus-visible, iframe:focus-visible {
+      outline: 3px solid rgb(52 84 209 / 28%);
+      outline-offset: 2px;
+    }
+    .skip-link {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      z-index: 10;
+      padding: 8px 12px;
+      color: #fff;
+      background: var(--ink);
+      border-radius: 6px;
+      transform: translateY(-150%);
+    }
+    .skip-link:focus { transform: translateY(0); }
+    header, main, footer {
+      width: min(1480px, calc(100% - 40px));
+      margin-inline: auto;
+    }
+    .page-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: start;
+      padding: 28px 0 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 { margin: 0; font-size: 27px; line-height: 1.2; }
+    .page-header p { max-width: 72ch; margin: 6px 0 0; color: var(--muted); }
+    .status { display: inline-flex; gap: 8px; align-items: center; color: var(--muted); white-space: nowrap; }
+    .status::before { width: 8px; height: 8px; background: var(--warning); border-radius: 50%; content: ""; }
+    main { padding: 20px 0 40px; }
+    .decision {
+      display: grid;
+      grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.1fr);
+      gap: 24px;
+      align-items: center;
+      padding: 16px 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .eyebrow { margin: 0 0 4px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    h2 { margin: 0; font-size: 18px; line-height: 1.35; }
+    .deltas { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; margin: 0; padding: 0; list-style: none; }
+    .deltas li { padding: 5px 8px; color: #273e9e; background: var(--accent-soft); border-radius: 5px; font-size: 12px; font-weight: 650; }
+    .scenarios { margin-top: 18px; }
+    .tabs { display: flex; gap: 4px; padding: 3px; background: #e8eaec; border: 1px solid var(--border); border-radius: 7px; }
+    .tab { min-height: 36px; padding: 7px 12px; color: var(--muted); border-radius: 5px; font-weight: 650; text-decoration: none; }
+    .tab[aria-selected="true"] { color: var(--ink); background: var(--surface); box-shadow: 0 1px 3px rgb(27 29 31 / 12%); }
+    .frame-shell { margin-top: 12px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+    iframe { display: block; width: 100%; min-height: 720px; border: 0; }
+    .review-end { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px; align-items: center; margin-top: 18px; }
+    .review-end p { margin: 0; color: var(--muted); }
+    .review-end strong { color: var(--ink); }
+    .source { color: var(--accent); }
+    footer { padding-bottom: 28px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 720px) {
+      header, main, footer { width: min(100% - 24px, 1480px); }
+      .page-header, .decision, .review-end { grid-template-columns: 1fr; }
+      .deltas { justify-content: flex-start; }
+      .tabs { display: grid; grid-template-columns: 1fr 1fr; }
+      .tab { text-align: center; }
+      iframe { min-height: 980px; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#review">跳到评审内容</a>
+  <header class="page-header">
+    <div>
+      <h1>Session 双来源展示评审</h1>
+      <p>用两个已验证生产记录说明：只有稳定关联成立时，SDK 历史投影与 Agent Host 实时投影才折叠为一个用户可见 Session。</p>
+    </div>
+    <span class="status">说明性评审材料</span>
+  </header>
+  <main id="review">
+    <section class="decision" aria-labelledby="decision-title">
+      <div>
+        <p class="eyebrow">请求批准的决定</p>
+        <h2 id="decision-title">是否以一个逻辑 Session 行呈现已证明关联的双来源投影，并保留安全 fallback？</h2>
+      </div>
+      <ul class="deltas" aria-label="关键变化">
+        <li>已关联投影只占一行</li>
+        <li>优先显示当前实时状态</li>
+        <li>失去实时来源后保留 SDK fallback</li>
+      </ul>
+    </section>
+    <section class="scenarios" aria-label="评审场景">
+      <nav class="tabs" role="tablist" aria-label="选择场景">
+        <a class="tab" role="tab" aria-selected="true" href="scenarios/01-linked-session.html" target="scenario-frame">双来源在线</a>
+        <a class="tab" role="tab" aria-selected="false" href="scenarios/02-fallback.html" target="scenario-frame">实时来源离线</a>
+      </nav>
+      <div class="frame-shell">
+        <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-linked-session.html" title="双来源在线对比"></iframe>
+      </div>
+    </section>
+    <section class="review-end" aria-label="评审结论">
+      <p>此 bundle 仅为说明性评审材料，不是生产 UI 或规范性行为契约。<a class="source" href="../Idea.md">规范性来源</a></p>
+      <strong>是否批准所示的折叠与 fallback 展示方向？</strong>
+    </section>
+  </main>
+  <footer>未决风险：跨来源稳定关联键尚未确认；没有稳定证据时，After 必须继续显示独立行。</footer>
+  <script>
+    const frame = document.querySelector("#scenario-frame");
+    const tabs = [...document.querySelectorAll(".tab")];
+    function selectTab(tab) {
+      tabs.forEach((candidate) => candidate.setAttribute("aria-selected", String(candidate === tab)));
+      frame.title = `${tab.textContent.trim()}对比`;
+    }
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => selectTab(tab));
+      tab.addEventListener("keydown", (event) => {
+        let nextIndex = null;
+        if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+        if (event.key === "ArrowLeft") nextIndex = (index - 1 + tabs.length) % tabs.length;
+        if (event.key === "Home") nextIndex = 0;
+        if (event.key === "End") nextIndex = tabs.length - 1;
+        if (nextIndex === null) return;
+        event.preventDefault();
+        tabs[nextIndex].click();
+        tabs[nextIndex].focus();
+      });
+    });
+    window.addEventListener("message", (event) => {
+      if (event.source !== frame.contentWindow || event.data?.type !== "ui-review:height") return;
+      frame.style.height = `${Math.max(320, Number(event.data.height) || 0)}px`;
+    });
+  </script>
+</body>
+</html>

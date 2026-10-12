@@ -2,7 +2,7 @@
 
 ## 问题
 
-生产 Session 列表同时接收 Copilot SDK 持久化目录与 VS Code Agent Host 实时目录；同一逻辑会话可能因两套不同 ID 被展示两次，其中 SDK 元数据行又缺少实时执行状态，因而大量显示为 `Execution state unknown`。详见 [调查证据](./Investigation.md)。
+生产 Session 列表同时接收 Copilot SDK 持久化目录与 VS Code Agent Host 实时目录；同一逻辑会话可能因两套不同 ID 被展示两次，其中 SDK 元数据行又缺少实时执行状态，因而大量显示为 `Execution state unknown`。详见[调查证据](./Investigation.md)、[UI 对比](./ui-review/index.html)与[业务数据模型评审](./Business-Data-Model-Review.md)。
 
 ## 结果
 

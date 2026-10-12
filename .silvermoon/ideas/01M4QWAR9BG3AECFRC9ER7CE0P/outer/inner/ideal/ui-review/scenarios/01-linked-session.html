@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>双来源在线</title>
+  <link rel="stylesheet" href="product.css">
+</head>
+<body>
+  <header class="scenario-heading">
+    <div>
+      <h1>双来源都在线</h1>
+      <p>使用两个指定生产记录的等价标题、状态与时间关系。</p>
+    </div>
+    <ul class="callouts" aria-label="可见变化">
+      <li>两行收敛为一个逻辑 Session</li>
+      <li>实时状态优先</li>
+    </ul>
+  </header>
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before</strong><span>同一 connector、同一逻辑工作</span></header>
+      <div class="product-surface">
+        <div class="app-shell">
+          <div class="toolbar"><strong>Sessions</strong><span>copilot-sdk-test · Online</span></div>
+          <div class="session-list">
+            <div class="session-row">
+              <span class="dot"></span>
+              <div class="row-main">
+                <div class="title">这是从 daily discussion 拆出的独立 Silvermoon Relay 工作 session…</div>
+                <div class="meta"><span>Execution state unknown</span><span>GitHub Copilot</span></div>
+                <div class="preview">这是从 daily discussion 拆出的独立 Silvermoon Relay 工作 session…</div>
+              </div>
+              <span class="time">7h</span>
+            </div>
+            <div class="session-row selected">
+              <span class="dot running"></span>
+              <div class="row-main">
+                <div class="title">跟进 Relay Session 完成与 Reactivate</div>
+                <div class="meta"><span>Running</span><span>GitHub Copilot</span></div>
+                <div class="preview">Ran pnpm lint; pnpm --filter @silvermoon-ai/web typecheck…</div>
+              </div>
+              <span class="time">now</span>
+            </div>
+            <div class="empty-space"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After</strong><span>同一 connector、同一逻辑工作</span></header>
+      <div class="product-surface">
+        <div class="app-shell">
+          <div class="toolbar"><strong>Sessions</strong><span>copilot-sdk-test · Online</span></div>
+          <div class="session-list">
+            <div class="session-row selected">
+              <span class="dot running"></span>
+              <div class="row-main">
+                <div class="title">跟进 Relay Session 完成与 Reactivate</div>
+                <div class="meta"><span>Running</span><span>GitHub Copilot</span></div>
+                <div class="preview">Ran pnpm lint; pnpm --filter @silvermoon-ai/web typecheck…</div>
+              </div>
+              <span class="time">now</span>
+            </div>
+            <div class="empty-space"></div>
+          </div>
+          <div class="source-note">此行由实时 Agent Host 投影展示；SDK 投影保留为恢复与历史 fallback，不另占一行。</div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({ type: "ui-review:height", height: document.documentElement.scrollHeight }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>
