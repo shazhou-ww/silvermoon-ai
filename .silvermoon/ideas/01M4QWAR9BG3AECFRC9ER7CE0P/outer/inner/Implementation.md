@@ -4,7 +4,7 @@
 
 ### I-S01: 建立跨来源身份契约
 
-确认 Copilot SDK 与 Agent Host 是否能提供稳定关联标识；以不同来源 ID 的 fixture 固化已证明的双投影案例。若没有稳定标识，显式建模来源和未关联状态，不使用标题、时间或消息文本自动合并。
+确认 Copilot SDK 与 Agent Host 是否能提供稳定关联标识；以不同来源 ID 的 fixture 固化已证明的双投影案例。当前协议证据确认两端均未暴露共享标识，详见 [Identity-Evidence.md](./Identity-Evidence.md)。继续实现前，来源生产者必须提供稳定关联字段；不得以标题、时间或消息文本替代。
 
 ### I-S02: 在 connector 边界协调投影
 
@@ -13,6 +13,10 @@
 ### I-S03: 覆盖 Relay 与 UI 兼容性
 
 验证 Relay upsert/API 与前端状态映射能表达关联、未关联及状态不可用，不破坏现有连接确认、分页、层级和 work state 行为。
+
+## Current blocker
+
+Copilot SDK `SessionMetadata` 与 Agent Host `SessionSummary` 当前没有共享的稳定 Session 标识。仓库不能在遵守已接受边界的同时判断两个不同 ID 是否属于同一逻辑 Session，因此 I-S02、I-S03 与全部实施验收标准等待来源协议增加明确关联字段及其生命周期语义。此阻塞不授权启发式合并、隐藏行或生产数据清理。
 
 ## Acceptance criteria
 

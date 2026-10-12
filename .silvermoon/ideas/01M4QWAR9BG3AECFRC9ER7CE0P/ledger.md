@@ -4,7 +4,7 @@
 
 ### Implementation steps
 
-- [ ] **I-S01:** 建立跨来源身份契约
+- [x] **I-S01:** 建立跨来源身份契约
 - [ ] **I-S02:** 在 connector 边界协调投影
 - [ ] **I-S03:** 覆盖 Relay 与 UI 兼容性
 
