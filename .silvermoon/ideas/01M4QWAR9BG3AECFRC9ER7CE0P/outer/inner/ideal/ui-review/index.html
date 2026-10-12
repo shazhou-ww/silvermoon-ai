@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Session 双来源展示评审</title>
+  <title>AHP 单一 Session 来源评审</title>
   <style>
     :root {
       color-scheme: light;
@@ -99,8 +99,8 @@
   <a class="skip-link" href="#review">跳到评审内容</a>
   <header class="page-header">
     <div>
-      <h1>Session 双来源展示评审</h1>
-      <p>用两个已验证生产记录说明：只有稳定关联成立时，SDK 历史投影与 Agent Host 实时投影才折叠为一个用户可见 Session。</p>
+      <h1>AHP 单一 Session 来源评审</h1>
+      <p>用两个已验证生产记录说明：Connector 不再发布 SDK metadata 行，只以 Agent Host Protocol Session 作为可见身份与操作入口。</p>
     </div>
     <span class="status">说明性评审材料</span>
   </header>
@@ -108,29 +108,29 @@
     <section class="decision" aria-labelledby="decision-title">
       <div>
         <p class="eyebrow">请求批准的决定</p>
-        <h2 id="decision-title">是否以一个逻辑 Session 行呈现已证明关联的双来源投影，并保留安全 fallback？</h2>
+        <h2 id="decision-title">是否只保留 AHP Session 行，并在 Agent Host 不可用时显式离线而不切换 SDK ID？</h2>
       </div>
       <ul class="deltas" aria-label="关键变化">
-        <li>已关联投影只占一行</li>
-        <li>优先显示当前实时状态</li>
-        <li>失去实时来源后保留 SDK fallback</li>
+        <li>AHP 是唯一可见目录</li>
+        <li>全部操作沿同一身份</li>
+        <li>无 SDK namespace fallback</li>
       </ul>
     </section>
     <section class="scenarios" aria-label="评审场景">
       <nav class="tabs" role="tablist" aria-label="选择场景">
-        <a class="tab" role="tab" aria-selected="true" href="scenarios/01-linked-session.html" target="scenario-frame">双来源在线</a>
-        <a class="tab" role="tab" aria-selected="false" href="scenarios/02-fallback.html" target="scenario-frame">实时来源离线</a>
+        <a class="tab" role="tab" aria-selected="true" href="scenarios/01-linked-session.html" target="scenario-frame">AHP 在线</a>
+        <a class="tab" role="tab" aria-selected="false" href="scenarios/02-fallback.html" target="scenario-frame">Agent Host 离线</a>
       </nav>
       <div class="frame-shell">
-        <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-linked-session.html" title="双来源在线对比"></iframe>
+        <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-linked-session.html" title="AHP 在线对比"></iframe>
       </div>
     </section>
     <section class="review-end" aria-label="评审结论">
       <p>此 bundle 仅为说明性评审材料，不是生产 UI 或规范性行为契约。<a class="source" href="../Idea.md">规范性来源</a></p>
-      <strong>是否批准所示的折叠与 fallback 展示方向？</strong>
+      <strong>是否批准所示的 AHP-only 与显式离线方向？</strong>
     </section>
   </main>
-  <footer>未决风险：跨来源稳定关联键尚未确认；没有稳定证据时，After 必须继续显示独立行。</footer>
+  <footer>旧 Relay 行暂不清理，可能继续存在于历史数据中；本方向保证升级后不再产生新的 SDK 投影。</footer>
   <script>
     const frame = document.querySelector("#scenario-frame");
     const tabs = [...document.querySelectorAll(".tab")];

@@ -1,21 +1,21 @@
-# 消除重复 Session 与未知执行状态歧义
+# 以 AHP 统一 Connector Session 控制面
 
 ## 问题
 
-生产 Session 列表同时接收 Copilot SDK 持久化目录与 VS Code Agent Host 实时目录；同一逻辑会话可能因两套不同 ID 被展示两次，其中 SDK 元数据行又缺少实时执行状态，因而大量显示为 `Execution state unknown`。详见[调查证据](./Investigation.md)、[UI 对比](./ui-review/index.html)与[业务数据模型评审](./Business-Data-Model-Review.md)。
+Connector 同时把 Copilot SDK 与 Agent Host 目录作为 Relay Session 来源；二者为同一逻辑工作分配不同 ID，且 SDK 历史目录没有执行状态，造成重复行、`Execution state unknown` 与操作路径分裂。详见[调查证据](./Investigation.md)、[UI 对比](./ui-review/index.html)与[业务数据模型评审](./Business-Data-Model-Review.md)。
 
 ## 结果
 
-建立可证明的跨来源身份与状态语义：只合并具有稳定关联证据的同一逻辑会话，以实时记录提供执行状态，同时保留无法安全关联的历史会话与恢复能力。
+移除 Connector 对 Copilot SDK 的直接运行时依赖，以 Agent Host Protocol（AHP）作为 Session 列表、身份、创建、消息、历史、实时状态、事件与原生归档的唯一控制面；Relay 只接收 AHP Session URI 派生的身份。
 
 ## 边界
 
-- 不以标题、时间邻近或消息内容等启发式条件执行破坏性合并。
-- 本轮只形成调查结论和后续种子，不修改产品代码或生产数据。
-- 未暴露稳定跨来源标识时，必须明确保留记录并呈现来源/状态局限。
+- Agent Host 不可用时显式报告 offline 或操作失败，不切换到 Copilot SDK namespace。
+- 不以标题、时间、消息或工作区推断身份，也不配对两套历史 ID。
+- 旧 Relay Session 与事件暂不回填、合并或删除；本方向只停止产生新的 SDK 投影。
 
 ## 验收标准
 
-- 两个指定记录的 UI、持久化、事件与 connector 生命周期差异均有可复核证据。
-- `unknown` 的来源和可观察规模有量化结论，逻辑重复与数据库重复被明确区分。
-- 后续实施与部署契约包含安全关联、兼容性验证及生产观测种子。
+- Connector 运行时与依赖清单不再引用 Copilot SDK，所有 Session 操作和事件均通过 AHP。
+- 新同步的 Session 只有 AHP 身份，不再因 SDK metadata 产生重复 `unknown` 行。
+- Agent Host 不可用、重连及旧 Relay 数据保留行为有明确测试与生产验证。

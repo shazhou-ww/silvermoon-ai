@@ -3,23 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>实时来源离线</title>
+  <title>Agent Host 离线</title>
   <link rel="stylesheet" href="product.css">
 </head>
 <body>
   <header class="scenario-heading">
     <div>
-      <h1>实时来源离线</h1>
-      <p>同一逻辑 Session 失去 Agent Host 状态，但 SDK 持久化记录仍可恢复。</p>
+      <h1>Agent Host 离线</h1>
+      <p>Connector 失去权威 AHP Host 时保持原身份并显式离线，不切换到 SDK Session。</p>
     </div>
     <ul class="callouts" aria-label="可见变化">
-      <li>不删除历史行</li>
-      <li>状态局限仍明确</li>
+      <li>不创建 unknown SDK 行</li>
+      <li>同一 AHP 身份保持离线</li>
     </ul>
   </header>
   <main class="comparison">
     <section class="state before" aria-labelledby="before-title">
-      <header class="state-label"><strong id="before-title">Before</strong><span>实时投影消失后</span></header>
+      <header class="state-label"><strong id="before-title">Before</strong><span>Agent Host 断开后</span></header>
       <div class="product-surface">
         <div class="app-shell">
           <div class="toolbar"><strong>Sessions</strong><span>copilot-sdk-test · Online</span></div>
@@ -29,7 +29,7 @@
               <div class="row-main">
                 <div class="title">这是从 daily discussion 拆出的独立 Silvermoon Relay 工作 session…</div>
                 <div class="meta"><span>Execution state unknown</span><span>GitHub Copilot</span></div>
-                <div class="preview">这是从 daily discussion 拆出的独立 Silvermoon Relay 工作 session…</div>
+                <div class="preview">SDK metadata fallback 使用了另一个 Session ID</div>
               </div>
               <span class="time">7h</span>
             </div>
@@ -39,23 +39,23 @@
       </div>
     </section>
     <section class="state after" aria-labelledby="after-title">
-      <header class="state-label"><strong id="after-title">After</strong><span>实时投影消失后</span></header>
+      <header class="state-label"><strong id="after-title">After</strong><span>Agent Host 断开后</span></header>
       <div class="product-surface">
         <div class="app-shell">
-          <div class="toolbar"><strong>Sessions</strong><span>copilot-sdk-test · Online</span></div>
+          <div class="toolbar"><strong>Sessions</strong><span>copilot-sdk-test · Offline</span></div>
           <div class="session-list">
             <div class="session-row selected">
               <span class="dot"></span>
               <div class="row-main">
                 <div class="title">跟进 Relay Session 完成与 Reactivate</div>
-                <div class="meta"><span>Execution state unknown</span><span>GitHub Copilot</span></div>
-                <div class="preview">这是从 daily discussion 拆出的独立 Silvermoon Relay 工作 session…</div>
+                <div class="meta"><span>Offline</span><span>Agent Host</span></div>
+                <div class="preview">等待原 Agent Host 重连；发送与归档操作明确不可用</div>
               </div>
               <span class="time">7h</span>
             </div>
             <div class="empty-space"></div>
           </div>
-          <div class="source-note">逻辑 Session 继续存在并使用 SDK fallback；没有实时证据时不会伪造 Running 或 Idle。</div>
+          <div class="source-note">Connector 保持原 AHP Session 身份，不恢复或创建另一个 SDK Session；旧 Relay 行暂不清理。</div>
         </div>
       </div>
     </section>

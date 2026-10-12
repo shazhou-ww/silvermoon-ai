@@ -2,28 +2,28 @@
 
 ## Steps
 
-### D-S01: 建立生产 shadow 基线
+### D-S01: 记录 AHP 切换基线
 
-在不改变展示或数据的前提下统计可证明关联、无法关联与状态未知的 Session 数量，并保存指定记录的基线。
+保存当前 connector 版本、200 行 Session、102 行未知状态及两个指定记录的只读生产基线，并确认旧数据不在部署变更范围。
 
-### D-S02: 分阶段发布关联行为
+### D-S02: 发布 AHP-only Connector
 
-先发布 connector 侧兼容行为；仅在契约确需时再发布 Relay/Web 变更。禁止在关联精度得到证明前清理或迁移历史行。
+通过既有 npm 与 Connector 升级路径发布移除 Copilot SDK 的版本；Relay/Worker 无 schema 迁移时不部署无关服务。
 
-### D-S03: 观察并保留回退路径
+### D-S03: 验证单一来源并观察回退
 
-比较发布前后的未知状态、逻辑重复、resume/send/history 错误率；若出现误合并或能力损失，回退应用版本且不执行数据删除。
+重连 `copilot-sdk-test` 后验证新 inventory、create、send、history、status 与 archive 均来自 AHP；观察 Host 断开时只出现 offline/error，并保留应用版本回滚路径。
 
 ## Acceptance criteria
 
-### D-AC01: 指定案例收敛
+### D-AC01: 不再产生 SDK 投影
 
-生产只读查询与 UI 复核证明两个指定投影不再作为误导性的重复 unknown/running 行同时展示，且完整历史仍可访问。
+生产只读查询证明升级后新增或更新的 Session 只有 AHP 身份，未再产生新的 metadata-only `execution_state_known=0` 行。
 
-### D-AC02: 未知状态显著且安全下降
+### D-AC02: AHP 操作端到端成功
 
-同一 connector 的 `execution_state_known=0` 展示量相对 102/200 基线下降，抽样证明下降来自已验证关联而非隐藏或删除无法关联的会话。
+生产 UI 与命令证据证明 list、create、send、history、实时状态和 Done/Restore 通过 AHP 成功，Host 不可用时没有 namespace fallback。
 
-### D-AC03: 无能力与数据回退
+### D-AC03: 历史数据与回滚安全
 
-生产观测证明 Session 恢复、消息发送、历史同步和实时状态继续成功；D1 行数与事件完整性检查未发现非预期删除或重写。
+D1 行数与事件检查证明旧 Session 未被自动配对、重写或删除；出现能力回退时可回滚 Connector 版本且无需数据恢复。

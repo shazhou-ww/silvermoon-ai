@@ -2,32 +2,28 @@
 
 ## Steps
 
-### I-S01: 建立跨来源身份契约
+### I-S01: 将 AHP provider 提升为完整 adapter
 
-确认 Copilot SDK 与 Agent Host 是否能提供稳定关联标识；以不同来源 ID 的 fixture 固化已证明的双投影案例。当前协议证据确认两端均未暴露共享标识，详见 [Identity-Evidence.md](./Identity-Evidence.md)。继续实现前，来源生产者必须提供稳定关联字段；不得以标题、时间或消息文本替代。
+让 Agent Host provider 独立实现 Session inventory、create、send、history、实时事件、状态、输入请求与原生 archive；以规范化 AHP Session URI 和稳定 Host 路由身份承载 Session ID。
 
-### I-S02: 在 connector 边界协调投影
+### I-S02: 移除 Copilot SDK 控制面
 
-让具有可证明关联的实时 Agent Host 投影覆盖 SDK 元数据投影的展示状态，同时保留历史恢复、发送消息、事件读取和来源消失后的安全 fallback。
+删除 Connector 对 `@github/copilot-sdk` 的运行时依赖及 metadata inventory、create、resume、send、history 和 event fallback。Agent Host 不可用或 URI 不存在时显式失败，不切换 namespace。
 
-### I-S03: 覆盖 Relay 与 UI 兼容性
+### I-S03: 固化 Relay 兼容性与旧数据边界
 
-验证 Relay upsert/API 与前端状态映射能表达关联、未关联及状态不可用，不破坏现有连接确认、分页、层级和 work state 行为。
-
-## Current blocker
-
-Copilot SDK `SessionMetadata` 与 Agent Host `SessionSummary` 当前没有共享的稳定 Session 标识。仓库不能在遵守已接受边界的同时判断两个不同 ID 是否属于同一逻辑 Session，因此 I-S02、I-S03 与全部实施验收标准等待来源协议增加明确关联字段及其生命周期语义。此阻塞不授权启发式合并、隐藏行或生产数据清理。
+调整 Connector/协议测试、配置与文档，证明新同步只产生 AHP 行；保持 Relay schema、既有行与事件不变，不实现旧 ID 配对或清理。
 
 ## Acceptance criteria
 
-### I-AC01: 证明性去重
+### I-AC01: 单一 AHP 身份
 
-自动化测试以不同 SDK/AHP ID 表示同一逻辑会话时只产生一个可展示投影，并证明无稳定关联的相似会话仍保持独立。
+自动化测试证明 list 与所有命令只使用 AHP Session 身份；相同逻辑工作不会再因 SDK metadata 产生第二条新 Session。
 
-### I-AC02: 状态与能力保真
+### I-AC02: 完整能力与显式失败
 
-测试证明关联后的投影采用 Agent Host 实时执行状态，且 SDK fallback 的 resume/send/history 能力在 Agent Host 消失后仍可用。
+测试覆盖 create、send、history、status、event、input 与 archive；Agent Host 断开或目标 URI 缺失时得到明确 offline/error，且没有 SDK fallback。
 
-### I-AC03: 现有生命周期不回退
+### I-AC03: 依赖与兼容性收敛
 
-connector、worker 与 web 的针对性测试证明连接 observation、历史同步、session 层级、分页和完成状态行为保持有效。
+Connector manifest、源码和构建产物不再引用 Copilot SDK；connector、protocol、worker 与 web 的针对性测试通过，既有 Relay 数据未被迁移或删除。
