@@ -322,6 +322,21 @@ test("Device deletion retains read-only history and exposes persistent disconnec
   expect(state.requests.filter(request => request.endsWith("/messages"))).toHaveLength(0)
 })
 
+test("Device deletion returns focus to an open Add device form without clearing its draft", async ({ page }) => {
+  await fixture(page)
+  await page.goto("/settings")
+  await settings(page).getByRole("button", { name: "Add device", exact: true }).click()
+  const name = settings(page).getByLabel("Device name")
+  await name.fill("Next workstation")
+  await page.locator(".device-settings-row").filter({ hasText: "Development Mac" })
+    .getByRole("button", { name: "Delete", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "Delete Development Mac?" })
+  await dialog.getByRole("button", { name: "Delete device" }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(name).toBeFocused()
+  await expect(name).toHaveValue("Next workstation")
+})
+
 test("back and forward resolve the right-side destination, and Devices opens its card", async ({ page, isMobile }) => {
   await fixture(page)
   await page.goto("/?connector=one&session=same")

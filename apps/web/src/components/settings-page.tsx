@@ -213,6 +213,7 @@ export function SettingsPage({
         <DialogContent onCloseAutoFocus={event => {
           event.preventDefault()
           if (returnFocus.current?.isConnected) returnFocus.current.focus()
+          else if (props.deviceFormOpen) deviceNameRef.current?.focus()
           else addDeviceRef.current?.focus()
         }}>
           <DialogHeader>
