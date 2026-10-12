@@ -3,43 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>完成后查看与恢复</title>
+  <title>详情页操作入口</title>
   <link rel="stylesheet" href="../review.css">
 </head>
 <body>
   <header class="scenario-heading">
-    <h1>完成后查看与恢复</h1>
-    <p>同一段已保存历史、相同 Available 执行状态；After 是已标记完成且开启 Show completed 的状态。</p>
-    <ul class="callouts"><li>行尾回转 glyph：Reactivate</li><li>Completed 与 Available 分开显示</li><li>不自动发送消息或解除原生只读</li></ul>
+    <h1>详情页操作入口</h1>
+    <p>同一已完成 Session 的已保存历史；截取桌面／手机详情标题区与正文，不改变 Agent 的 Available 状态。</p>
+    <ul class="callouts"><li>详情顶部常显 glyph</li><li>不必返回列表</li><li>未完成时同位置显示勾选动作</li></ul>
   </header>
   <main class="comparison">
-    <section class="state" aria-labelledby="before-title">
-      <header class="state-label"><strong id="before-title">Before</strong><span>同一 Session · Available</span></header>
-      <div class="product-surface">
-        <div class="brand">Silvermoon Relay / Sessions</div>
-        <div class="filters"><span>All</span><span>Session view options</span></div>
-        <div class="options"><div>Show ended: off</div><div>Show unavailable: off</div><div>Show offline Sessions: off</div><div>Group by Device: off</div></div>
-        <div class="session"><div class="session-content"><strong>检查发布结果</strong><small>copilot-sdk-test</small><span class="badge">Available</span></div></div>
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before</strong><span>已完成 Session 详情</span></header>
+      <div class="product-surface detail-only">
+        <div class="detail-header"><div class="detail-title"><h2>检查发布结果与保存验证记录</h2><small>copilot-sdk-test</small></div><span class="badge">Available</span></div>
         <div class="history">
-          <h2>检查发布结果</h2><p class="muted">Session opened on copilot-sdk-test</p>
+          <p class="muted">Session opened on copilot-sdk-test</p>
+          <div class="notice"><strong>This Session is completed in Relay.</strong><p>Read its saved history. Use Show completed and the Reactivate icon in the Session list to continue; native read-only limits still apply.</p></div>
           <div class="message">发布检查已结束。</div>
-          <div class="composer">Follow-up message</div>
+          <div class="composer">Completed · Reactivate from the Session list to continue.</div>
         </div>
       </div>
     </section>
-    <section class="state" aria-labelledby="after-title">
-      <header class="state-label"><strong id="after-title">After</strong><span>同一 Session · Available</span></header>
-      <div class="product-surface">
-        <div class="brand">Silvermoon Relay / Sessions</div>
-        <div class="filters"><span>All</span><span>Session view options</span></div>
-        <div class="options"><div>Show completed: on</div><div>Show ended: off</div><div>Show unavailable: off</div><div>Show offline Sessions: off</div><div>Group by Device: off</div></div>
-        <div class="session is-selected"><div class="session-content"><strong>检查发布结果</strong><small>copilot-sdk-test</small><span class="badge">Completed</span> <span class="badge">Available</span></div><div class="session-action"><button type="button" class="glyph" aria-label="Reactivate: 检查发布结果" aria-describedby="reactivate-tip" title="Reactivate — 恢复未完成，不自动发消息"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 2 6l4 3M2 6h7a4 4 0 0 1 0 8"/></svg></button><span class="glyph-tip" id="reactivate-tip" role="tooltip">Reactivate · 不自动发消息</span></div></div>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After</strong><span>同一 Session 详情</span></header>
+      <div class="product-surface detail-only">
+        <div class="detail-header"><div class="detail-title"><h2>检查发布结果与保存验证记录</h2><small>copilot-sdk-test</small></div><span class="badge">Available</span><div class="session-action"><button type="button" class="glyph detail-glyph" aria-label="Reactivate: 检查发布结果与保存验证记录" aria-describedby="detail-reactivate-tip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 2 6l4 3M2 6h7a4 4 0 0 1 0 8"/></svg></button><span class="glyph-tip" id="detail-reactivate-tip" role="tooltip">Reactivate · 不自动发消息</span></div></div>
         <div class="history">
-          <div class="product-toolbar"><h2>检查发布结果</h2></div>
           <p class="muted">Session opened on copilot-sdk-test</p>
+          <div class="notice"><strong>This Session is completed in Relay.</strong><p>Read its saved history. Use Reactivate at the top of this Session to continue; native read-only limits still apply.</p></div>
           <div class="message">发布检查已结束。</div>
-          <div class="composer">已完成。请先 Reactivate，再继续对话。</div>
+          <div class="composer">Completed · Reactivate this Session before sending.</div>
         </div>
+        <p class="measure">未完成时同位置显示 Mark completed 勾选 glyph；详情内完成后保留历史与草稿，可原地 Reactivate。手机点击区至少 44px。</p>
       </div>
     </section>
   </main>

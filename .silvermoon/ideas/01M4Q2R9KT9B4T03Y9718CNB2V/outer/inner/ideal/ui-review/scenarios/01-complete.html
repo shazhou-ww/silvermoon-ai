@@ -3,42 +3,34 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>标记完成入口</title>
+  <title>手机列表点击区</title>
   <link rel="stylesheet" href="../review.css">
 </head>
 <body>
   <header class="scenario-heading">
-    <h1>标记完成入口</h1>
-    <p>相同设备与执行中的 Session；After 新增整理操作，而不是停止操作。</p>
-    <ul class="callouts"><li>行尾勾选 glyph，不在正文放按钮</li><li>聚焦或悬停查看提示；触屏常显</li><li>完成不会停止 Agent</li></ul>
+    <h1>手机列表点击区</h1>
+    <p>同一列表与工作状态。已有动作保留；手机点击区从 36px 扩大到至少 44px，glyph 仍为 16px。</p>
+    <ul class="callouts"><li>手机／触屏常显</li><li>更大的点击区，不是更大的图标</li><li>动作与打开 Session 分离</li></ul>
   </header>
   <main class="comparison">
-    <section class="state" aria-labelledby="before-title">
-      <header class="state-label"><strong id="before-title">Before</strong><span>同一 Session · Running</span></header>
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before</strong><span>已上线列表动作</span></header>
       <div class="product-surface">
         <div class="brand">Silvermoon Relay / Sessions</div>
-        <div class="filters"><span>All</span><span>Active 1</span></div>
-        <div class="session"><div class="session-content"><strong>检查发布结果</strong><small>copilot-sdk-test</small><span class="badge running">Running</span></div></div>
-        <div class="history">
-          <div class="product-toolbar"><h2>检查发布结果</h2><span class="badge running">Running</span></div>
-          <p class="muted">Session opened on copilot-sdk-test</p>
-          <div class="message">正在检查发布结果。</div>
-          <div class="composer">Follow-up message</div>
-        </div>
+        <div class="filters"><span>All</span><span>Show completed: on</span></div>
+        <div class="session is-selected"><div class="session-content"><strong>检查发布结果与保存验证记录</strong><small>copilot-sdk-test</small><span class="badge running">Running</span></div><div class="session-action"><button type="button" class="glyph" aria-label="Mark completed: 检查发布结果与保存验证记录" aria-describedby="before-complete-tip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg></button><span class="glyph-tip" id="before-complete-tip" role="tooltip">Mark completed · 不会停止 Agent</span></div></div>
+        <div class="session is-selected"><div class="session-content"><strong>检查上一轮发布</strong><small>copilot-sdk-test</small><span class="badge">Completed</span> <span class="badge">Available</span></div><div class="session-action"><button type="button" class="glyph" aria-label="Reactivate: 检查上一轮发布" aria-describedby="before-reactivate-tip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 2 6l4 3M2 6h7a4 4 0 0 1 0 8"/></svg></button><span class="glyph-tip" id="before-reactivate-tip" role="tooltip">Reactivate · 不自动发消息</span></div></div>
+        <p class="measure">手机／触屏点击区：36 × 36 CSS px。</p>
       </div>
     </section>
-    <section class="state" aria-labelledby="after-title">
-      <header class="state-label"><strong id="after-title">After</strong><span>同一 Session · Running</span></header>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After</strong><span>同一列表与状态</span></header>
       <div class="product-surface">
         <div class="brand">Silvermoon Relay / Sessions</div>
-        <div class="filters"><span>All</span><span>Active 1</span></div>
-        <div class="session is-selected"><div class="session-content"><strong>检查发布结果</strong><small>copilot-sdk-test</small><span class="badge running">Running</span></div><div class="session-action"><button type="button" class="glyph" aria-label="Mark completed: 检查发布结果" aria-describedby="complete-tip" title="Mark completed — 只整理 Relay，不会停止 Agent"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg></button><span class="glyph-tip" id="complete-tip" role="tooltip">Mark completed · 不会停止 Agent</span></div></div>
-        <div class="history">
-          <div class="product-toolbar"><h2>检查发布结果</h2><span class="badge running">Running</span></div>
-          <p class="muted">Session opened on copilot-sdk-test</p>
-          <div class="message">正在检查发布结果。</div>
-          <div class="composer">Follow-up message</div>
-        </div>
+        <div class="filters"><span>All</span><span>Show completed: on</span></div>
+        <div class="session is-selected"><div class="session-content"><strong>检查发布结果与保存验证记录</strong><small>copilot-sdk-test</small><span class="badge running">Running</span></div><div class="session-action"><button type="button" class="glyph" aria-label="Mark completed: 检查发布结果与保存验证记录" aria-describedby="after-complete-tip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg></button><span class="glyph-tip" id="after-complete-tip" role="tooltip">Mark completed · 不会停止 Agent</span></div></div>
+        <div class="session is-selected"><div class="session-content"><strong>检查上一轮发布</strong><small>copilot-sdk-test</small><span class="badge">Completed</span> <span class="badge">Available</span></div><div class="session-action"><button type="button" class="glyph" aria-label="Reactivate: 检查上一轮发布" aria-describedby="after-reactivate-tip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 2 6l4 3M2 6h7a4 4 0 0 1 0 8"/></svg></button><span class="glyph-tip" id="after-reactivate-tip" role="tooltip">Reactivate · 不自动发消息</span></div></div>
+        <p class="measure">手机／触屏点击区：至少 44 × 44 CSS px；桌面列表保持紧凑。</p>
       </div>
     </section>
   </main>
