@@ -28,7 +28,28 @@
 3. 手机 Mark completed 后等待 native confirmation，核对本机 VS Code Done；开启 Show completed 即可访问该历史及 Restore，不必同时开启 Show ended。
 4. 详情顶部 Reactivate，等待原生确认并核对本机 Restore；历史一轮仍保留，不自动追加消息，发送仍需确认能力。再用 VS Code 本机 Done / Restore，刷新 Relay 核对双向状态。
 
-本轮 Web/Worker 正式流水线与生产入口检查尚待完成；生产登录凭据或设备 profile 未读取，生产账户写入尚未执行，不将只读检查视为生产写入 smoke。最终 acceptOuter 仍待用户在线上决定。
+Web/Worker 已完成下述正式部署与生产入口检查。生产登录凭据或设备 profile 未读取，生产账户写入尚未执行，不将只读检查视为生产写入 smoke。最终 acceptOuter 仍待用户在线上决定。
+
+### Web / Worker 正式发布结果
+
+- 生产入口：[Silvermoon Relay](https://silvermoon.work)；API：`https://relay.silvermoon.work`。
+- 精确 release source：`1095c3430801ab95e9afac3d8977758b5c9dab29`，包含已接受 Inner `a8a59fd05f59ec906230594156f63a96702fb661` 和滚动修复。release 从首次失败候选普通快进，未 force，未取消运行中的发布。后续 main 的并发工作不等同本次生产构建。
+- [Check and deploy #38249643715](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38249643715) 的 check、deploy 全部 success；2026-10-12 12:40:24 UTC 完成 Pages 发布。
+- `pnpm check` 的 lint、类型、单元测试与构建全部通过；CI protocol 7、Web 72、Connector 40、Worker 33 项单元测试通过。完整浏览器回归 **196 passed、2 skipped**，包括未放宽的离线滚动/草稿场景和原生列表/详情、手机/320px、确认/unknown、焦点及恢复路径。两个既有 Fast Refresh warnings 不阻塞构建。
+- 本地全量迁移通过；remote D1 只待应用 `0013_native_session_archive.sql`，实际执行 3 commands 后明确返回成功。发布顺序为 remote D1 → Worker → Pages；未手工批量修改原生状态或真实 Session。
+- Worker version：`68d40e47-35fb-413b-bf5e-776b86463245`。
+- [Pages deployment](https://efc6da3f.silvermoon-work.pages.dev) 成功；生产域名资产为 `index-emhh0aeT.js`、`index-B-n1Wb-Z.css`，严格匹配本次 CI 构建。
+
+### 生产入口和认证边界核对
+
+部署后首次读取仍得到缺少原生字段的旧资产，未记作通过。随后生产域名与精确 Pages deployment 均返回上述新资产；2026-10-12 12:41:16 UTC 重新严格断言并保存结果：
+
+- Web、JavaScript、CSS 和 `/health` 均为 200；health 精确为 `{"service":"silvermoon-relay","status":"ok"}`。
+- 生产 HTML 的 JS/CSS 文件名与成功 CI 精确一致。JS 包含 `nativeArchived`、`canSetNativeArchive`、`setNativeArchive`、`VS Code confirmed Done`、`Native Done / Restore unavailable` 和 `/work-state`。
+- CSS 含 `.session-work-glyph` 及 44px 宽高规则；实际点击尺寸与交互由浏览器测试证明，资产检查只证明对应构建已上线。
+- 不携带认证、对专用不存在身份 `deployment-auth-probe/nonexistent` 发起 work-state POST：401、`authentication-required`，允许来源精确为 `https://silvermoon.work`。未读取生产 profile/cookies/token，未修改真实账户 Session。
+
+公开 Connector 的真实本机四次操作已经执行；真实生产账户上的手机 ↔ 本机双向操作仍交由用户按上述专用 Session 路径验收。旧 Connector 在更新前应明确禁用原生动作，不会静默改为独立 Relay 标记。
 
 ### 首次部署门禁与修复候选
 
