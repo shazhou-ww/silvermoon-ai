@@ -1,302 +1,158 @@
 # Silvermoon Relay
 
-Silvermoon Relay is an online control plane for agent sessions that run on
-your own devices. Each device runs a local connector; the Web UI can then
-create sessions, follow their activity, and continue the conversation from
-any signed-in browser.
+Access GitHub Copilot Sessions on your own devices from a browser.
+[Open Silvermoon Relay](https://silvermoon.work).
 
-The project uses Silvermoon as its product concept, but it does **not** depend
-on the Silvermoon CLI or its repository format. The first connector adapter
-controls persisted GitHub Copilot sessions through the official
-`@github/copilot-sdk` and live VS Code sessions through the official Agent
-Host Protocol (AHP).
+When work is running on another computer, Relay gives you one place to find
+Sessions, read their messages and activity, and send follow-up instructions
+when the Session supports them. A local **Connector** keeps that device
+connected; agents and their tools still run on that device, not in your
+browser.
 
-## Architecture
+## When to use it
 
-```text
-Browser
-  │ authenticated HTTP control plane
-  ▼
-Cloudflare Worker ─── D1 (connectors, sessions, events, commands)
-  │
-  │ authenticated tRPC over WebSocket
-  ▼
-silvermoon-connector ─── GitHub Copilot SDK ─── local Copilot sessions
-                     └── VS Code Agent Host ─── live Copilot sessions
-```
+- Check an agent's progress from another computer or a phone.
+- Find and continue Copilot Sessions across your connected devices.
+- Start a new Copilot Session on an online device without opening a terminal
+  on that device again.
+- Follow supported live VS Code Sessions alongside saved Copilot Sessions.
+  Live discovery requires VS Code with Agent Host support; not every editor
+  chat is exposed or writable.
 
-- `apps/web`: React/Vite dashboard for devices, sessions, live activity,
-  follow-up messages, identities, and connection tokens.
-- `apps/worker`: Cloudflare Worker, Durable Object WebSocket relay, OIDC
-  login, HTTP control plane, and D1 migrations.
-- `packages/protocol`: runtime-validated connector, session, event, and command
-  domain schemas.
-- `packages/rpc`: the typed tRPC contract shared by the relay and connectors.
-- `packages/connector`: publishable `silvermoon-connector` CLI and GitHub
-  Copilot adapter.
+Relay does not keep a sleeping or disconnected device running. Messages and
+Session activity are sent to the Relay service so you can view them remotely;
+use it only for work you are comfortable accessing through that service.
 
-The connector sends registration, inventory, command results, and session
-events through tRPC mutations. The relay sends session commands through a
-tRPC subscription on the same WebSocket. Persisted session history is loaded
-on demand, uploaded in bounded event batches, and coalesced by the relay when
-the same session is already synchronized or has a history command in flight.
-The connector also discovers Agent Host endpoints published by VS Code for the
-current operating-system user. Live Agent Host metadata wins when the same
-session is also present in SDK storage; the connector falls back to persisted
-SDK metadata when the host disconnects.
+## Quick start
 
-## Requirements
+The shortest path is: **sign in, add a device, configure its Connector, then
+open a Session**. You do not need to clone this repository.
 
-- Node.js 22.12 or newer
-- pnpm 10.27.0
-- A Cloudflare account only for remote resource operations
-- A locally authenticated GitHub Copilot account on connector devices
+### 1. Prepare the device that will run your agent
 
-No production credential is required for installation, tests, local D1, or a
-Worker dry run.
+- Install **Node.js 22.12 or newer**, with npm/npx available.
+- Authenticate GitHub Copilot locally as the operating-system user who will
+  run the Connector. If you have not done this, follow GitHub's
+  [Copilot CLI quickstart](https://docs.github.com/en/copilot/get-started/cli-quickstart)
+  and complete `/login` in the CLI. You need an account allowed to use Copilot.
+  Signing into Relay in a browser does **not** sign the local agent into Copilot.
+- Keep this device awake, online, and able to reach the Relay service. For
+  live VS Code Sessions, run VS Code and the Connector as the same user.
 
-## Develop
+The commands below use the public npm package
+[`@silvermoon-ai/connector`](https://www.npmjs.com/package/@silvermoon-ai/connector),
+version **0.2.0** (the current release verified for this guide). Check that
+it can run before handling a token:
 
 ```powershell
-pnpm install
-pnpm --filter @silvermoon-ai/worker d1:migrate:local
-pnpm dev
+npx --yes @silvermoon-ai/connector@0.2.0 --help
 ```
 
-Copy `apps/web/.env.example` to `apps/web/.env.local` when the relay origin
-needs to differ from `https://relay.silvermoon.work`. Put local Worker secrets
-in `apps/worker/.dev.vars`; neither file is committed.
+### 2. Sign in and add a device
 
-The message stream opens at the latest visible event and follows updates only
-while within 64 CSS pixels of the bottom. Scrolling farther up preserves the
-reading position; **Jump to latest** returns to the bottom and resumes following.
-The control supports keyboard activation and respects reduced-motion preferences.
+1. Open [silvermoon.work](https://silvermoon.work) and choose **Continue with
+   Google**, **Continue with Microsoft** (personal Microsoft account), or
+   **Continue with GitHub**.
+   A Relay account is created on first sign-in.
+2. Open the avatar menu, choose **Settings**, then under **Devices** choose
+   **Add device**.
+3. Enter a **Device name** and choose **Expires in days** (the default is 90).
+   Submit **Add device**.
+4. Use **Copy profile** before leaving Settings or refreshing. The generated
+   profile contains your connection token; it will not be shown again.
 
-Choose **Settings** from the avatar menu to open the right-side configuration
-page at `/settings`. It contains Devices and Linked identities; browser login
-management is no longer shown. **Sign out** in the avatar menu signs out only
-the current browser. On narrow screens, the list icon opens the existing
-Session navigation in a drawer.
+Create a separate device/token for each Connector. Do not reuse a token for
+two simultaneous connections. The name is managed in Relay, not by a CLI flag.
 
-Devices has an **Add device** action that expands the device name and expiry
-inputs inline; **Cancel** discards the unsubmitted form. Copy generated
-connector profiles before leaving Settings or refreshing: complete tokens are
-not cached or redisplayed after navigation.
+### 3. Configure the Connector securely
 
-Each account, Device, and Session has its own follow-up draft in tab-local
-`sessionStorage`. Switching Sessions or opening Settings preserves drafts, and
-refreshing restores them. Browser tab restoration may also restore this
-storage; there is no cross-tab synchronization. Storage failures are reported
-explicitly. Sign out or confirmed authentication expiry clears the account's
-draft cache. Failed deliveries retain the input; a successful command clears
-only the submitted version, not newer edits or another Session's draft.
-Returning to the same Session after temporarily viewing Settings preserves its
-reading position and follow intent; opening a different Session or refreshing
-still opens the latest activity.
+Do this on the agent's device. If you copied the profile elsewhere, transfer
+it through a trusted private channel. Do not put it in a repository, chat,
+screenshot, shell command history, or shared/cloud clipboard.
 
-Run the Web browser regressions (mocked relay API, no production credentials):
+**Windows / PowerShell:** paste only the value after `token:` from the copied
+profile into the hidden prompt below, not the whole YAML profile. This saves
+the configuration with access restricted to the current Windows user and
+then removes the temporary token from the shell environment:
 
 ```powershell
-pnpm --filter @silvermoon-ai/web exec playwright install chromium
-pnpm --filter @silvermoon-ai/web test:browser
+$secret = Read-Host "Connection token (the value after token:)" -AsSecureString
+try {
+    $env:SILVERMOON_CONNECTION_TOKEN = [System.Net.NetworkCredential]::new("", $secret).Password
+    npx --yes @silvermoon-ai/connector@0.2.0 --relay https://relay.silvermoon.work --write-config
+    if ($LASTEXITCODE -ne 0) { throw "Connector configuration failed; do not continue." }
+} finally {
+    Remove-Item Env:\SILVERMOON_CONNECTION_TOKEN -ErrorAction SilentlyContinue
+    $secret.Dispose()
+}
 ```
 
-These cover desktop and narrow-screen positioning, history protection, Session
-switching, filtering, reconnects, layout changes, Settings routes and drawers,
-independent drafts, asynchronous delivery, and accessible return controls.
+**macOS / Linux:** save the copied profile as
+`~/.silvermoon/connector.yaml` with owner-only permissions. See the
+[secure profile instructions](./packages/connector/README.md#save-a-profile-on-macos-or-linux)
+for the exact steps.
 
-### Offline Sessions and current state
+After successful setup, clear the copied profile from your clipboard. The
+default configuration is in `.silvermoon/connector.yaml` under your home
+directory. It contains a secret: do not share it. If a profile already exists,
+back it up securely before reconfiguring; the Connector refuses profiles
+accessible to other users. Existing token environment variables override
+the profile, so remove stale overrides before starting.
 
-The Session list hides offline Devices' Sessions by default. **Show offline
-Sessions** is part of the existing view-options menu, alongside **Show ended**
-and **Show unavailable**. Its count follows the search and those visibility
-options. Offline history appears only in **All**, displays **Offline** rather
-than an old execution status, and does not contribute to Active, Needs input,
-or Failed. Search and status filters combine without clearing one another;
-each status count describes the search scope, independently of the selected
-status. The Web app loads all Session pages rather than counting only the first
-500 records.
+### 4. Start the Connector
 
-An open Session stays open when its Device disconnects. Saved content,
-reading position, and local drafts remain available; drafts are not queued or
-sent automatically. Reconnecting alone does not restore sending: Relay must
-confirm the Session's capabilities for the current connection. Execution
-state is confirmed separately. Persisted SDK metadata has unknown execution
-state, but can still support explicitly continuing the Session when its
-current capability permits it. Existing read-only restrictions still apply.
-
-Connector observations carry a connection identity and increasing sequence;
-old connections and older snapshots cannot replace current state or
-capabilities. A new observation made while the current inventory is being
-read is retained with its original sequence; the inventory cannot overwrite it.
-Buffered events are retained as history, not replayed as current execution
-state. Initial inventory failures are explicit and can be retried
-through **Retry state sync**; complete history synchronization remains separate.
-An older history request with an unknown result does not block an explicit new
-read-only history sync; the old command record remains unknown until confirmed.
-
-Delivered commands whose results are not confirmed remain **unknown** after
-reconnection rather than being marked as execution failures or resent. The
-connector retains outcomes it actually observes in memory, including outcomes
-observed while disconnected, and uploads them with the original command's
-connection identity. Retrying this result upload never re-executes the command.
-A process restart can lose that in-memory evidence: if no trustworthy result
-is recoverable, it remains unknown; **Stop watching this result** only
-stops the local watch and never changes the stored outcome or resends it.
-
-Refresh failures keep saved content and local drafts, explicitly mark current
-information as unconfirmed, and disable remote operations. **Retry refresh**
-reloads both Device and Session indexes. Slow paginated reads do not overlap
-the next inventory poll. If a successfully read index no longer includes the
-open Session, the UI reports it unavailable, clears its content, and waits for
-the user to select another Session rather than silently changing the selection.
-
-This revision requires migration
-[`0010_session_confirmation.sql`](./apps/worker/migrations/0010_session_confirmation.sql) and the
-updated Relay and connector before current-connection confirmation is
-available. The transport retains protocol version 2 with opt-in
-`confirmationVersion: 1`. Older connectors may still publish saved inventory
-and history, but cannot confirm current state or enable remote follow-ups;
-the UI explicitly requests a connector update. Apply the schema and update
-Relay before updating connectors and Web. Builds use only a Worker dry run;
-they do not apply migrations or deploy.
-
-## Run a connector
-
-Choose **Add device** in the Web UI, name it once, and save the generated
-profile as `$HOME/.silvermoon/connector.yaml`. Then build and start the
-connector on the device that owns the Copilot sessions:
+In a terminal on the agent's device, change to the project directory you
+want new Copilot Sessions to use, then run:
 
 ```powershell
-pnpm --filter @silvermoon-ai/connector build
-node .\packages\connector\dist\cli.js
+npx --yes @silvermoon-ai/connector@0.2.0 --working-directory .
 ```
 
-The WebSocket endpoint is derived from the relay origin:
+Keep this terminal running. In Relay, check **Settings > Devices** for the
+device to become **online**, then choose **Back to Sessions**. Use **Ctrl+C**
+in the terminal when you want to stop the Connector.
 
-```text
-wss://relay.silvermoon.work/v1/connect
-```
+Do not add `--approve-all` just to get started. It automatically approves
+Copilot permission requests for Connector-managed Sessions, allowing remote
+instructions to run tools and change local files. It is an explicit opt-in
+for a trusted environment, not a requirement for connecting a device.
 
-Relay derives the stable device identity and name from the token. The
-connector cannot provide or override either value. The token is sent only in
-the WebSocket `Authorization` header and is never placed in the URL or logs.
+### 5. Open or start a Session
 
-Existing environment variables and a protected token file remain supported.
-Token priority is `SILVERMOON_CONNECTION_TOKEN`, an explicit token file, then
-the profile:
+- **Existing Session:** select it from the Session list. On a narrow screen,
+  use the list icon to open navigation. Read the message stream and, when
+  sending is available, enter a **Follow-up message** and use **Send follow-up**
+  (or Enter; Shift+Enter inserts a new line).
+- **New Session:** choose **New Session**, select an online **Device**, enter
+  a **First instruction** and optional **Title**, then choose **Start Session**.
+  Once it appears in the list, open it to follow the response. For a first
+  check, try a conversational instruction such as "Say hello and explain
+  what you can help with" rather than a task that changes files.
 
-```powershell
-node .\packages\connector\dist\cli.js `
-  --token-file C:\Users\me\.config\silvermoon-relay-token
-```
+Sending requires an online device and confirmed, writable Session
+capabilities. A saved Session may have unknown execution state or be
+read-only; its presence in the list is not a promise that it can run tools
+or accept messages. Relay is not a general permission-approval interface.
 
-CLI options and Relay/Copilot environment variables override non-sensitive
-profile values. Use `--write-config` with an environment token or token file
-to atomically write the profile. It is mode `0600` on POSIX and grants access
-only to the current user on Windows; unsafe profile permissions are rejected.
-Legacy `--id`, `--display-name`, and `SILVERMOON_CONNECTOR_ID` settings must be
-removed when upgrading the CLI. Relay remains compatible with already deployed
-connectors: it accepts their ID and display-name path, header, and registration
-fields but ignores those values in favor of the token-bound Device identity.
+## If something is not ready
 
-Run `silvermoon-connector --help` for all environment variables and options.
-`--approve-all` allows remotely initiated sessions to approve every Copilot
-permission request and can trigger local side effects. It is intentionally
-opt-in.
+- **Device stays offline:** check the Connector terminal for errors, local
+  Copilot authentication, network access, and token expiry. Keep only one
+  Connector running per token.
+- **Token was lost or exposed:** in **Settings > Devices**, use **Rotate token**
+  and securely configure the Connector with the new profile. Use **Revoke**
+  to invalidate a token you no longer want to use.
+- **VS Code Sessions are missing:** confirm Agent Host support, the same
+  operating-system user, and that VS Code is running. Custom/portable installs
+  may need `--vscode-user-data-dir`; see the [Connector guide](./packages/connector/README.md).
+- **Sending is unavailable after reconnecting:** wait for state confirmation.
+  If the UI reports a sync failure, use **Retry state sync**. Follow any
+  Connector update prompt rather than assuming saved history is current state.
+- **An offline Session is hidden:** enable **Show offline Sessions** in the
+  list's view-options menu and use **All** to read saved history. Offline
+  drafts are not automatically sent when the device reconnects.
+- **A command result is unknown:** inspect the message stream before sending
+  again; an unconfirmed result does not mean the operation never ran.
 
-Live VS Code sessions are discovered automatically from the current user's
-VS Code data directory. Use `--vscode-user-data-dir` or
-`SILVERMOON_VSCODE_USER_DATA_DIR` for portable, Insiders, or other custom
-profiles. The connector must run as the same operating-system user as VS Code;
-Agent Host connection tokens are read from the owner-local endpoint registry,
-used only for the local WebSocket upgrade, and never logged or persisted by
-the connector.
-
-## Identity and connection tokens
-
-The Web app signs users in through Google, Microsoft Account, or GitHub.
-Production callbacks are:
-
-```text
-https://relay.silvermoon.work/auth/google/callback
-https://relay.silvermoon.work/auth/microsoft/callback
-https://relay.silvermoon.work/auth/github/callback
-```
-
-OAuth client credentials and relay security keys are Worker secrets:
-
-```text
-GOOGLE_CLIENT_ID
-GOOGLE_CLIENT_SECRET
-MICROSOFT_CLIENT_ID
-MICROSOFT_CLIENT_SECRET
-GITHUB_CLIENT_ID
-GITHUB_CLIENT_SECRET
-SESSION_SECRET
-SESSION_SECRET_PREVIOUS
-CONNECTION_TOKEN_PEPPER
-CONNECTION_TOKEN_PEPPER_PREVIOUS
-```
-
-Connection tokens use the `smr1_<public-id>_<secret>` format. The complete
-token is returned only when it is created or rotated; D1 stores its public ID,
-display hint, metadata, and a peppered HMAC. Browser sessions and OAuth
-provider tokens are separate credentials and cannot connect a device.
-
-During secret rotation, set the previous session secret or token pepper in the
-matching `_PREVIOUS` binding until old sessions or tokens have been rotated,
-then remove it.
-
-## Validate
-
-```powershell
-pnpm check
-pnpm --filter @silvermoon-ai/worker d1:migrate:local
-pnpm --filter @silvermoon-ai/worker build
-node .\packages\connector\dist\cli.js --help
-```
-
-## Package scope migration
-
-Workspace packages now use the Silvermoon-AI npm scope:
-
-| Previous package | New package | Publication boundary |
-| --- | --- | --- |
-| `@silvermoon-relay/connector` | `@silvermoon-ai/connector` | Public |
-| `@silvermoon-relay/protocol` | `@silvermoon-ai/protocol` | Private workspace package |
-| `@silvermoon-relay/rpc` | `@silvermoon-ai/rpc` | Private workspace package |
-| `@silvermoon-relay/worker` | `@silvermoon-ai/worker` | Private application package |
-| `@silvermoon-relay/web` | `@silvermoon-ai/web` | Private application package |
-
-Consumers of the connector should replace the package spec and imports with
-`@silvermoon-ai/connector`. The `silvermoon-connector` executable name and
-relay protocol remain unchanged. The public connector bundles the protocol
-and RPC implementation it needs, so consumers do not install the private
-workspace packages. After the new package is available, registry maintainers
-should deprecate the legacy connector with a message that points to
-`@silvermoon-ai/connector`; the private workspace packages must not be
-published under either scope.
-
-## Release
-
-Pull requests and pushes to `main` or `release` run the quality gate. Only a
-push produced by merging into `release` runs deployment:
-
-1. apply remote D1 migrations;
-2. deploy the Worker and Durable Object;
-3. deploy `apps/web/dist` to the `silvermoon-work` Pages project.
-
-The Web build relies on [Cloudflare Pages' native SPA fallback](https://developers.cloudflare.com/pages/configuration/serving-pages/#single-page-application-spa-rendering)
-for `/settings`. Keep the output free of a top-level `404.html` and explicit
-`/settings` rewrites to `/index.html`: the latter triggered a production
-canonical redirect to `/`, losing the Settings route on direct access or
-refresh. Unknown routes still render the application's explicit not-found
-view. Vite's local fallback does not validate Cloudflare routing; after an
-authorized release, verify that production `/settings` returns HTTP 200
-without redirecting, preserves its Session query parameters, and remains on
-Settings after refresh.
-
-The repository must provide `CLOUDFLARE_API_TOKEN` and
-`CLOUDFLARE_ACCOUNT_ID` as GitHub Actions secrets. Scope the token only to the
-target account's Workers Scripts, D1, and Pages edit operations.
+For other configuration options and troubleshooting, see the
+[Connector guide](./packages/connector/README.md).
