@@ -181,6 +181,11 @@ async function createSchema(): Promise<void> {
   for (const statement of nativeArchiveSql.split(";").map(value => value.trim()).filter(Boolean)) {
     await env.DB.prepare(statement).run();
   }
+  const archiveCommandSql = (env as AppEnv & { CONNECTOR_ARCHIVE_COMMAND_SQL: string })
+    .CONNECTOR_ARCHIVE_COMMAND_SQL;
+  for (const statement of archiveCommandSql.trim().split(/\n\s*\n/u)) {
+    await env.DB.prepare(statement).run();
+  }
 }
 
 function sessionHeaders(values: { token: string; csrf: string }): HeadersInit {

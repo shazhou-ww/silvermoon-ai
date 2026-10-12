@@ -57,6 +57,15 @@ Chat created; its backing stays deferred until the first send
 - generic `ahp-session:/0039aaa4-3309-4535-99b2-8bda02328327` 随后被 Agent Host 的 external catalog 策略从周期 `listSessions` 隐藏，Relay 因而收到 `gone`。这是资源 namespace 兼容性问题，不是 SDK fallback。
 - `.4` 仍通过 AHP `createSession`，但选择 Host provider 已用于持久 Session 的 `copilotcli:/<uuid>` resource namespace；wire test 锁定该 URI。
 
+## canary.4 结果与 Worker migration
+
+- `.4` Actions run：[38267496687](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38267496687)，成功；registry/public smoke 通过，`latest=0.2.1`。
+- create command `87d9c9ba-3ea3-441d-8204-246109fcad15` 成功；Session `ed69299f-05b6-4b3f-a317-a0402fcea538` 在周期 inventory 后保持 `idle`、`execution_state_known=1`。
+- 首条回复 `AHP_ONLY_CREATE_OK` 与 follow-up `AHP_ONLY_FOLLOWUP_OK` 均写入 Relay history；follow-up command `9fe34640-d76c-4d53-8e84-50bbbf858179` 成功。
+- Done 请求触发 Worker exception。production tail 证明 D1 CHECK 仍只允许 list/create/message/history，`session.archive` INSERT 失败。
+- 新增 migration 0014 重建 `connector_commands`，加入 `session.archive`，保留 connection/result columns、索引和 `devices_remove_access` trigger。Worker tests 实际应用 migration 后 33/33 通过。
+- `pnpm check` 全量通过；隔离本地 D1 的 0001→0014 migration chain 全部成功。
+
 ## Device 边界
 
 - 本机可控 Connector 是 Home PC `device-0q6jdqArkbQMgAHR`。

@@ -6,6 +6,8 @@
 - `0.3.0-canary.2` 让 Host 成功 materialize 并执行首条消息，但 create command 仍失败：Connector 在收到 authoritative `root/sessionAdded` 后立即调用 `listSessions`，被 Host reconciliation 的短暂旧快照覆盖并误报 missing。
 - `0.3.0-canary.3` 删除 create 后的即时 catalog refresh，改为等待 root notification 已加入同一 URI；wire fixture 在 `SessionReady` 前发送 `root/sessionAdded`，覆盖生产事件顺序。
 - `0.3.0-canary.3` 的 create command 已成功，但 generic `ahp-session:/…` 被 VS Code Agent Host 的 external catalog 策略从后续 `listSessions` 隐藏，周期 inventory 将其标为 `gone`。`0.3.0-canary.4` 改用该 Host provider 的原生 AHP resource namespace `copilotcli:/<uuid>`；创建和全部操作仍只通过 AHP。
+- canary.4 create、inventory、history 与 follow-up 均在生产成功。Done/Restore 暴露 production D1 `connector_commands.type` CHECK 漏掉 `session.archive`；新增 0014 migration，在保留全部 command columns/index 与 `devices_remove_access` trigger 的同时扩展允许值，并让 Worker tests 实际应用该 migration。
+- `pnpm check` 在加入 0014 和刷新 Worker generated types 后全量通过；隔离本地 D1 从 0001 到 0014 的完整 migration chain 全部成功。
 - `VsCodeAgentHostProvider` 现在直接实现完整 `AgentAdapter`，声明 list/create/send/stream/archive 能力。
 - 创建流程在唯一兼容 Agent Host 上发送 AHP `createSession`，使用新的 `copilotcli:/<uuid>` URI，按需派发 `session/titleChanged`，向默认 chat 派发首条消息，等待 ready 与 authoritative root catalog entry。
 - inventory、send、history、实时事件、input request 与原生 archive 均沿已有 AHP connection 和 Session/chat resource 执行。
@@ -19,7 +21,7 @@
 - 新 Session ID 只来自 AHP Session resource；SDK metadata 不再进入同步数组。
 - Host 不可用或 Session 不存在时不恢复另一个 SDK ID。
 - 当前多 Host inventory 继续使用既有 AHP resource 选择规则；create 在多 Host 歧义时阻塞，等待未来明确 Host selector。
-- 未新增 D1 migration，未修改 Worker Session schema，未配对、重写或删除任何旧 Relay 行或事件。
+- 0014 只重建 command queue CHECK，不修改 Session/event schema，不配对、重写或删除旧 Relay Session 与事件。
 - 旧 profile 若包含已删除的 SDK 专用 options，会被 strict schema 明确拒绝，避免静默忽略过期安全设置。
 
 ## 自动化证明

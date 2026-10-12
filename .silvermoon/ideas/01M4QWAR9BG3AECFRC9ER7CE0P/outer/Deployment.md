@@ -8,7 +8,7 @@
 
 ### D-S02: 发布 AHP-only Connector
 
-通过 tag `npm/connector/v0.3.0-canary.4` 和既有 Trusted Publishing workflow 发布修复后的 `@silvermoon-ai/connector@0.3.0-canary.4` 到 `canary`；不得移动 `latest=0.2.1`。Relay/Worker 无 schema 迁移时不部署无关服务。
+通过 tag `npm/connector/v0.3.0-canary.4` 和既有 Trusted Publishing workflow 发布修复后的 `@silvermoon-ai/connector@0.3.0-canary.4` 到 `canary`；不得移动 `latest=0.2.1`。先应用 D1 migration 0014 扩展 command type，再部署同一 primary 的 Worker 以恢复 Done/Restore。
 
 ### D-S03: 验证单一来源并观察回退
 
