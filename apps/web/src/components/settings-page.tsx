@@ -65,6 +65,9 @@ export function SettingsPage({
   const returnFocus = useRef<HTMLElement | null>(null)
   const deviceRemoved = management?.action === "delete"
     && props.devices.some(device => device.id === management.device.id && device.removedAt)
+  const managementTitle = management?.action === "rename"
+    ? "Rename Device"
+    : `Delete ${management?.device.displayName ?? "Device"}?`
   const openManagement = (device: Device, action: "rename" | "delete", target: HTMLElement) => {
     returnFocus.current = target
     setName(device.displayName)
@@ -210,14 +213,14 @@ export function SettingsPage({
       <Dialog open={management !== null} onOpenChange={open => {
         if (!open && props.busyAction === null) setManagement(null)
       }}>
-        <DialogContent onCloseAutoFocus={event => {
+        <DialogContent showCloseButton={false} onCloseAutoFocus={event => {
           event.preventDefault()
           if (returnFocus.current?.isConnected) returnFocus.current.focus()
           else if (props.deviceFormOpen) deviceNameRef.current?.focus()
           else addDeviceRef.current?.focus()
         }}>
-          <DialogHeader>
-            <DialogTitle>{management?.action === "rename" ? "Rename Device" : `Delete ${management?.device.displayName ?? "Device"}?`}</DialogTitle>
+          <DialogHeader className="min-w-0">
+            <DialogTitle className="min-w-0 truncate leading-normal" title={managementTitle}>{managementTitle}</DialogTitle>
             <DialogDescription>{management?.action === "rename"
               ? "Only the display name changes. Your connection, token and Sessions stay unchanged."
               : "Remove this Device from your account. Its connection credentials cannot be restored."}</DialogDescription>
