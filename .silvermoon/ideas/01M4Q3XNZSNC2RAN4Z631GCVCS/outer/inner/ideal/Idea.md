@@ -17,5 +17,5 @@
 ## 验收标准
 
 - [现状清单](./Current-WebSocket-Primitives.md) 可从源码追溯 Connector 与 Relay 的上下行操作、返回、错误及关键时序。
-- [状态与历史最小候选](./Session-State-Channel.md) 和 [理想信道草案](./Ideal-Channel-Primitives.md) 明确两信道、统一读取与可选续推的职责，区分等待超时、缺口和不可用。
+- [请求原语草案](./Ideal-Channel-Primitives.md) 按下行请求共同定义反馈、续推与失败边界，覆盖现有功能，区分等待超时、缺口和不可用。
 - [业务模型评审](./Business-Data-Model-Review.md) 明确历史事件、当前投影和命令的身份、所有权、生命周期及兼容边界。
