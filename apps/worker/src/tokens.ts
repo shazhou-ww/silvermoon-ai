@@ -1,9 +1,9 @@
 import { connectionTokenHash } from "./auth";
 import { randomBase64Url } from "./crypto";
 import type { AppEnv } from "./env";
+import { deviceName as validatedDeviceName } from "./devices";
 
 const MAX_ACTIVE_TOKENS = 20;
-const MAX_LABEL_LENGTH = 80;
 
 export interface ConnectionTokenMetadata {
   id: string;
@@ -54,7 +54,7 @@ export async function listTokens(
      FROM connection_tokens AS token
      JOIN devices AS device
        ON device.user_id = token.user_id AND device.id = token.device_id
-     WHERE token.user_id = ?1
+     WHERE token.user_id = ?1 AND device.removed_at IS NULL
      ORDER BY token.created_at DESC`,
   )
     .bind(userId)
@@ -132,10 +132,7 @@ export async function createToken(
   input: { name?: unknown; label?: unknown; expiresInDays?: unknown },
 ): Promise<{ token: string; metadata: ConnectionTokenMetadata }> {
   const nameValue = input.name ?? input.label;
-  const deviceName = typeof nameValue === "string" ? nameValue.trim() : "";
-  if (!deviceName || deviceName.length > MAX_LABEL_LENGTH) {
-    throw new Error("invalid-device-name");
-  }
+  const deviceName = validatedDeviceName(nameValue);
   const count = await env.DB.prepare(
     `SELECT COUNT(*) AS count FROM connection_tokens
      WHERE user_id = ?1 AND revoked_at IS NULL
@@ -200,7 +197,7 @@ export async function rotateToken(
      JOIN devices AS device
        ON device.user_id = token.user_id AND device.id = token.device_id
      WHERE token.id = ?1 AND token.user_id = ?2
-       AND token.revoked_at IS NULL`,
+       AND token.revoked_at IS NULL AND device.removed_at IS NULL`,
   )
     .bind(tokenId, userId)
     .first<{
@@ -220,7 +217,9 @@ export async function rotateToken(
     env.DB.prepare(
       `UPDATE connection_tokens SET revoked_at = CURRENT_TIMESTAMP,
         replaced_by_id = ?3
-       WHERE id = ?1 AND user_id = ?2 AND revoked_at IS NULL`,
+       WHERE id = ?1 AND user_id = ?2 AND revoked_at IS NULL
+         AND EXISTS (SELECT 1 FROM devices
+           WHERE user_id = ?2 AND id = connection_tokens.device_id AND removed_at IS NULL)`,
     ).bind(tokenId, userId, material.id),
     env.DB.prepare(
       `INSERT INTO connection_tokens
@@ -229,6 +228,8 @@ export async function rotateToken(
        WHERE EXISTS (
          SELECT 1 FROM connection_tokens
          WHERE id = ?8 AND user_id = ?2 AND replaced_by_id = ?1
+           AND EXISTS (SELECT 1 FROM devices
+             WHERE user_id = ?2 AND id = ?3 AND removed_at IS NULL)
        )`,
     ).bind(
       material.id,

@@ -2268,6 +2268,7 @@ textarea:focus-visible {
 }
 
 .session-workspace[hidden] { display: none; }
+.session-composer-shell[hidden] { display: none; }
 
 .mobile-topbar-context h1 {
   margin: 0;

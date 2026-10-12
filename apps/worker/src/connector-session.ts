@@ -102,7 +102,10 @@ export class ConnectorSession extends DurableObject<Env> {
     const bound = await this.env.DB.prepare(
       `UPDATE connectors SET connection_id = ?1, session_sync_state = 'pending',
         session_sync_error = NULL
-       WHERE user_id = ?2 AND id = ?3 AND connection_token_id = ?4`,
+       WHERE user_id = ?2 AND id = ?3 AND connection_token_id = ?4
+         AND EXISTS (SELECT 1 FROM devices WHERE user_id = ?2 AND id = ?3 AND removed_at IS NULL)
+         AND EXISTS (SELECT 1 FROM connection_tokens WHERE id = ?4 AND revoked_at IS NULL
+           AND (expires_at IS NULL OR julianday(expires_at) > julianday('now')))`,
     ).bind(attachment.connectionId, userId, attachment.connectorId, tokenId).run();
     if (bound.meta.changes !== 1) {
       this.connections.delete(attachment);
@@ -173,6 +176,8 @@ export class ConnectorSession extends DurableObject<Env> {
     let closed = 0;
     for (const connection of this.connections) {
       if (connection.tokenId !== tokenId) continue;
+      this.cancelCommandWaiters(connection.connectionId);
+      this.connections.delete(connection);
       connection.socket.close(4003, "connection token revoked");
       closed += 1;
     }
@@ -297,8 +302,12 @@ export class ConnectorSession extends DurableObject<Env> {
 
   private async ensureCurrentConnection(attachment: ConnectionAttachment): Promise<void> {
     const current = await this.env.DB.prepare(
-      `SELECT connection_id FROM connectors WHERE user_id = ?1 AND id = ?2`,
-    ).bind(attachment.userId, attachment.connectorId).first<string>("connection_id");
+      `SELECT c.connection_id FROM connectors c
+       JOIN devices d ON d.user_id = c.user_id AND d.id = c.id
+       JOIN connection_tokens t ON t.id = ?3 AND t.user_id = c.user_id AND t.device_id = c.id
+       WHERE c.user_id = ?1 AND c.id = ?2 AND d.removed_at IS NULL AND t.revoked_at IS NULL
+         AND (t.expires_at IS NULL OR julianday(t.expires_at) > julianday('now'))`,
+    ).bind(attachment.userId, attachment.connectorId, attachment.tokenId).first<string>("connection_id");
     if (
       current !== attachment.connectionId
       || !this.connections.has(attachment)
@@ -358,7 +367,9 @@ export class ConnectorSession extends DurableObject<Env> {
         accepted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?1 AND user_id = ?2 AND connector_id = ?3
          AND status IN ('queued', 'sent')
-         AND (connection_id IS NULL OR connection_id = ?4)`,
+         AND (connection_id IS NULL OR connection_id = ?4)
+         AND EXISTS (SELECT 1 FROM connectors
+           WHERE user_id = ?2 AND id = ?3 AND connection_id = ?4)`,
     )
       .bind(commandId, attachment.userId, attachment.connectorId, attachment.connectionId)
       .run();
@@ -543,6 +554,7 @@ export class ConnectorSession extends DurableObject<Env> {
     error?: CommandCompletion["error"],
     commandConnectionId = attachment.connectionId,
   ): Promise<void> {
+    await this.ensureCurrentConnection(attachment);
     const command = await this.env.DB.prepare(
       `SELECT connection_id FROM connector_commands
        WHERE id = ?1 AND user_id = ?2 AND connector_id = ?3`,
@@ -557,7 +569,9 @@ export class ConnectorSession extends DurableObject<Env> {
         updated_at = CURRENT_TIMESTAMP, result_uncertain_at = NULL
        WHERE id = ?4 AND user_id = ?5 AND connector_id = ?6
          AND status IN ('queued', 'sent', 'accepted')
-         AND (connection_id IS NULL OR connection_id = ?7)`,
+         AND (connection_id IS NULL OR connection_id = ?7)
+         AND EXISTS (SELECT 1 FROM connectors
+           WHERE user_id = ?5 AND id = ?6 AND connection_id = ?8)`,
     )
       .bind(
         outcome,
@@ -567,6 +581,7 @@ export class ConnectorSession extends DurableObject<Env> {
         attachment.userId,
         attachment.connectorId,
         commandConnectionId,
+        attachment.connectionId,
       );
     if (outcome === "failed") {
       await completion.run();

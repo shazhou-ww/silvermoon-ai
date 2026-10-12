@@ -21,7 +21,12 @@ async function connectConnector(
 
   const registration = await env.DB.prepare(
     `UPDATE connectors SET connection_token_id = ?1
-     WHERE user_id = ?2 AND id = ?3`,
+     WHERE user_id = ?2 AND id = ?3
+       AND EXISTS (SELECT 1 FROM devices
+         WHERE user_id = ?2 AND id = ?3 AND removed_at IS NULL)
+       AND EXISTS (SELECT 1 FROM connection_tokens
+         WHERE id = ?1 AND revoked_at IS NULL
+           AND (expires_at IS NULL OR julianday(expires_at) > julianday('now')))`,
   )
     .bind(connection.tokenId, connection.userId, connection.deviceId)
     .run();

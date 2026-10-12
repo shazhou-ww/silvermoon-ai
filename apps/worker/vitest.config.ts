@@ -1,5 +1,6 @@
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
+import { readFileSync } from "node:fs";
 
 export default defineConfig({
   plugins: [
@@ -7,6 +8,7 @@ export default defineConfig({
       wrangler: { configPath: "./wrangler.jsonc" },
       miniflare: {
         bindings: {
+          DEVICE_MANAGEMENT_SQL: readFileSync(new URL("./migrations/0011_device_management.sql", import.meta.url), "utf8"),
           GOOGLE_CLIENT_ID: "google-client",
           GOOGLE_CLIENT_SECRET: "google-secret",
           MICROSOFT_CLIENT_ID: "microsoft-client",

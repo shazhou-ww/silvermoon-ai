@@ -142,6 +142,32 @@ capabilities. A saved Session may have unknown execution state or be
 read-only; its presence in the list is not a promise that it can run tools
 or accept messages. Relay is not a general permission-approval interface.
 
+## Manage devices
+
+In **Settings > Devices**, **Rename** changes the Relay display name without
+changing the device ID, connection token or saved Sessions. Names are trimmed,
+must contain 1–80 characters, and need not be unique. Reconnecting with an
+existing Connector profile does not reset the name.
+
+**Delete** removes the device from the usable device list, revokes every
+associated token and requests immediate disconnection. If disconnection could
+not be confirmed, use **Retry disconnect**; connection access is already
+disabled, and the retry remains available after refreshing. Old profiles
+cannot reconnect or restore the device. To use that computer again, choose
+**Add device** and configure its Connector with the new profile. This creates
+a new Relay identity; previous history is not merged into it.
+
+Saved Sessions and messages stay attributed to the removed device. Enable
+**Show offline Sessions** in the list's view-options menu and choose **All**
+to find this read-only history. **Revoke** disables a particular token without
+removing the device; **Rotate token** replaces a token for that same identity.
+
+Deleting a Relay device does **not** delete local files, stop its local agent
+or guarantee cancellation of work already sent. Stop the local Connector with
+**Ctrl+C** to end its retry loop, and manage local agents separately. Queued
+commands fail; commands already sent may have an unconfirmed result, so
+inspect local work before repeating them.
+
 ## If something is not ready
 
 - **Device stays offline:** check the Connector terminal for errors, local
