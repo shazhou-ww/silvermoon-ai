@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
 import { WebSocketServer, type WebSocket } from "ws";
 import { z } from "zod";
 import { agentSessionSchema, agentSessionEventSchema, PROTOCOL_VERSION } from "@silvermoon-ai/protocol";
@@ -20,13 +21,20 @@ const summary = {
   canSendMessage: true,
 };
 
-async function fixture(options: { failFirst?: boolean; failCompletions?: number; deferMessage?: boolean } = {}) {
+interface RelayCall {
+  path: string;
+  input: unknown;
+  connectionId: string;
+}
+
+async function fixture(options: { failFirst?: boolean; failCompletions?: number; deferMessage?: boolean; heartbeatMs?: number } = {}) {
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Expected a local TCP listener.");
   let connectionId = "";
-  const calls: Array<{ path: string; input: unknown }> = [];
+  const calls: RelayCall[] = [];
+  const requests = new EventEmitter<{ call: [RelayCall] }>();
   const logs: string[] = [];
   let socket: WebSocket | undefined;
   let subscriptionId: string | number | undefined;
@@ -35,6 +43,7 @@ async function fixture(options: { failFirst?: boolean; failCompletions?: number;
     const issuedConnectionId = crypto.randomUUID();
     connectionId = issuedConnectionId;
     socket = connection;
+    subscriptionId = undefined;
     connection.on("message", (data) => {
       if (String(data) === "PING") { connection.send("PONG"); return; }
       const decoded: unknown = JSON.parse(String(data));
@@ -42,7 +51,9 @@ async function fixture(options: { failFirst?: boolean; failCompletions?: number;
         const frame = frameSchema.parse(raw);
         if (frame.method === "subscription.stop") continue;
         if (!frame.params) throw new Error("RPC request parameters are missing.");
-        calls.push({ path: frame.params.path, input: frame.params.input });
+        const call = { path: frame.params.path, input: frame.params.input, connectionId: issuedConnectionId };
+        calls.push(call);
+        requests.emit("call", call);
         if (frame.method === "subscription") {
           subscriptionId = frame.id;
           connection.send(JSON.stringify({ id: frame.id, result: { type: "started" } }));
@@ -105,13 +116,31 @@ async function fixture(options: { failFirst?: boolean; failCompletions?: number;
   };
   const connector = new SilvermoonConnector({
     relayUrl: `http://127.0.0.1:${address.port}`,
-    token: "fictional-test-token", adapter, heartbeatMs: 20,
+    token: "fictional-test-token", adapter, heartbeatMs: options.heartbeatMs ?? 20,
     log: (message) => logs.push(message),
   });
   connector.start();
   return {
     calls, logs, messages,
     get connectionId() { return connectionId; },
+    waitForCall(path: string, matchesConnection: (id: string) => boolean = () => true): Promise<RelayCall> {
+      const matches = (call: RelayCall) => call.path === path && matchesConnection(call.connectionId);
+      const existing = calls.find(matches);
+      if (existing) return Promise.resolve(existing);
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          requests.off("call", onCall);
+          reject(new Error(`Timed out waiting for ${path} on the expected connection.`));
+        }, 5_000);
+        function onCall(call: RelayCall) {
+          if (!matches(call)) return;
+          clearTimeout(timeout);
+          requests.off("call", onCall);
+          resolve(call);
+        }
+        requests.on("call", onCall);
+      });
+    },
     disconnect() {
       if (!socket) throw new Error("No connector socket.");
       socket.close(1012, "Simulated restart");
@@ -211,20 +240,23 @@ describe("connection-scoped connector uploads", () => {
     } finally { await relay.close(); }
   });
   it("reports an observed result after reconnect with the original command connection without re-executing", async () => {
-    const relay = await fixture({ deferMessage: true });
+    const relay = await fixture({ deferMessage: true, heartbeatMs: 20_000 });
     try {
-      await vi.waitFor(() => expect(relay.calls.some((call) => call.path === "syncSessions")).toBe(true));
-      const originalConnection = relay.connectionId;
+      const inventory = await relay.waitForCall("syncSessions");
+      const originalConnection = inventory.connectionId;
+      await relay.waitForCall("commands", (id) => id === originalConnection);
       const commandId = crypto.randomUUID();
       relay.sendMessageCommand(commandId);
       await vi.waitFor(() => expect(relay.messages).toHaveLength(1));
+      const reconnected = relay.waitForCall("syncSessions", (id) => id !== originalConnection);
       relay.disconnect();
-      await vi.waitFor(() => expect(relay.calls.filter((call) => call.path === "register")).toHaveLength(2));
-      await vi.waitFor(() => expect(relay.calls.filter((call) => call.path === "syncSessions")).toHaveLength(2));
-      expect(relay.connectionId).not.toBe(originalConnection);
+      const currentInventory = await reconnected;
+      expect(sessionSyncSchema.parse(currentInventory.input).observation?.connectionId)
+        .toBe(currentInventory.connectionId);
+      expect(currentInventory.connectionId).not.toBe(originalConnection);
+      const completed = relay.waitForCall("commandCompleted", (id) => id === currentInventory.connectionId);
       relay.finishMessage();
-      await vi.waitFor(() => expect(relay.calls.some((call) => call.path === "commandCompleted")).toBe(true));
-      expect(relay.calls.find((call) => call.path === "commandCompleted")?.input).toMatchObject({
+      expect((await completed).input).toMatchObject({
         commandId, outcome: "succeeded", commandConnectionId: originalConnection,
       });
       expect(relay.messages).toEqual(["Execute only once"]);
