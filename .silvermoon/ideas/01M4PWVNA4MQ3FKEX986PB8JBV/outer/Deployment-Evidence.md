@@ -2,7 +2,7 @@
 
 ## 当前结果
 
-2026-10-12 已按用户授权推进既有 release 流程，但生产交付受 CI 阻塞，尚未部署本实现。用户明确选择先进行部署及公开产物检查，真实账号验证暂缓。所有 D-* 条目保持未完成，不记录 `submitOuter` 或推断部署验收。
+2026-10-12 已按用户授权推进既有 release 流程，首次交付受 CI 阻塞。独立维护修复已同步 main；另一条并发流程已推进 release，其外部部署正在观察中。用户随后共享登录后的内置浏览器并授权实际验收。所有 D-* 条目在完整证据就绪前保持未完成，不记录 `submitOuter` 或推断部署验收。
 
 ## 交付边界
 
@@ -39,4 +39,21 @@
 
 ## 恢复条件
 
-先通过独立修复流程诊断并解决 Connector 重连测试阻塞，再让该 release 的完整工作流成功交付；如交付内容发生变化，重新核对验收范围和版本。之后确认目标站点加载新产物，并在用户提供可操作的真实测试账号及共享页面后完成 D-AC01、D-AC02，恢复验证前偏好，方可同步完整证据并提交 `submitOuter`。
+### 独立维护修复
+
+- 用户同意保留本地 Connector 重连 CI 覆盖，按实际连接身份和 RPC 事件等待，取消对瞬时全局注册次数的脆弱断言；不访问真实 Copilot、设备或生产连接。
+- 修复提交 `3c44c5a847a908bfe224bcadcd6e02740e8b0e01` 已通过 Silvermoon worktree、staged 和 committed snapshot 检查并普通同步 main，含规定 Co-authored-by trailer。
+- 本地重连 fixture 全套 4 项连续运行 20 轮，共 80 次成功；Connector 全套 29 项通过、1 项 Windows 平台跳过。Connector typecheck、全仓 lint 和 build 通过。
+- Windows 全仓 `pnpm check` 在既有 Worker 生成类型检查失败，并出现 libuv 原生退出；没有修改无关生成类型或宣称全仓检查通过。Ubuntu 完整检查以实际工作流结果为准。
+- deploy 仍依赖完整 check job，仅将 deploy 内重复的 `pnpm check` 改为 `pnpm build`，未跳过前置单元、浏览器或 migration 检查。
+
+### 并发 release
+
+- 用户选择仅移植上述修复到原 release，不把新增设备管理功能及 migration 纳入本次主动交付。
+- 刷新远端后发现另一条流程已将 release 推进到 `f0e319897e99c73a839918d8536b7dd55542d005`，该提交已经包含本次修复和并发设备管理变更。[工作流 38201102932](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38201102932) 已运行。
+- 本任务未创建或推送该 release 提交，未覆盖、回退或重复触发其部署。2026-10-12 观察到该流程 Ubuntu `pnpm check` 成功，浏览器测试仍在执行；后续外部结果以实际观测补充。
+- 已共享真实登录页，但当前页面仍加载旧资产 `index-DccAhzrw.js`；等待交付产物可用后再执行偏好验收，避免把旧产物结果归到新实现。
+
+### 剩余条件
+
+先确认完整工作流成功和目标站点加载新产物，再完成 D-AC01、D-AC02 并恢复验证前偏好。仅对可操作的真实账号记录结果；缺少第二个真实账号或重新登录能力时保留对应未完成项。完整证据同步 primary 后方可提交 `submitOuter`。
