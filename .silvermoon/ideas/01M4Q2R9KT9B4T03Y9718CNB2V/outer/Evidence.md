@@ -2,7 +2,7 @@
 
 ## 当前：原生 Done / Restore 交付
 
-接受的 Inner 为 `2866ccd9e1568300dab101b5047fe74033ec9666`，包含本机真实验证及准确 0.2.1 公开发布候选。以下当前结果不使用旧版独立标记的部署作为原生联动证据。
+接受的 Inner 为 `a8a59fd05f59ec906230594156f63a96702fb661`，包含本机真实验证、准确 0.2.1 公开发布候选及部署门禁发现的 Web 滚动回归修复。公开 npm 候选仍是此前已接受的 `2866ccd9e1568300dab101b5047fe74033ec9666`；此次修复仅 Web，不移动已发布 tag、不重新发布同一版本。以下当前结果不使用旧版独立标记的部署作为原生联动证据。
 
 ### Connector 正式发布
 
@@ -29,6 +29,12 @@
 4. 详情顶部 Reactivate，等待原生确认并核对本机 Restore；历史一轮仍保留，不自动追加消息，发送仍需确认能力。再用 VS Code 本机 Done / Restore，刷新 Relay 核对双向状态。
 
 本轮 Web/Worker 正式流水线与生产入口检查尚待完成；生产登录凭据或设备 profile 未读取，生产账户写入尚未执行，不将只读检查视为生产写入 smoke。最终 acceptOuter 仍待用户在线上决定。
+
+### 首次部署门禁与修复候选
+
+首次 release `30c839d5d59aece1f9ca6d3ef32b69d6e48824c1` 的 [run 38247807570](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38247807570) 在完整浏览器检查中失败：194 passed、2 failed、2 skipped，生产迁移和 deploy 被跳过，未将该 run 记为交付成功。实时原生能力提示在消息内部换行引起 24px 滚动偏移，已移到消息区外并使用既有连接提示。保留原有精确断言，相关 39 项浏览器检查及 Web lint/typecheck 全通过。
+
+修复 `693a1e40bdf51116b0581185cfa7708f2f033181` 已同步 main，重新提交准确 Inner，并依据用户明确免再次实现人工验收、直接部署的授权记录 acceptInner#20。后续 Web/Worker release 需包含该准确 acceptance；正式 npm 0.2.1 已发布且无需重发。
 
 ## 旧版历史说明
 

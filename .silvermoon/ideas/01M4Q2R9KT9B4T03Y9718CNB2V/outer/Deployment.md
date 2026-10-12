@@ -10,7 +10,7 @@
 
 ### D-S02: 提供真实联动验收入口
 
-核对生产部署、能力门控和认证边界，提供升级步骤与专用 Session 验收路径。用户在本机和手机检查 Relay Done/Restore 以及本机手动操作后的双向结果；离线/不支持项应禁用。本机原生操作可能影响 worktree及已读/子项，只在用户明确授权的专用 Session 上验证，不擅自操作真实工作 Session。现有 [Evidence.md](Evidence.md) 仅是独立标记版本的历史部署。
+核对生产部署、能力门控和认证边界，提供升级步骤与专用 Session 验收路径。用户在本机和手机检查 Relay Done/Restore 以及本机手动操作后的双向结果；离线/不支持项应禁用。本机原生操作可能影响 worktree及已读/子项，只在用户明确授权的专用 Session 上验证，不擅自操作真实工作 Session。[Evidence.md](Evidence.md) 分开记录当前原生交付与旧版独立标记的历史部署。
 
 升级保留原 secure profile：停止旧 Connector，启动 `npx --yes @silvermoon-ai/connector@0.2.1 --working-directory .`，不要同 token 双开，刷新至新 inventory 确认。用户已授权专用测试 Session，可沿用该测试项；生产账户的设备、token 或浏览器凭据仍不能擅自读取/使用。仅当具备授权的实际账户访问时执行生产写入；否则提供专用 Session 的手机/本机验收路径，分别记录已执行的本机原生证据与未执行的生产写入，不把 health 或未认证 401 当作联动证明。
 
