@@ -131,6 +131,7 @@ interface Connector {
     createSession: boolean
     sendMessage: boolean
     streamEvents: boolean
+    setNativeArchive?: boolean
   }
   status: "online" | "offline"
   connectionId: string | null
@@ -152,6 +153,9 @@ interface AgentSession {
   title: string | null
   status: string
   workState?: SessionWorkState
+  nativeArchived?: boolean | null
+  canSetNativeArchive?: boolean
+  legacyWorkState?: SessionWorkState
   nativeStatus?: string | null
   createdAt: string
   updatedAt: string
@@ -236,6 +240,30 @@ async function api<T>(
     throw new Error(value.error ?? `Request failed: ${response.status}`)
   }
   return value
+}
+
+async function loadSessionInventory(connectorId: string, isCurrent: () => boolean): Promise<AgentSession[]> {
+  const sessions: AgentSession[] = []
+  const cursors = new Set<string>()
+  let cursor: string | null = null
+  do {
+    const parameters = new URLSearchParams({ paged: "1" })
+    if (cursor) parameters.set("cursor", cursor)
+    const page = await api<{ sessions: AgentSession[]; nextCursor: string | null } | AgentSession[]>(
+      `/api/connectors/${encodeURIComponent(connectorId)}/sessions?${parameters}`,
+    )
+    if (!isCurrent()) return []
+    if (Array.isArray(page)) {
+      if (page.length >= 500) throw new Error("Relay update required: Session pagination is unavailable.")
+      sessions.push(...page)
+      break
+    }
+    sessions.push(...page.sessions)
+    cursor = page.nextCursor
+    if (cursor && cursors.has(cursor)) throw new Error("Session pagination returned a repeated cursor.")
+    if (cursor) cursors.add(cursor)
+  } while (cursor)
+  return sessions
 }
 
 function formatTime(value: string | null): string {
@@ -870,6 +898,7 @@ function App() {
   const [connectors, setConnectors] = useState<Connector[]>([])
   const [agentSessions, setAgentSessions] = useState<AgentSession[]>([])
   const [workStatePendingKey, setWorkStatePendingKey] = useState<string | null>(null)
+  const workActionFocus = useRef<{ trigger: HTMLButtonElement; epoch: number } | null>(null)
   const workStateMutation = useRef<{ revision: number; pending: boolean }>({ revision: 0, pending: false })
   const [history, setHistory] = useState<{
     key: string
@@ -1027,6 +1056,17 @@ function App() {
   }, [drafts])
 
   useEffect(() => {
+    if (workStatePendingKey !== null) return
+    const restore = workActionFocus.current
+    workActionFocus.current = null
+    if (restore && restore.epoch === authEpoch.current && restore.trigger.isConnected
+      && restore.trigger.getClientRects().length > 0
+      && (document.activeElement === document.body || document.activeElement === restore.trigger)) {
+      restore.trigger.focus()
+    }
+  }, [workStatePendingKey])
+
+  useEffect(() => {
     window.addEventListener("relay:authentication-required", clearAuthenticatedState)
     return () => window.removeEventListener("relay:authentication-required", clearAuthenticatedState)
   }, [clearAuthenticatedState])
@@ -1180,32 +1220,7 @@ function App() {
       const workStateRevision = workStateMutation.current.revision
       try {
         const groups = await Promise.all(
-          connectorIds.map(async (connectorId) => {
-            const sessions: AgentSession[] = []
-            const cursors = new Set<string>()
-            let cursor: string | null = null
-            do {
-              const parameters = new URLSearchParams({ paged: "1" })
-              if (cursor) parameters.set("cursor", cursor)
-              const page = await api<{
-                sessions: AgentSession[]
-                nextCursor: string | null
-              } | AgentSession[]>(
-                `/api/connectors/${encodeURIComponent(connectorId)}/sessions?${parameters}`,
-              )
-              if (!active) return []
-              if (Array.isArray(page)) {
-                if (page.length >= 500) throw new Error("Relay update required: Session pagination is unavailable.")
-                sessions.push(...page)
-                break
-              }
-              sessions.push(...page.sessions)
-              cursor = page.nextCursor
-              if (cursor && cursors.has(cursor)) throw new Error("Session pagination returned a repeated cursor.")
-              if (cursor) cursors.add(cursor)
-            } while (cursor)
-            return sessions
-          }),
+          connectorIds.map(connectorId => loadSessionInventory(connectorId, () => active)),
         )
         if (active && !workStateMutation.current.pending
           && workStateRevision === workStateMutation.current.revision) {
@@ -2111,20 +2126,50 @@ function App() {
     setError(null)
     setNotice(null)
     try {
-      const result = await api<{ connectorId: string; sessionId: string; workState: SessionWorkState }>(
+      const connector = connectorById.get(session.connectorId)
+      if (!connector?.connectionId || nativeWorkStateUnavailable(session, connector)) {
+        throw new Error("Native Done / Restore requires an online Device and confirmed Session capability.")
+      }
+      const result = await api<CommandResponse>(
         `/api/connectors/${encodeURIComponent(session.connectorId)}/sessions/${encodeURIComponent(session.id)}/work-state`,
-        { method: "POST", body: JSON.stringify({ workState }) },
+        { method: "POST", body: JSON.stringify({ workState, connectionId: connector.connectionId }) },
       )
       if (epoch !== authEpoch.current) return
-      if (result.connectorId !== session.connectorId || result.sessionId !== session.id || result.workState !== workState) {
-        throw new Error("The work status response does not match this Session.")
+      if (result.command.type !== "session.archive" || result.command.status !== "sent") {
+        throw new Error("The native Done / Restore command was not delivered.")
+      }
+      let confirmed = false
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const receipt = await api<CommandStatus>(`/api/commands/${encodeURIComponent(result.command.id)}`)
+        if (epoch !== authEpoch.current) return
+        if (receipt.type !== "session.archive" || receipt.connectorId !== session.connectorId
+          || receipt.sessionId !== session.id) throw new Error("The native state receipt does not match this Session.")
+        if (receipt.status === "failed") throw new Error(receipt.error?.message ?? receipt.error?.code ?? "Native Done / Restore failed.")
+        if (receipt.status === "unknown") throw new Error("Native Done / Restore result is unconfirmed. Refresh the Session state; nothing will be retried automatically.")
+        if (receipt.status === "succeeded") { confirmed = true; break }
+        await new Promise(resolve => window.setTimeout(resolve, 1_000))
+        if (epoch !== authEpoch.current) return
+      }
+      if (!confirmed) throw new Error("Native Done / Restore result is unconfirmed. Refresh the Session state; nothing will be retried automatically.")
+      const [inventory, devices] = await Promise.all([
+        loadSessionInventory(session.connectorId, () => epoch === authEpoch.current),
+        api<Connector[]>("/api/connectors"),
+      ])
+      if (epoch !== authEpoch.current) return
+      const confirmedSession = inventory.find(item => item.id === session.id)
+      const device = devices.find(item => item.id === session.connectorId)
+      if (!confirmedSession || device?.connectionId !== connector.connectionId || nativeWorkStateUnavailable(confirmedSession, device)) {
+        throw new Error("Native Done / Restore result is no longer confirmed by the current connection. Refresh to reconcile.")
       }
       setAgentSessions((current) => current.map((item) =>
-        sessionKey(item) === key ? { ...item, workState: result.workState } : item,
+        sessionKey(item) === key ? confirmedSession : item,
       ))
+      if (confirmedSession.nativeArchived !== (workState === "completed")) {
+        throw new Error("VS Code's native state changed after this request. Relay is showing the newer state.")
+      }
       setNotice(workState === "completed"
-        ? `Marked "${sessionLabel(session)}" completed. This does not stop the Agent. Use Show completed to find it.`
-        : `Reactivated "${sessionLabel(session)}". Nothing was sent; existing filters and read-only limits still apply.`)
+        ? `VS Code confirmed Done for "${sessionLabel(session)}". Use Show completed to find it.`
+        : `VS Code confirmed Restore for "${sessionLabel(session)}". Nothing was sent; message capability will be reconfirmed.`)
       if (source === "list" && workState === "completed" && !showCompletedSessions) {
         window.requestAnimationFrame(() =>
           document.querySelector<HTMLButtonElement>(".session-view-trigger")?.focus())
@@ -2136,16 +2181,9 @@ function App() {
     } finally {
       if (epoch === authEpoch.current) {
         workStateMutation.current = { revision: workStateMutation.current.revision + 1, pending: false }
+        if (restoreDetailFocus) workActionFocus.current = { trigger, epoch }
         setWorkStatePendingKey(null)
         setSessionRefreshAttempt((attempt) => attempt + 1)
-        if (restoreDetailFocus) {
-          window.requestAnimationFrame(() => {
-            if (epoch === authEpoch.current && trigger.isConnected && trigger.getClientRects().length > 0
-              && (document.activeElement === document.body || document.activeElement === trigger)) {
-              trigger.focus()
-            }
-          })
-        }
       }
     }
   }
@@ -2180,6 +2218,18 @@ function App() {
   ).length
   const availableConnectorCount = connectors.filter(connector => !connector.removedAt).length
 
+  function nativeWorkStateUnavailable(session: AgentSession, connector: SessionSource | undefined): string | null {
+    if (!connector || connector.removedAt) return "This Device's saved history is read-only."
+    if (connector.status !== "online") return "Device offline. Reconnect to confirm native Done / Restore."
+    if (!connector.capabilities?.setNativeArchive || !session.canSetNativeArchive) {
+      return "Native Done / Restore is not supported. Upgrade the Connector or use VS Code."
+    }
+    if (!sessionConfirmationIsCurrent(session, connector) || session.nativeArchived == null) {
+      return "Native Session state is unconfirmed. Refresh the Device inventory."
+    }
+    return null
+  }
+
   const renderSessionWorkAction = (
     session: AgentSession,
     surface: "list" | "desktop-detail" | "mobile-detail",
@@ -2188,9 +2238,10 @@ function App() {
     if (!connector || connector.removedAt) return null
     const completed = session.workState === "completed"
     const action = completed ? "Reactivate" : "Mark completed"
-    const hint = completed
-      ? "Restore unfinished work. Does not send a message or unarchive the Agent."
-      : "Mark work completed in Relay. Does not stop the Agent."
+    const unavailable = nativeWorkStateUnavailable(session, connector)
+    const hint = unavailable ?? (completed
+      ? "Restore in VS Code. Does not send a message."
+      : "Mark Done in VS Code. Native archive and worktree lifecycle rules apply.")
     const tipId = `work-state-${encodeURIComponent(session.connectorId)}-${encodeURIComponent(session.id)}${surface === "list" ? "" : `-${surface}`}`
     return (
       <span key={sessionKey(session)} className={`session-work-action${surface === "list" ? "" : " is-detail"}`}>
@@ -2201,7 +2252,7 @@ function App() {
               className="session-work-glyph"
               aria-label={`${action}: ${sessionLabel(session)}`}
               title={`${action} — ${hint}`}
-              disabled={workStatePendingKey !== null}
+              disabled={workStatePendingKey !== null || unavailable !== null}
               onClick={(event) => void changeSessionWorkState(session, surface === "list" ? "list" : "detail", event.currentTarget)}
             >
               {workStatePendingKey === sessionKey(session)
@@ -2853,11 +2904,19 @@ function App() {
 
                       {selectedSessionCompleted && (
                         <div className="history-state-notice" role="status">
-                          <strong>This Session is completed in Relay.</strong>
-                          <span>Read its saved history. Use Reactivate at the top of this Session to continue; native read-only limits still apply.</span>
+                          <strong>{selectedAgentSession.nativeArchived === true ? "This Session is Done in VS Code." : "This Session has a legacy Relay completion marker."}</strong>
+                          <span>{selectedAgentSession.nativeArchived === true
+                            ? "Use Reactivate at the top of this Session to request native Restore. It does not send a message."
+                            : "This marker does not prove native Done. It will not automatically archive your VS Code Session."}</span>
                         </div>
                       )}
-                      {selectedSessionArchived && selectedConfirmationCurrent && (
+                      {selectedAgentSession && nativeWorkStateUnavailable(selectedAgentSession, selectedConnector) && (
+                        <div className="session-archive-notice">
+                          <strong>Native Done / Restore unavailable.</strong>
+                          <span>{nativeWorkStateUnavailable(selectedAgentSession, selectedConnector)}</span>
+                        </div>
+                      )}
+                      {selectedSessionArchived && selectedConfirmationCurrent && selectedAgentSession.nativeArchived !== true && (
                         <div className="history-state-notice" role="status">
                           <strong>This Session is archived and read-only.</strong>
                           <span>Its saved activity remains available.</span>

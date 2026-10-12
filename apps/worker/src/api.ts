@@ -8,6 +8,7 @@ import {
   listSessionsCommandSchema,
   PROTOCOL_VERSION,
   sendSessionMessageCommandSchema,
+  setSessionArchiveCommandSchema,
   sessionIdSchema,
   sessionWorkStateSchema,
   syncSessionHistoryCommandSchema,
@@ -200,16 +201,22 @@ async function dispatchCommand(
      SELECT ?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7
      WHERE EXISTS (SELECT 1 FROM devices
        WHERE user_id = ?2 AND id = ?3 AND removed_at IS NULL)
+       AND (?4 <> 'session.archive' OR EXISTS (
+         SELECT 1 FROM agent_sessions s JOIN connectors c ON c.user_id = s.user_id AND c.id = s.connector_id
+         WHERE s.user_id = ?2 AND s.connector_id = ?3 AND s.id = ?5
+           AND s.confirmed_connection_id = ?7 AND s.can_set_native_archive = 1 AND s.native_archived IS NOT NULL
+           AND c.connection_id = ?7 AND c.status = 'online'
+           AND json_extract(c.capabilities_json, '$.setNativeArchive') = 1))
        AND (?4 <> 'session.message' OR EXISTS (
          SELECT 1 FROM agent_sessions WHERE user_id = ?2 AND connector_id = ?3
-           AND id = ?5 AND work_state = 'open'))`,
+           AND id = ?5 AND COALESCE(native_archived, work_state = 'completed') = 0))`,
   )
     .bind(
       command.commandId,
       userId,
       connectorId,
       command.type,
-      command.type === "session.message" || command.type === "session.history"
+      command.type === "session.message" || command.type === "session.history" || command.type === "session.archive"
         ? command.sessionId
         : null,
       JSON.stringify(addressedCommand),
@@ -232,7 +239,8 @@ async function dispatchCommand(
   const workCompleted = command.type === "session.message"
     && await env.DB.prepare(
       `SELECT 1 FROM agent_sessions
-       WHERE user_id = ?1 AND connector_id = ?2 AND id = ?3 AND work_state = 'completed'`,
+       WHERE user_id = ?1 AND connector_id = ?2 AND id = ?3
+         AND COALESCE(native_archived, work_state = 'completed') = 1`,
     ).bind(userId, connectorId, command.sessionId).first() !== null;
   await env.DB.prepare(
     `UPDATE connector_commands SET status = 'failed',
@@ -472,7 +480,8 @@ export async function handleApi(
       const sessions = await env.DB.prepare(
         `SELECT id, title, status, native_status, created_at, updated_at, last_activity_at,
           last_message_preview, parent_session_id, can_send_message,
-          confirmed_connection_id, execution_state_known, capability_confirmed, work_state
+          confirmed_connection_id, execution_state_known, capability_confirmed, work_state,
+          can_set_native_archive, native_archived
          FROM agent_sessions
          WHERE user_id = ?1 AND connector_id = ?2
            AND (?3 IS NULL OR id > ?3)
@@ -495,6 +504,8 @@ export async function handleApi(
           execution_state_known: number;
           capability_confirmed: number;
           work_state: SessionWorkState;
+          can_set_native_archive: number;
+          native_archived: number | null;
         }>();
       const items = paged ? sessions.results.slice(0, 500) : sessions.results;
       const inputEvents = await env.DB.prepare(
@@ -516,7 +527,10 @@ export async function handleApi(
         connectorId: connector.id,
         title: item.title,
         status: item.status,
-        workState: item.work_state,
+        workState: item.native_archived === null ? item.work_state : item.native_archived ? "completed" : "open",
+        legacyWorkState: item.work_state,
+        canSetNativeArchive: item.can_set_native_archive === 1,
+        nativeArchived: item.native_archived === null ? null : item.native_archived === 1,
         nativeStatus: item.native_status,
         createdAt: item.created_at,
         updatedAt: item.updated_at,
@@ -842,25 +856,31 @@ export async function handleApi(
     if (!workState.success) {
       return response(request, env, { error: "invalid-session-work-state" }, { status: 400 });
     }
-    const result = await env.DB.prepare(
-      `UPDATE agent_sessions SET work_state = ?4
-       WHERE user_id = ?1 AND connector_id = ?2 AND id = ?3
-         AND EXISTS (SELECT 1 FROM devices
-           WHERE user_id = ?1 AND id = ?2 AND removed_at IS NULL)
-       RETURNING work_state`,
-    ).bind(session.userId, connectorId.data, agentSessionId.data, workState.data)
-      .first<{ work_state: SessionWorkState }>();
-    if (!result) {
-      const connector = await connectorForUser(env, session.userId, connectorId.data);
-      return response(request, env, {
-        error: connector?.removed_at ? "device-removed" : "session-not-found",
-      }, { status: connector?.removed_at ? 409 : 404 });
+    const connector = await connectorForUser(env, session.userId, connectorId.data);
+    if (connector?.removed_at) return response(request, env, { error: "device-removed" }, { status: 409 });
+    const owned = await env.DB.prepare(
+      `SELECT confirmed_connection_id, can_set_native_archive, native_archived FROM agent_sessions
+       WHERE user_id = ?1 AND connector_id = ?2 AND id = ?3`,
+    ).bind(session.userId, connectorId.data, agentSessionId.data)
+      .first<{ confirmed_connection_id: string | null; can_set_native_archive: number; native_archived: number | null }>();
+    if (!connector || !owned) return response(request, env, { error: "session-not-found" }, { status: 404 });
+    if (connector.status !== "online" || !connector.connection_id
+      || owned.confirmed_connection_id !== connector.connection_id || body.connectionId !== connector.connection_id) {
+      return response(request, env, { error: "native-session-state-unconfirmed" }, { status: 409 });
     }
-    return response(request, env, {
-      connectorId: connectorId.data,
-      sessionId: agentSessionId.data,
-      workState: result.work_state,
+    if (!connectorCapabilitiesSchema.parse(JSON.parse(connector.capabilities_json)).setNativeArchive
+      || owned.can_set_native_archive !== 1 || owned.native_archived === null) {
+      return response(request, env, { error: "native-done-restore-unsupported" }, { status: 409 });
+    }
+    const command = setSessionArchiveCommandSchema.parse({
+      type: "session.archive", protocolVersion: PROTOCOL_VERSION, commandId: crypto.randomUUID(),
+      sessionId: agentSessionId.data, archived: workState.data === "completed", connectionId: connector.connection_id,
     });
+    const delivered = await dispatchCommand(env, session.userId, connectorId.data, command);
+    return response(request, env, {
+      command: { id: command.commandId, type: command.type, status: delivered ? "sent" : "failed" },
+      ...(!delivered ? { error: "command-not-delivered" } : {}),
+    }, { status: delivered ? 202 : 409 });
   }
 
   const sessionMessageMatch =
@@ -879,7 +899,7 @@ export async function handleApi(
       );
     }
     const owned = await env.DB.prepare(
-      `SELECT s.can_send_message, s.capability_confirmed, s.confirmed_connection_id, s.work_state,
+      `SELECT s.can_send_message, s.capability_confirmed, s.confirmed_connection_id, s.work_state, s.native_archived,
           c.connection_id, c.status, c.capabilities_json
        FROM agent_sessions s JOIN connectors c ON c.user_id = s.user_id AND c.id = s.connector_id
        WHERE s.user_id = ?1 AND s.connector_id = ?2 AND s.id = ?3`,
@@ -897,6 +917,7 @@ export async function handleApi(
         status: string;
         capabilities_json: string;
         work_state: SessionWorkState;
+        native_archived: number | null;
       }>();
     if (!owned) {
       return response(
@@ -906,7 +927,7 @@ export async function handleApi(
         { status: 404 },
       );
     }
-    if (owned.work_state === "completed") {
+    if (owned.native_archived === 1 || (owned.native_archived === null && owned.work_state === "completed")) {
       return response(request, env, { error: "session-completed-reactivate-first" }, { status: 409 });
     }
     const body = await requestBody(request);
@@ -946,7 +967,9 @@ export async function handleApi(
       command.data,
     );
     const currentWorkState = delivered ? null : await env.DB.prepare(
-      `SELECT work_state FROM agent_sessions WHERE user_id = ?1 AND connector_id = ?2 AND id = ?3`,
+      `SELECT CASE WHEN native_archived IS NULL THEN work_state
+         WHEN native_archived = 1 THEN 'completed' ELSE 'open' END AS work_state
+       FROM agent_sessions WHERE user_id = ?1 AND connector_id = ?2 AND id = ?3`,
     ).bind(session.userId, parsedConnectorId.data, parsedSessionId.data)
       .first<SessionWorkState>("work_state");
     return response(

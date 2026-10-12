@@ -4,7 +4,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { z } from "zod";
 import { agentSessionSchema, agentSessionEventSchema, PROTOCOL_VERSION } from "@silvermoon-ai/protocol";
 import { sessionSyncSchema } from "@silvermoon-ai/rpc";
-import type { AgentAdapter, AgentAdapterEvent } from "./adapter.js";
+import { NativeStateUnconfirmedError, type AgentAdapter, type AgentAdapterEvent } from "./adapter.js";
 import { SilvermoonConnector } from "./connector.js";
 
 const frameSchema = z.object({
@@ -27,7 +27,7 @@ interface RelayCall {
   connectionId: string;
 }
 
-async function fixture(options: { failFirst?: boolean; failCompletions?: number; deferMessage?: boolean; heartbeatMs?: number } = {}) {
+async function fixture(options: { failFirst?: boolean; failCompletions?: number; deferMessage?: boolean; heartbeatMs?: number; nativeResult?: "confirmed" | "mismatch" | "unknown" } = {}) {
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const address = server.address();
@@ -108,6 +108,10 @@ async function fixture(options: { failFirst?: boolean; failCompletions?: number;
       if (options.deferMessage) await new Promise<void>((resolve) => { resolveMessage = resolve; });
     },
     async loadSessionHistory() { return []; },
+    async setSessionArchived(input) {
+      if (options.nativeResult === "unknown") throw new NativeStateUnconfirmedError("Native acknowledgement timed out.");
+      return { ...summary, canSetNativeArchive: true, nativeArchived: options.nativeResult === "mismatch" ? !input.archived : input.archived };
+    },
     subscribe(callback) {
       listener = callback;
       callback({ type: "session.updated", session: { ...summary, title: "Buffered before registration" } });
@@ -170,6 +174,15 @@ async function fixture(options: { failFirst?: boolean; failCompletions?: number;
         } },
       }));
     },
+    sendArchiveCommand(commandId: string) {
+      if (!socket || subscriptionId === undefined) throw new Error("Command subscription is not ready.");
+      socket.send(JSON.stringify({
+        id: subscriptionId, result: { type: "data", data: {
+          type: "session.archive", commandId, connectionId, protocolVersion: PROTOCOL_VERSION,
+          sessionId: "session", archived: true,
+        } },
+      }));
+    },
     async close() {
       await connector.stop();
       for (const client of server.clients) client.terminate();
@@ -179,6 +192,32 @@ async function fixture(options: { failFirst?: boolean; failCompletions?: number;
 }
 
 describe("connection-scoped connector uploads", () => {
+  it("does not report a confirmed native action as rejected when its result upload fails", async () => {
+    const relay = await fixture({ failCompletions: 1 });
+    try {
+      await relay.waitForCall("syncSessions");
+      await vi.waitFor(() => expect(relay.calls.some(call => call.path === "commands")).toBe(true));
+      relay.sendArchiveCommand(crypto.randomUUID());
+      await vi.waitFor(() => expect(relay.calls.filter(call => call.path === "commandCompleted")).toHaveLength(2));
+      expect(relay.calls.filter(call => call.path === "commandCompleted").at(-1)?.input)
+        .toMatchObject({ outcome: "failed", error: { code: "native-state-unconfirmed" } });
+      expect(relay.messages).toHaveLength(0);
+    } finally { await relay.close(); }
+  });
+  it.each(["confirmed", "mismatch", "unknown"] as const)("reports native %s results without sending a message", async nativeResult => {
+    const relay = await fixture({ nativeResult });
+    try {
+      await relay.waitForCall("syncSessions");
+      await vi.waitFor(() => expect(relay.calls.some(call => call.path === "commands")).toBe(true));
+      relay.sendArchiveCommand(crypto.randomUUID());
+      const result = await relay.waitForCall("commandCompleted");
+      expect(result.input).toMatchObject(nativeResult === "confirmed"
+        ? { outcome: "succeeded", commandConnectionId: relay.connectionId,
+          session: { id: "session", nativeArchived: true }, observation: { connectionId: relay.connectionId } }
+        : { outcome: "failed", error: { code: "native-state-unconfirmed" } });
+      expect(relay.messages).toHaveLength(0);
+    } finally { await relay.close(); }
+  });
   it("supersedes old snapshots but retains observations made during inventory and historical events", async () => {
     const relay = await fixture();
     try {

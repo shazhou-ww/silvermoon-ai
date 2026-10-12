@@ -10,6 +10,7 @@ export default defineConfig({
         bindings: {
           DEVICE_MANAGEMENT_SQL: readFileSync(new URL("./migrations/0011_device_management.sql", import.meta.url), "utf8"),
           SESSION_WORK_STATE_SQL: readFileSync(new URL("./migrations/0012_session_work_state.sql", import.meta.url), "utf8"),
+          NATIVE_SESSION_ARCHIVE_SQL: readFileSync(new URL("./migrations/0013_native_session_archive.sql", import.meta.url), "utf8"),
           GOOGLE_CLIENT_ID: "google-client",
           GOOGLE_CLIENT_SECRET: "google-secret",
           MICROSOFT_CLIENT_ID: "microsoft-client",

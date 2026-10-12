@@ -10,6 +10,24 @@ import {
 } from "./index";
 
 describe("relay protocol", () => {
+  it("validates native archive capability, state and connection-scoped commands", () => {
+    expect(connectorCapabilitiesSchema.parse({
+      listSessions: true, createSession: true, sendMessage: true, streamEvents: true, setNativeArchive: true,
+    }).setNativeArchive).toBe(true);
+    expect(agentSessionSchema.parse({
+      id: "native-session", title: null, status: "closed",
+      createdAt: "2026-10-12T00:00:00Z", updatedAt: "2026-10-12T00:00:00Z",
+      nativeArchived: true, canSetNativeArchive: true, workState: "open",
+    })).toMatchObject({ nativeArchived: true, canSetNativeArchive: true });
+    expect(connectorCommandSchema.parse({
+      type: "session.archive", protocolVersion: PROTOCOL_VERSION, commandId: crypto.randomUUID(),
+      connectionId: crypto.randomUUID(), sessionId: "native-session", archived: false,
+    })).toMatchObject({ type: "session.archive", archived: false });
+    expect(connectorCommandSchema.safeParse({
+      type: "session.archive", protocolVersion: PROTOCOL_VERSION, commandId: crypto.randomUUID(),
+      sessionId: "native-session", archived: "false",
+    }).success).toBe(false);
+  });
   it("validates Relay work state without giving Connector observations authority over it", () => {
     expect(sessionWorkStateSchema.parse("completed")).toBe("completed");
     expect(sessionWorkStateSchema.safeParse("archived").success).toBe(false);

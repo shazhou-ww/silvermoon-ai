@@ -10,7 +10,8 @@ authenticated WebSocket:
 
 - mutations publish registration, heartbeats, session inventory, command
   results, and activity;
-- a subscription carries list, create, and follow-up commands to the device.
+- a subscription carries list, create, follow-up, and native archive commands
+  to the device.
 
 ## Requirements
 
@@ -45,6 +46,28 @@ Maintainers publish reviewed versions through immutable
 `npm/connector/v<version>` tags and npm Trusted Publishing. See the
 [release guide](https://github.com/shazhou-ww/silvermoon-ai/blob/main/docs/npm-package-releases.md) for setup, validation and
 retry behavior; do not publish locally.
+
+## Native Done / Restore
+
+This source tree supports native archive commands for live VS Code Agent Host
+Sessions. The previously published `0.2.0` quick-start release does not provide
+this capability; no new npm release is implied by these source changes.
+Both Connector-level support and a current Session-level native state must be
+confirmed. SDK-only Sessions and incompatible Agent Hosts are unsupported.
+
+Parent Sessions (including their default chat) dispatch
+`session/isArchivedChanged` to the Session resource. Independent child chats
+dispatch `chat/isArchivedChanged` to their own chat resource. An accepted
+action must match the client sequence, action type, and requested archive
+flag, followed by a matching native inventory. Rejection fails the operation;
+timeout, disconnect, or an inconsistent result remains unconfirmed and is
+never automatically replayed. Native state observed locally is published back
+to Relay, without converting legacy Relay markers into commands.
+
+Restoration is independent of send-message permission. Native VS Code archive
+behavior can affect read status, child read-only state, and additional worktree
+cleanup/recreation. These commands do not send a follow-up or issue extra child
+archive commands.
 
 ## Run
 

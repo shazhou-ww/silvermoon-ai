@@ -33,6 +33,7 @@ export const connectorCapabilitiesSchema = z.object({
   createSession: z.boolean(),
   sendMessage: z.boolean(),
   streamEvents: z.boolean(),
+  setNativeArchive: z.boolean().optional(),
 });
 
 export const agentInputOptionSchema = z.object({
@@ -85,6 +86,8 @@ export const agentSessionSchema = z.object({
   canSendMessage: z.boolean().optional(),
   pendingInputRequest: agentInputRequestSchema.nullable().optional(),
   executionStateKnown: z.boolean().optional(),
+  canSetNativeArchive: z.boolean().optional(),
+  nativeArchived: z.boolean().optional(),
 });
 
 export const agentSessionEventPartKindSchema = z.enum([
@@ -158,11 +161,18 @@ export const syncSessionHistoryCommandSchema = commandBaseSchema.extend({
   sessionId: sessionIdSchema,
 });
 
+export const setSessionArchiveCommandSchema = commandBaseSchema.extend({
+  type: z.literal("session.archive"),
+  sessionId: sessionIdSchema,
+  archived: z.boolean(),
+});
+
 export const connectorCommandSchema = z.discriminatedUnion("type", [
   listSessionsCommandSchema,
   createSessionCommandSchema,
   sendSessionMessageCommandSchema,
   syncSessionHistoryCommandSchema,
+  setSessionArchiveCommandSchema,
 ]);
 
 export type ConnectorId = z.infer<typeof connectorIdSchema>;

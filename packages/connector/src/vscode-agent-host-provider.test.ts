@@ -95,6 +95,7 @@ describe("VS Code Agent Host mapping", () => {
       title: "Active work",
       status: "waiting",
       nativeStatus: String(SessionStatus.InputNeeded | SessionStatus.IsRead),
+      nativeArchived: false,
       executionStateKnown: true,
       createdAt: "2026-10-10T00:00:00.000Z",
       updatedAt: "2026-10-10T00:01:00.000Z",
@@ -148,6 +149,7 @@ describe("VS Code Agent Host mapping", () => {
           title: "Investigate tests",
           status: "running",
           nativeStatus: String(SessionStatus.InProgress),
+          nativeArchived: false,
           executionStateKnown: true,
           createdAt: "2026-10-10T00:00:00.000Z",
           updatedAt: "2026-10-10T00:01:00.000Z",
@@ -166,6 +168,7 @@ describe("VS Code Agent Host mapping", () => {
           nativeStatus: String(
             SessionStatus.Idle | SessionStatus.IsArchived,
           ),
+          nativeArchived: true,
           createdAt: "2026-10-10T00:00:00.000Z",
           updatedAt: "2026-10-10T00:01:00.000Z",
           lastMessagePreview: null,
@@ -197,6 +200,7 @@ describe("VS Code Agent Host mapping", () => {
       id: "session-archived",
       status: "closed",
       nativeStatus: String(SessionStatus.Idle | SessionStatus.IsArchived),
+      nativeArchived: true,
       canSendMessage: false,
     });
   });
@@ -675,6 +679,13 @@ describe("VS Code Agent Host mapping", () => {
 });
 
 describe("VS Code Agent Host dispatch acknowledgements", () => {
+  it("does not accept a different action with the same client sequence", async () => {
+    const acknowledger = new AgentHostDispatchAcknowledger();
+    const result = acknowledger.wait(1, ActionType.SessionIsArchivedChanged);
+    expect(acknowledger.settle(1, ActionType.ChatIsArchivedChanged)).toBe(false);
+    expect(acknowledger.settle(1, ActionType.SessionIsArchivedChanged)).toBe(true);
+    await result;
+  });
   it("resolves accepted dispatches and rejects server rejections", async () => {
     const acknowledgements = new AgentHostDispatchAcknowledger();
     const accepted = acknowledgements.wait(1, "chat/inputCompleted");
