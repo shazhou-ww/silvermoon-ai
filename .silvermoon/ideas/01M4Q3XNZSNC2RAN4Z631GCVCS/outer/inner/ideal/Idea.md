@@ -6,7 +6,7 @@
 
 ## 结果
 
-以 [现有 WebSocket 上下行操作原语](./Current-WebSocket-Primitives.md) 为事实基线，确立下行请求、上行反馈的统一调用模型。历史补齐与实时观察采用同一读取原语，以 long poll 保证恢复、Connector 短时续推降低连续更新延迟。
+以 [现有 WebSocket 上下行操作原语](./Current-WebSocket-Primitives.md) 为事实基线，确立统一调用模型：上行固定指 Connector → Relay Service，下行固定指 Relay Service → Connector。历史补齐与实时观察采用同一读取原语，以 long poll 保证恢复、Connector 短时续推降低连续更新延迟。
 
 ## 边界
 
@@ -16,6 +16,6 @@
 
 ## 验收标准
 
-- [现状清单](./Current-WebSocket-Primitives.md) 可从源码追溯 Connector 与 Relay 的上下行操作、返回、错误及关键时序。
+- [现状清单](./Current-WebSocket-Primitives.md) 可从源码追溯 Connector 与 Relay Service 的上下行操作、返回、错误及关键时序。
 - [请求原语草案](./Ideal-Channel-Primitives.md) 按下行请求共同定义反馈、续推与失败边界，覆盖现有功能，区分等待超时、缺口和不可用。
 - [业务模型评审](./Business-Data-Model-Review.md) 明确历史事件、当前投影和命令的身份、所有权、生命周期及兼容边界。

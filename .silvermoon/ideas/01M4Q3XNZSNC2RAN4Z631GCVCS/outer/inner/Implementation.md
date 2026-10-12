@@ -6,11 +6,11 @@
 
 ### I-S01: 固定协议与映射
 
-按下行请求共同细化输入、对应反馈、续推及失败边界，形成版本化 schema、provider 能力映射和兼容规则；明确 long poll 的观察基准、历史身份与连续覆盖、临时更新版本及显式缺失语义。
+按下行（Relay Service → Connector）请求共同细化输入、上行（Connector → Relay Service）反馈、续推及失败边界，形成版本化 schema、provider 能力映射和兼容规则；明确 long poll 的观察基准、历史身份与连续覆盖、临时更新版本及显式缺失语义。
 
 ### I-S02: 贯通状态与命令链路
 
-在 Connector、Relay 和 Web 消费链路中实现统一读取与操作反馈，支持 long poll 和可选的 Connector 有界续推；区分读取响应与后续通知，保留旧客户端兼容边界，不引入长期订阅状态机。
+在 Connector、Relay Service 和 Web 消费链路中实现统一读取与操作反馈，支持 long poll 和可选的 Connector 有界续推；区分读取响应与后续通知，保留旧客户端兼容边界，不引入长期订阅状态机。
 
 ### I-S03: 验证恢复与跨 provider 行为
 
