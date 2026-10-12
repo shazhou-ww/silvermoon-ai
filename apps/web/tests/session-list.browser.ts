@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
-import type { AgentInputRequest } from "@silvermoon-ai/protocol"
+import type { AgentInputRequest, SessionWorkState } from "@silvermoon-ai/protocol"
 
 interface SessionFixture {
   id: string
@@ -90,6 +90,13 @@ async function fixture(
   pendingInputRequest: AgentInputRequest | null = optionInputRequest,
   deviceState = { status: "online", generation: 1, confirmedGeneration: 1 },
   accountState = { authenticated: true, user: "user" },
+  workStatus: {
+    values: Map<string, SessionWorkState>
+    failure: boolean
+    gate: Promise<void>
+    requests: string[]
+    removed: boolean
+  } = { values: new Map(), failure: false, gate: Promise.resolve(), requests: [], removed: false },
 ) {
   let historySyncRequests = 0
   await page.route("https://relay.silvermoon.work/**", async (route) => {
@@ -109,6 +116,7 @@ async function fixture(
         streamEvents: true,
       },
       status: id === "studio" ? deviceState.status : status,
+      removedAt: id === "studio" && workStatus.removed ? "2026-10-12T00:00:00Z" : null,
       connectionId: `${id}-connection-${deviceState.generation}`,
       sessionSyncState: deviceState.generation === deviceState.confirmedGeneration ? "ready" : "pending",
       sessionSyncError: null,
@@ -136,6 +144,22 @@ async function fixture(
         connector("work", "Work desktop"),
         connector("travel", "Travel laptop", "offline"),
       ]
+    } else if (url.pathname.endsWith("/work-state")) {
+      workStatus.requests.push(url.pathname)
+      await workStatus.gate
+      if (workStatus.failure) {
+        await route.fulfill({ status: 503, json: { error: "Work status could not be saved." } })
+        return
+      }
+      if (workStatus.removed) {
+        await route.fulfill({ status: 409, json: { error: "device-removed" } })
+        return
+      }
+      const connectorId = url.pathname.split("/")[3]
+      const sessionId = url.pathname.split("/")[5]
+      const workState = route.request().postDataJSON().workState
+      workStatus.values.set(`${connectorId}:${sessionId}`, workState)
+      body = { connectorId, sessionId, workState }
     } else if (url.pathname.endsWith("/events/sync")) {
       historySyncRequests += 1
       body = {
@@ -174,6 +198,7 @@ async function fixture(
         .filter((session) => session.connectorId === connectorId)
         .map((session) => ({
           ...session,
+          workState: workStatus.values.get(`${connectorId}:${session.id}`) ?? "open",
           title: session.title,
           createdAt: session.lastActivityAt,
           updatedAt: session.lastActivityAt,
@@ -197,7 +222,7 @@ async function fixture(
   await page.goto("/")
   await expect(
     page.locator(".session-list").getByText(
-      "Release desktop client",
+      "Confirm signing identity",
       { exact: true },
     ).first(),
   )
@@ -206,6 +231,178 @@ async function fixture(
 }
 
 const preferencesKey = "silvermoon:session-view-preferences:user"
+
+function workStatusFixture() {
+  return {
+    values: new Map<string, SessionWorkState>(),
+    failure: false, gate: Promise.resolve(), requests: [] as string[], removed: false,
+  }
+}
+
+async function showCompleted(page: Page) {
+  await openViewOptions(page)
+  await page.getByRole("menuitemcheckbox", { name: "Show completed", exact: true }).click()
+}
+
+test("work state glyph completes running work, preserves open children and reactivates without sending", async ({ page }, testInfo) => {
+  const state = workStatusFixture()
+  await fixture(page, undefined, undefined, undefined, undefined, state)
+  const complete = page.getByRole("button", { name: "Mark completed: Release desktop client", exact: true })
+  await complete.focus()
+  await expect(page.locator("#work-state-studio-release")).toBeVisible()
+  await expect(page.locator("#work-state-studio-release")).toContainText("Does not stop the Agent")
+  const tooltip = await page.locator("#work-state-studio-release").boundingBox()
+  expect(tooltip).not.toBeNull()
+  expect(tooltip!.x).toBeGreaterThanOrEqual(0)
+  expect(tooltip!.y).toBeGreaterThanOrEqual(0)
+  expect(tooltip!.x + tooltip!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+  expect(tooltip!.y + tooltip!.height).toBeLessThanOrEqual(page.viewportSize()!.height)
+  expect(await page.locator("#work-state-studio-release").evaluate(el => Boolean(el.closest(".session-list-item")))).toBe(false)
+  await page.screenshot({ path: testInfo.outputPath("glyph-open.png") })
+  await complete.press("Enter")
+  await expect(page.locator(".session-list").getByText("Release desktop client", { exact: true })).toHaveCount(0)
+  await expect(page.locator(".session-list").getByText("Confirm signing identity", { exact: true })).toBeVisible()
+  await expect(page.locator("#session-follow-up")).toBeDisabled()
+  await expect(page.getByText(/Marked "Release desktop client" completed/)).toBeVisible()
+  await expect(page.getByRole("button", { name: "Session view options" })).toBeFocused()
+  await showCompleted(page)
+  const row = page.locator(".session-list-item").filter({ has: page.locator(".session-item-title", { hasText: "Release desktop client" }) })
+  await expect(row.locator(".session-work-state")).toHaveText("Completed")
+  await expect(row.locator(".session-item-status")).toHaveText("Active")
+  await row.getByRole("button", { name: "Reactivate: Release desktop client", exact: true }).focus()
+  await page.screenshot({ path: testInfo.outputPath("glyph-completed.png") })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await row.getByRole("button", { name: "Reactivate: Release desktop client", exact: true }).click()
+  await expect(complete).toBeVisible()
+  await expect(page.locator("#session-follow-up")).toBeEnabled()
+  expect(state.requests).toEqual([
+    "/api/connectors/studio/sessions/release/work-state",
+    "/api/connectors/studio/sessions/release/work-state",
+  ])
+  await expect(page.locator(".session-workspace").getByRole("button", { name: /Mark completed|Reactivate/ })).toHaveCount(0)
+  await page.reload()
+  await expect(complete).toBeVisible()
+  await openViewOptions(page)
+  await expect(page.getByRole("menuitemcheckbox", { name: "Show completed" })).toHaveAttribute("data-state", "checked")
+})
+
+test("work state failures retain the row, block duplicate requests and do not claim success", async ({ page }) => {
+  const state = workStatusFixture()
+  let release!: () => void
+  state.gate = new Promise(resolve => { release = resolve })
+  state.failure = true
+  await fixture(page, undefined, undefined, undefined, undefined, state)
+  const action = page.getByRole("button", { name: "Mark completed: Release desktop client", exact: true })
+  await action.click()
+  await expect(action).toBeDisabled()
+  expect(state.requests).toHaveLength(1)
+  release()
+  await expect(page.getByText("Work status could not be saved.", { exact: true })).toBeVisible()
+  await expect(action).toBeEnabled()
+  await expect(page.getByText(/Marked "Release desktop client" completed/)).toHaveCount(0)
+  expect(state.values.size).toBe(0)
+})
+
+test("work state reactivation preserves native archive and saved history", async ({ page }) => {
+  const state = workStatusFixture()
+  state.values.set("studio:ended", "completed")
+  await fixture(page, undefined, undefined, undefined, undefined, state)
+  await showCompleted(page)
+  await expect(page.getByRole("button", { name: "Reactivate: Completed migration" })).toHaveCount(0)
+  await openViewOptions(page)
+  await page.getByRole("menuitemcheckbox", { name: "Show ended", exact: true }).click()
+  await page.locator(".session-item-select").filter({ hasText: "Completed migration" }).click()
+  await expect(page.getByText("Saved activity remains visible.", { exact: true })).toBeVisible()
+  await expect(page.locator("#session-follow-up")).toBeDisabled()
+  const opener = page.getByRole("button", { name: "Open Sessions", exact: true })
+  if (await opener.isVisible()) await opener.click()
+  const back = page.getByRole("button", { name: "Back to Sessions", exact: true })
+  if (await back.isVisible()) await back.click()
+  await page.getByRole("button", { name: "Reactivate: Completed migration", exact: true }).click()
+  await expect(page.locator(".session-list").getByText("Completed migration", { exact: true })).toBeVisible()
+  await expect(page.locator("#session-follow-up")).toBeDisabled()
+  expect(state.values.get("studio:ended")).toBe("open")
+})
+
+test("work state is shared across browsers, while glyph actions do not select another Session", async ({ page, browser }) => {
+  const state = workStatusFixture()
+  await fixture(page, undefined, undefined, undefined, undefined, state)
+  await page.locator(".session-item-select").filter({ hasText: "Investigate browser tests" }).click()
+  const opener = page.getByRole("button", { name: "Open Sessions", exact: true })
+  if (await opener.isVisible()) await opener.click()
+  const back = page.getByRole("button", { name: "Back to Sessions", exact: true })
+  if (await back.isVisible()) await back.click()
+  const previousUrl = page.url()
+  await page.getByRole("button", { name: "Mark completed: Release desktop client", exact: true }).click()
+  await expect(page.getByText(/Marked "Release desktop client" completed/)).toBeVisible()
+  expect(page.url()).toBe(previousUrl)
+  const context = await browser.newContext()
+  try {
+    const second = await context.newPage()
+    await fixture(second, undefined, undefined, undefined, undefined, state)
+    await showCompleted(second)
+    await expect(second.getByRole("button", { name: "Reactivate: Release desktop client", exact: true })).toBeVisible()
+  } finally {
+    await context.close()
+  }
+})
+
+test("work state changes work offline but removed Device history has no writable glyph", async ({ page }) => {
+  const state = workStatusFixture()
+  const device = { status: "online", generation: 1, confirmedGeneration: 1 }
+  await fixture(page, undefined, undefined, device, undefined, state)
+  device.status = "offline"
+  await page.evaluate(key => localStorage.setItem(key, JSON.stringify({
+    version: 1, showCompleted: true, showEnded: false, showUnavailable: false, showOffline: true, groupByDevice: false,
+  })), preferencesKey)
+  await page.reload()
+  await page.getByRole("button", { name: "Mark completed: Release desktop client", exact: true }).click()
+  await page.getByRole("button", { name: "Reactivate: Release desktop client", exact: true }).click()
+  await page.locator(".session-item-select").filter({ hasText: "Release desktop client" }).click()
+  await expect(page.locator("#session-follow-up")).toBeVisible()
+  await page.locator("#session-follow-up").fill("Keep this local draft")
+  await expect(page.getByRole("button", { name: "Send follow-up", exact: true })).toBeDisabled()
+  state.removed = true
+  await page.reload()
+  await page.locator(".relay-app").waitFor({ state: "visible" })
+  const opener = page.getByRole("button", { name: "Open Sessions", exact: true })
+  if (await opener.isVisible()) await opener.click()
+  const back = page.getByRole("button", { name: "Back to Sessions", exact: true })
+  if (await back.isVisible()) await back.click()
+  await expect(page.locator(".session-list").getByText("Release desktop client", { exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Mark completed: Release desktop client", exact: true })).toHaveCount(0)
+  expect(state.requests).toHaveLength(2)
+})
+
+test("work state is not overwritten by an older inventory response", async ({ page }) => {
+  const state = workStatusFixture()
+  await fixture(page, undefined, undefined, undefined, undefined, state)
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  let pending = false
+  await page.route("**/api/connectors/studio/sessions?*", async route => {
+    if (pending) { await route.fallback(); return }
+    pending = true
+    const snapshot = {
+      sessions: sessions.filter(item => item.connectorId === "studio").map(item => ({
+        ...item, workState: "open", createdAt: item.lastActivityAt, updatedAt: item.lastActivityAt,
+        lastMessagePreview: null, canSendMessage: true, confirmedConnectionId: "studio-connection-1",
+        executionStateKnown: true, capabilityConfirmed: true,
+      })),
+      nextCursor: null,
+    }
+    await gate
+    await route.fulfill({ json: snapshot })
+  })
+  await expect.poll(() => pending).toBe(true)
+  await page.getByRole("button", { name: "Mark completed: Release desktop client", exact: true }).click()
+  await expect(page.getByText(/Marked "Release desktop client" completed/)).toBeVisible()
+  release()
+  await expect(page.locator(".session-list").getByText("Release desktop client", { exact: true })).toHaveCount(0)
+  await showCompleted(page)
+  await expect(page.getByRole("button", { name: "Reactivate: Release desktop client", exact: true })).toBeVisible()
+})
+
 const preferenceNames = ["Show ended", "Show unavailable", "Show offline Sessions (1)", "Group by Device"]
 
 async function openViewOptions(page: Page) {
@@ -286,7 +483,7 @@ test("menu writes both enabled and disabled preferences and does not persist unr
   await page.reload()
   await expectViewOptions(page, 0)
   expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), preferencesKey))
-    .toEqual({ version: 1, showEnded: false, showUnavailable: false, showOffline: false, groupByDevice: false })
+    .toEqual({ version: 1, showCompleted: false, showEnded: false, showUnavailable: false, showOffline: false, groupByDevice: false })
 })
 
 test("offline shortcut saves visibility but not its switch to All", async ({ page }) => {
@@ -566,9 +763,7 @@ test("waiting sessions show the original request and selectable options", async 
   await expect(signing).toContainText(
     "Choose the certificate that should sign this release.",
   )
-  await signing.getByRole("button", {
-    name: /Confirm signing identity/,
-  }).click()
+  await signing.locator(".session-item-select").click()
 
   await expect(page.getByText("Agent is waiting for your input")).toBeVisible()
   await expect(page.getByText("Which identity should be used?")).toBeVisible()
@@ -642,9 +837,7 @@ test("waiting sessions with missing metadata give an honest fallback", async ({ 
     hasText: "Confirm signing identity",
   })
   await expect(signing).toContainText("Input request details unavailable")
-  await signing.getByRole("button", {
-    name: /Confirm signing identity/,
-  }).click()
+  await signing.locator(".session-item-select").click()
   const pendingInput = page.locator(".pending-input")
   await expect(pendingInput.getByText("Input request details unavailable"))
     .toBeVisible()

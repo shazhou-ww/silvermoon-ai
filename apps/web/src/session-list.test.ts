@@ -11,8 +11,10 @@ import {
   sessionKey,
   type SessionSource,
 } from "./session-list"
+import type { SessionWorkState } from "@silvermoon-ai/protocol"
 
 interface TestSession {
+  workState?: SessionWorkState
   id: string
   connectorId: string
   parentSessionId: string | null
@@ -142,6 +144,36 @@ describe("orderSessionHierarchy", () => {
 })
 
 describe("session list derivation", () => {
+  it("hides completed parents without hiding or cascading to open children", () => {
+    const parent = { ...session("parent", null, "2026-10-10T10:00:00Z"), workState: "completed" as const }
+    const child = session("child", "parent", "2026-10-10T11:00:00Z")
+    const options = { query: "", statusView: "all" as const, showEnded: false, showUnavailable: false }
+    expect(deriveVisibleSessions([parent, child], sources, {
+      ...options, collapsedSessionKeys: new Set([sessionKey(parent)]),
+    }).map(item => [item.session.id, item.depth])).toEqual([["child", 0]])
+    expect(deriveVisibleSessions([parent, child], sources, {
+      ...options, showCompleted: true,
+    }).map(item => [item.session.id, item.depth])).toEqual([["parent", 0], ["child", 1]])
+  })
+
+  it("preserves all other filters when completed work is shown or reactivated", () => {
+    const ended = { ...session("ended", null, "", "device-1", "closed"), workState: "completed" as const }
+    const offline = { ...session("offline", null, "", "device-2"), workState: "completed" as const }
+    const options = { query: "", statusView: "all" as const, showCompleted: true, showEnded: false, showUnavailable: false }
+    expect(deriveVisibleSessions([ended, offline], sources, options)).toEqual([])
+    expect(deriveVisibleSessions([ended, offline], sources, { ...options, showEnded: true, showOffline: true }))
+      .toHaveLength(2)
+    expect(deriveVisibleSessions([{ ...ended, workState: "open" }, { ...offline, workState: "open" }], sources, options)).toEqual([])
+    expect(deriveVisibleSessions([ended], sources, { ...options, showEnded: true, statusView: "active" })).toEqual([])
+  })
+
+  it("does not count hidden completed work as actionable facets", () => {
+    const completed = { ...session("done", null, "", "device-1", "running"), workState: "completed" as const }
+    const options = { query: "", showEnded: false, showUnavailable: false }
+    expect(deriveSessionFacets([completed], sources, options)).toMatchObject({ active: 0, hiddenLifecycle: 1 })
+    expect(deriveSessionFacets([completed], sources, { ...options, showCompleted: true })).toMatchObject({ active: 1, hiddenLifecycle: 0 })
+  })
+
   it("counts only the predefined actionable status views", () => {
     expect(countSessionStatuses([
       session("queued", null, "", "device-1", "queued"),

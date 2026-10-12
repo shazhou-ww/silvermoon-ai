@@ -4,15 +4,15 @@
 
 ### I-S01: 分离 Relay 工作状态与执行状态
 
-为账户拥有的 Session 增加持久化工作状态与受保护的状态变更操作，保留复合身份、消息历史及 Connector 的状态同步权限边界。补充迁移与旧客户端兼容性。
+通过 `0012_session_work_state.sql` 为账户拥有的 Session 增加默认 `open` 的 `work_state`，仅接受 `open / completed`；以受认证和 CSRF 保护的 `POST /api/connectors/:connectorId/sessions/:sessionId/work-state` 原子更新复合身份对应的标记，不修改执行状态、历史或活动时间。Connector 的 upsert 和事件写入不拥有此字段；消息 API、入队和 Durable Object 派发均检查未完成状态，保留现有能力、设备删除与原生只读保护。
 
 ### I-S02: 提供完成与重新激活交互
 
-在每个 Session 列表项右侧提供按工作状态切换的 Mark completed / Reactivate 小 glyph 按钮，不在会话正文增加对应大按钮；保留 Show completed 入口。行内动作与选择 Session 分离，具备 tooltip、可访问名称和键盘焦点，触屏不依赖 hover。处理默认列表、筛选、父子上下文、当前选中项和离线状态。对仍在执行的 Session 明示完成不会停止 Agent；已完成项需重新激活后才可继续从 Relay 发送消息。
+在每个 Session 列表项右侧提供按工作状态切换的 Mark completed / Reactivate 小 glyph 按钮，不在会话正文增加对应大按钮；保留 Show completed 入口，并兼容读取已有浏览器视图偏好。行内动作与选择 Session 分离，具备 tooltip、可访问名称和键盘焦点，触屏不依赖 hover。隐藏已完成父项时保留符合筛选的未完成子项；当前历史仍可读，草稿保留，完成项发送被禁用。状态以服务器确认后更新，旧库存响应不能覆盖刚完成的操作，账户切换不能泄露过期请求结果。
 
 ### I-S03: 验证状态与交互一致性
 
-覆盖所有权、幂等更新、刷新/重连覆盖保护、跨浏览器一致性、失败反馈与桌面/窄屏交互；保留已结束、不可用、离线筛选语义。
+覆盖所有权、幂等更新、刷新/重连覆盖保护、跨浏览器一致性、失败反馈与桌面/窄屏交互；保留已结束、不可用、离线筛选语义。验证迁移、相关单元及 Worker 集成测试、桌面和两个窄屏项目、类型检查、lint 与构建。证据见 [Evidence.md](./Evidence.md)。
 
 ## Acceptance criteria
 

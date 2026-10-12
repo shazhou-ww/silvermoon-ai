@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 export interface SessionViewPreferences {
+  showCompleted: boolean
   showEnded: boolean
   showUnavailable: boolean
   showOffline: boolean
@@ -8,6 +9,7 @@ export interface SessionViewPreferences {
 }
 
 const defaults: SessionViewPreferences = {
+  showCompleted: false,
   showEnded: false,
   showUnavailable: false,
   showOffline: false,
@@ -51,9 +53,11 @@ export function loadSessionViewPreferences(
       || !("showUnavailable" in value) || typeof value.showUnavailable !== "boolean"
       || !("showOffline" in value) || typeof value.showOffline !== "boolean"
       || !("groupByDevice" in value) || typeof value.groupByDevice !== "boolean"
+      || ("showCompleted" in value && typeof value.showCompleted !== "boolean")
     ) throw new Error("Invalid session view preferences")
     return {
       preferences: {
+        showCompleted: "showCompleted" in value && value.showCompleted === true,
         showEnded: value.showEnded,
         showUnavailable: value.showUnavailable,
         showOffline: value.showOffline,

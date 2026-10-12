@@ -9,9 +9,11 @@ import {
   PROTOCOL_VERSION,
   sendSessionMessageCommandSchema,
   sessionIdSchema,
+  sessionWorkStateSchema,
   syncSessionHistoryCommandSchema,
   type AgentInputRequest,
   type ConnectorCommand,
+  type SessionWorkState,
 } from "@silvermoon-ai/protocol";
 import {
   clearSessionCookies,
@@ -197,7 +199,10 @@ async function dispatchCommand(
       (id, user_id, connector_id, type, session_id, payload_json, status, connection_id)
      SELECT ?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7
      WHERE EXISTS (SELECT 1 FROM devices
-       WHERE user_id = ?2 AND id = ?3 AND removed_at IS NULL)`,
+       WHERE user_id = ?2 AND id = ?3 AND removed_at IS NULL)
+       AND (?4 <> 'session.message' OR EXISTS (
+         SELECT 1 FROM agent_sessions WHERE user_id = ?2 AND connector_id = ?3
+           AND id = ?5 AND work_state = 'open'))`,
   )
     .bind(
       command.commandId,
@@ -224,15 +229,24 @@ async function dispatchCommand(
     .dispatchCommand(addressedCommand);
   if (result.delivered) return true;
 
+  const workCompleted = command.type === "session.message"
+    && await env.DB.prepare(
+      `SELECT 1 FROM agent_sessions
+       WHERE user_id = ?1 AND connector_id = ?2 AND id = ?3 AND work_state = 'completed'`,
+    ).bind(userId, connectorId, command.sessionId).first() !== null;
   await env.DB.prepare(
     `UPDATE connector_commands SET status = 'failed',
-      error_code = 'connector-offline',
-      error_message = 'The connector is not currently connected.',
+      error_code = ?2,
+      error_message = ?3,
       completed_at = CURRENT_TIMESTAMP,
       updated_at = CURRENT_TIMESTAMP
      WHERE id = ?1 AND status = 'queued'`,
   )
-    .bind(command.commandId)
+    .bind(
+      command.commandId,
+      workCompleted ? "session-completed-reactivate-first" : "connector-offline",
+      workCompleted ? "Reactivate the Session before sending a follow-up." : "The connector is not currently connected.",
+    )
     .run();
   return false;
 }
@@ -458,7 +472,7 @@ export async function handleApi(
       const sessions = await env.DB.prepare(
         `SELECT id, title, status, native_status, created_at, updated_at, last_activity_at,
           last_message_preview, parent_session_id, can_send_message,
-          confirmed_connection_id, execution_state_known, capability_confirmed
+          confirmed_connection_id, execution_state_known, capability_confirmed, work_state
          FROM agent_sessions
          WHERE user_id = ?1 AND connector_id = ?2
            AND (?3 IS NULL OR id > ?3)
@@ -480,6 +494,7 @@ export async function handleApi(
           confirmed_connection_id: string | null;
           execution_state_known: number;
           capability_confirmed: number;
+          work_state: SessionWorkState;
         }>();
       const items = paged ? sessions.results.slice(0, 500) : sessions.results;
       const inputEvents = await env.DB.prepare(
@@ -501,6 +516,7 @@ export async function handleApi(
         connectorId: connector.id,
         title: item.title,
         status: item.status,
+        workState: item.work_state,
         nativeStatus: item.native_status,
         createdAt: item.created_at,
         updatedAt: item.updated_at,
@@ -804,6 +820,49 @@ export async function handleApi(
     });
   }
 
+  const sessionWorkStateMatch =
+    /^\/api\/connectors\/([^/]+)\/sessions\/([^/]+)\/work-state$/u.exec(path);
+  if (request.method === "POST" && sessionWorkStateMatch) {
+    const connectorId = connectorIdSchema.safeParse(pathValue(sessionWorkStateMatch[1]));
+    const agentSessionId = sessionIdSchema.safeParse(pathValue(sessionWorkStateMatch[2]));
+    if (!connectorId.success || !agentSessionId.success) {
+      return response(request, env, { error: "invalid-session-route" }, { status: 400 });
+    }
+    let body: Record<string, unknown>;
+    try {
+      body = await requestBody(request);
+    } catch (error) {
+      if (error instanceof SyntaxError || (error instanceof Error
+        && ["json-required", "invalid-json"].includes(error.message))) {
+        return response(request, env, { error: error instanceof SyntaxError ? "invalid-json" : error.message }, { status: 400 });
+      }
+      throw error;
+    }
+    const workState = sessionWorkStateSchema.safeParse(body.workState);
+    if (!workState.success) {
+      return response(request, env, { error: "invalid-session-work-state" }, { status: 400 });
+    }
+    const result = await env.DB.prepare(
+      `UPDATE agent_sessions SET work_state = ?4
+       WHERE user_id = ?1 AND connector_id = ?2 AND id = ?3
+         AND EXISTS (SELECT 1 FROM devices
+           WHERE user_id = ?1 AND id = ?2 AND removed_at IS NULL)
+       RETURNING work_state`,
+    ).bind(session.userId, connectorId.data, agentSessionId.data, workState.data)
+      .first<{ work_state: SessionWorkState }>();
+    if (!result) {
+      const connector = await connectorForUser(env, session.userId, connectorId.data);
+      return response(request, env, {
+        error: connector?.removed_at ? "device-removed" : "session-not-found",
+      }, { status: connector?.removed_at ? 409 : 404 });
+    }
+    return response(request, env, {
+      connectorId: connectorId.data,
+      sessionId: agentSessionId.data,
+      workState: result.work_state,
+    });
+  }
+
   const sessionMessageMatch =
     /^\/api\/connectors\/([^/]+)\/sessions\/([^/]+)\/messages$/u.exec(path);
   if (request.method === "POST" && sessionMessageMatch) {
@@ -820,7 +879,7 @@ export async function handleApi(
       );
     }
     const owned = await env.DB.prepare(
-      `SELECT s.can_send_message, s.capability_confirmed, s.confirmed_connection_id,
+      `SELECT s.can_send_message, s.capability_confirmed, s.confirmed_connection_id, s.work_state,
           c.connection_id, c.status, c.capabilities_json
        FROM agent_sessions s JOIN connectors c ON c.user_id = s.user_id AND c.id = s.connector_id
        WHERE s.user_id = ?1 AND s.connector_id = ?2 AND s.id = ?3`,
@@ -837,6 +896,7 @@ export async function handleApi(
         connection_id: string | null;
         status: string;
         capabilities_json: string;
+        work_state: SessionWorkState;
       }>();
     if (!owned) {
       return response(
@@ -845,6 +905,9 @@ export async function handleApi(
         { error: "session-not-found" },
         { status: 404 },
       );
+    }
+    if (owned.work_state === "completed") {
+      return response(request, env, { error: "session-completed-reactivate-first" }, { status: 409 });
     }
     const body = await requestBody(request);
     if (
@@ -882,6 +945,10 @@ export async function handleApi(
       parsedConnectorId.data,
       command.data,
     );
+    const currentWorkState = delivered ? null : await env.DB.prepare(
+      `SELECT work_state FROM agent_sessions WHERE user_id = ?1 AND connector_id = ?2 AND id = ?3`,
+    ).bind(session.userId, parsedConnectorId.data, parsedSessionId.data)
+      .first<SessionWorkState>("work_state");
     return response(
       request,
       env,
@@ -891,7 +958,9 @@ export async function handleApi(
           type: command.data.type,
           status: delivered ? "sent" : "failed",
         },
-        ...(delivered ? {} : { error: "connector-offline" }),
+        ...(delivered ? {} : {
+          error: currentWorkState === "completed" ? "session-completed-reactivate-first" : "connector-offline",
+        }),
       },
       { status: delivered ? 202 : 409 },
     );

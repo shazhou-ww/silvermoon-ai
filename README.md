@@ -119,7 +119,7 @@ for a trusted environment, not a requirement for connecting a device.
 
 ### 5. Open or start a Session
 
-The Session list's view-options menu remembers **Show ended**, **Show unavailable**,
+The Session list's view-options menu remembers **Show completed**, **Show ended**, **Show unavailable**,
 **Show offline Sessions**, and **Group by Device** in this browser for each account.
 Your choices survive refreshes, browser restarts, and sign-out, and synchronize
 across tabs signed in to the same account on the same site. They do not sync
@@ -141,6 +141,23 @@ Sending requires an online device and confirmed, writable Session
 capabilities. A saved Session may have unknown execution state or be
 read-only; its presence in the list is not a promise that it can run tools
 or accept messages. Relay is not a general permission-approval interface.
+
+## Complete and reactivate work
+
+Use the small **Mark completed** check icon at the right of a Session list
+item to hide finished work from the daily list. Hover or focus a row to see
+its action; on touch screens the icon stays visible. Enable **Show completed**
+in Session view options to read completed history and use the **Reactivate**
+return-arrow icon to mark the same Session unfinished again. Existing search,
+status, ended, unavailable and offline filters still apply.
+
+This is an account-owned Relay work marker, shared across browsers and devices.
+It does not stop or start the Agent, delete history, change native archives,
+or cascade to parent or child Sessions. Connector updates and new events do
+not reset it. A completed Session must be reactivated before sending another
+follow-up; reactivation does not send a message or bypass online, capability
+confirmation or native read-only restrictions. Ordinary offline Sessions can
+be marked or reactivated; removed-device history stays read-only.
 
 ## Manage devices
 

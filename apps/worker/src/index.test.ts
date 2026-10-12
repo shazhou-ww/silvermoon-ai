@@ -176,6 +176,7 @@ async function createSchema(): Promise<void> {
     }
     await env.DB.prepare(statement).run();
   }
+  await env.DB.prepare((env as AppEnv & { SESSION_WORK_STATE_SQL: string }).SESSION_WORK_STATE_SQL).run();
 }
 
 function sessionHeaders(values: { token: string; csrf: string }): HeadersInit {
@@ -790,7 +791,7 @@ describe("relay identity and token service", () => {
       .bind(id).all<{ status: string; result_uncertain_at: string | null }>();
     expect(commands.results.find(row => row.status === "failed")?.result_uncertain_at).toBeNull();
     expect(commands.results.filter(row => row.result_uncertain_at !== null)).toHaveLength(2);
-    for (const suffix of ["sessions", "sessions/sync", "sessions/saved-session/messages", "sessions/saved-session/events/sync"]) {
+    for (const suffix of ["sessions", "sessions/sync", "sessions/saved-session/messages", "sessions/saved-session/events/sync", "sessions/saved-session/work-state"]) {
       const write = await SELF.fetch(`https://relay.silvermoon.work/api/connectors/${id}/${suffix}`, {
         method: "POST", headers: sessionHeaders(session), body: "{}",
       });
@@ -945,6 +946,68 @@ describe("relay identity and token service", () => {
       rotatingEnv,
     );
     expect(authenticated).toMatchObject({ userId: "user-01" });
+  });
+
+  it("persists reversible work state for offline account-owned Sessions without changing history or native status", async () => {
+    const token = await createToken(appEnv, "user-01", { name: "Offline work status device" });
+    const id = token.metadata.deviceId;
+    const now = new Date().toISOString();
+    const otherDevice = await createToken(appEnv, "user-01", { name: "Separate work status device" });
+    await env.DB.prepare(`INSERT INTO agent_sessions
+      (user_id, connector_id, id, status, created_at, updated_at, last_activity_at)
+      VALUES ('user-01', ?1, 'parent', 'idle', ?2, ?2, ?2)`)
+      .bind(otherDevice.metadata.deviceId, now).run();
+    for (const [sessionId, parentId] of [["parent", null], ["child", "parent"]]) {
+      await env.DB.prepare(`INSERT INTO agent_sessions
+        (user_id, connector_id, id, parent_session_id, title, status, native_status,
+          created_at, updated_at, last_activity_at, can_send_message)
+        VALUES ('user-01', ?1, ?2, ?3, 'Saved work', 'closed', '64', ?4, ?4, ?4, 0)`)
+        .bind(id, sessionId, parentId, now).run();
+    }
+    await env.DB.prepare(`INSERT INTO agent_session_events
+      (user_id, connector_id, session_id, event_id, sequence, type, content, created_at)
+      VALUES ('user-01', ?1, 'parent', 'retained-event', 0, 'message', 'Keep this history', ?2)`).bind(id, now).run();
+    const route = `https://relay.silvermoon.work/api/connectors/${id}/sessions/parent/work-state`;
+    const before = await env.DB.prepare("SELECT * FROM agent_sessions WHERE connector_id = ?1 AND id = 'parent'").bind(id).first();
+    expect(before?.work_state).toBe("open");
+    for (const workState of ["completed", "completed", "open", "open"]) {
+      const changed = await SELF.fetch(route, {
+        method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ workState }),
+      });
+      expect(changed.status).toBe(200);
+      expect(await changed.json()).toEqual({ connectorId: id, sessionId: "parent", workState });
+      expect(await env.DB.prepare("SELECT * FROM agent_sessions WHERE connector_id = ?1 AND id = 'parent'").bind(id).first())
+        .toEqual({ ...before, work_state: workState });
+      expect(await env.DB.prepare("SELECT work_state FROM agent_sessions WHERE connector_id = ?1 AND id = 'child'").bind(id).first<string>("work_state")).toBe("open");
+      expect(await env.DB.prepare("SELECT work_state FROM agent_sessions WHERE connector_id = ?1 AND id = 'parent'")
+        .bind(otherDevice.metadata.deviceId).first<string>("work_state")).toBe("open");
+    }
+    const invalid = await SELF.fetch(route, {
+      method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ workState: "archived" }),
+    });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toEqual({ error: "invalid-session-work-state" });
+    const badJson = await SELF.fetch(route, { method: "POST", headers: sessionHeaders(session), body: "{" });
+    expect(badJson.status).toBe(400);
+    const csrf = await SELF.fetch(route, {
+      method: "POST", headers: { ...sessionHeaders(session), "x-csrf-token": "wrong" }, body: JSON.stringify({ workState: "completed" }),
+    });
+    expect(csrf.status).toBe(403);
+    const missing = await SELF.fetch(route.replace("/parent/", "/missing/"), {
+      method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ workState: "completed" }),
+    });
+    expect(missing.status).toBe(404);
+    await env.DB.prepare("INSERT INTO users (id) VALUES ('work-state-other-user')").run();
+    const otherSession = await createSession("work-state-other-user", new Request("https://relay.silvermoon.work"), appEnv);
+    const forbidden = await SELF.fetch(route, {
+      method: "POST", headers: sessionHeaders(otherSession), body: JSON.stringify({ workState: "completed" }),
+    });
+    expect(forbidden.status).toBe(404);
+    expect(await env.DB.prepare("SELECT COUNT(*) FROM connector_commands WHERE connector_id = ?1").bind(id).first<number>("COUNT(*)")).toBe(0);
+    const listed = await SELF.fetch(`https://relay.silvermoon.work/api/connectors/${id}/sessions`, { headers: sessionHeaders(session) });
+    expect(await listed.json()).toContainEqual(expect.objectContaining({ id: "parent", workState: "open", nativeStatus: "64", canSendMessage: false }));
+    const history = await SELF.fetch(`https://relay.silvermoon.work/api/connectors/${id}/sessions/parent/events`, { headers: sessionHeaders(session) });
+    expect(await history.text()).toContain("Keep this history");
   });
 
   it("routes session commands through an online connector and stores activity", async () => {
@@ -1468,6 +1531,28 @@ describe("relay identity and token service", () => {
       sessionId: "session-new",
       message: "Show me the test output.",
     });
+    const workStateRoute = `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-new/work-state`;
+    const completed = await SELF.fetch(workStateRoute, {
+      method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ workState: "completed" }),
+    });
+    expect(completed.status).toBe(200);
+    const blocked = await SELF.fetch(
+      `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-new/messages`,
+      { method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ message: "Blocked", connectionId: currentConnectionId }) },
+    );
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toEqual({ error: "session-completed-reactivate-first" });
+    const blockedCommandId = crypto.randomUUID();
+    await env.DB.prepare(`INSERT INTO connector_commands
+      (id, user_id, connector_id, type, session_id, payload_json, status, connection_id)
+      VALUES (?1, 'user-01', ?2, 'session.message', 'session-new', '{}', 'queued', ?3)`)
+      .bind(blockedCommandId, connectorId, currentConnectionId).run();
+    const stub = env.DAEMON_SESSIONS.getByName(connectorToken.metadata.id);
+    expect(await stub.dispatchCommand({
+      type: "session.message", protocolVersion: 2, commandId: blockedCommandId,
+      sessionId: "session-new", message: "Blocked at dispatch", connectionId: currentConnectionId,
+    })).toEqual({ delivered: false });
+    expect(await env.DB.prepare("SELECT status FROM connector_commands WHERE id = ?1").bind(blockedCommandId).first<string>("status")).toBe("queued");
     sendRpc(9, "mutation", "sessionEvent", {
         id: "event-1",
         sessionId: "session-new",
@@ -1524,6 +1609,13 @@ describe("relay identity and token service", () => {
       },
     }));
     await waitForData(13);
+    expect(await env.DB.prepare(
+      "SELECT work_state FROM agent_sessions WHERE user_id = 'user-01' AND connector_id = ?1 AND id = 'session-new'",
+    ).bind(connectorId).first<string>("work_state")).toBe("completed");
+    const reactivated = await SELF.fetch(workStateRoute, {
+      method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ workState: "open" }),
+    });
+    expect(reactivated.status).toBe(200);
     expect(await env.DB.prepare(
       `SELECT status, can_send_message, observation_sequence FROM agent_sessions
        WHERE user_id = 'user-01' AND connector_id = ?1 AND id = 'session-new'`,

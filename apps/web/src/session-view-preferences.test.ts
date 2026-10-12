@@ -19,20 +19,22 @@ function storage(): Storage {
 }
 
 const defaults: SessionViewPreferences = {
+  showCompleted: false,
   showEnded: false, showUnavailable: false, showOffline: false, groupByDevice: false,
 }
 
 describe("session view preferences", () => {
-  it("defaults to four disabled options without writing storage", () => {
+  it("defaults to five disabled options without writing storage", () => {
     const cache = storage()
     expect(loadSessionViewPreferences(() => cache, "user"))
       .toEqual({ preferences: defaults, warning: null })
     expect(cache.length).toBe(0)
   })
 
-  it.each(Array.from({ length: 16 }, (_, mask) => mask))("restores combination %i", (mask) => {
+  it.each(Array.from({ length: 32 }, (_, mask) => mask))("restores combination %i", (mask) => {
     const cache = storage()
     const preferences = {
+      showCompleted: Boolean(mask & 16),
       showEnded: Boolean(mask & 1),
       showUnavailable: Boolean(mask & 2),
       showOffline: Boolean(mask & 4),
@@ -43,6 +45,17 @@ describe("session view preferences", () => {
       .toEqual({ preferences, warning: null })
     expect(JSON.parse(cache.getItem(sessionViewPreferencesKey("user"))!))
       .toEqual({ version: 1, ...preferences })
+  })
+
+  it("restores legacy preferences without resetting other choices", () => {
+    const cache = storage()
+    cache.setItem(sessionViewPreferencesKey("user"), JSON.stringify({
+      version: 1, showEnded: true, showUnavailable: false, showOffline: true, groupByDevice: true,
+    }))
+    expect(loadSessionViewPreferences(() => cache, "user")).toEqual({
+      preferences: { ...defaults, showEnded: true, showOffline: true, groupByDevice: true },
+      warning: null,
+    })
   })
 
   it("isolates accounts and preserves unrelated storage", () => {
@@ -63,6 +76,7 @@ describe("session view preferences", () => {
     JSON.stringify(defaults),
     JSON.stringify({ version: 2, ...defaults }),
     JSON.stringify({ version: 1, ...defaults, showOffline: "true" }),
+    JSON.stringify({ version: 1, ...defaults, showCompleted: "true" }),
     JSON.stringify({ version: 1, showEnded: true }),
   ])("reports invalid records without rewriting them: %s", (raw) => {
     const cache = storage()
