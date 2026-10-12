@@ -19,11 +19,11 @@
 ### Deployment steps
 
 - [x] **D-S01:** 确认外部发布前提
-- [ ] **D-S02:** 执行授权的 canary 首发
-- [ ] **D-S03:** 验证公开发布结果
+- [x] **D-S02:** 执行授权的 canary 首发
+- [x] **D-S03:** 验证公开发布结果
 
 ### Deployment acceptance criteria
 
 - [x] **D-AC01:** 外部身份与保护一致
-- [ ] **D-AC02:** 真实 OIDC 发布成功
-- [ ] **D-AC03:** 公开包与候选一致
+- [x] **D-AC02:** 真实 OIDC 发布成功
+- [x] **D-AC03:** 公开包与候选一致

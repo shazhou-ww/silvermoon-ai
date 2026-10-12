@@ -78,3 +78,55 @@ D-S01 / D-AC01 的配置前提已满足。随后 registry 查询仍为
 授权前只读预检：准确版本规划输出 `dist_tag=canary`，registry 尚无该版本，
 remote 无该 tag；latest 为 `0.2.0`，npm environment 与三项 active ruleset 仍有效。
 本节记录授权与基线，不表示发布已执行或成功。
+
+## D-S02 / D-AC02：真实 canary 发布成功
+
+依据已同步部署 revision `eb91e6530b6a674412f4cd3ac29b955e262f11d5` 执行：
+
+- 仅创建并推送 `npm/connector/v0.2.1-canary.1`。
+- remote tag 指向 `9d96370f60e1fd8804a58b3c3c32a1accae40560`，
+  推送前确认该 commit 可达刷新后的主线，manifest 准确匹配，tag 与版本此前不存在。
+- tag push 触发 [Actions run 38215506558](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38215506558)，
+  event 为 `push`，headSha 为上述准确 commit，结果 `success`。
+- publish job 于 `2026-10-12T07:01:43Z` 开始、`07:04:02Z` 完成。
+  主线可达检查、安装、8 项发布契约测试、依赖图检查及构建、实际 pack、
+  runner 外部安装 smoke、OIDC publish、registry byte verification 均成功。
+- npm 日志明确使用官方 registry、`canary` 和 public access，并记录成功签署
+  GitHub Actions 来源的 provenance。没有添加 npm 长期 token 或执行本地 publish。
+  公开 npm 元数据提供 SLSA v1 provenance attestations。
+- registry 包元数据首次传播时尚未可见，前六次有明确失败日志；
+  有界重试在第七次确认准确版本、频道、完整性和下载字节，与 Actions 候选一致。
+  不曾重新发布或移动 tag。
+
+## D-S03 / D-AC03：公开包验证成功，latest 未变化
+
+公开版本为 `@silvermoon-ai/connector@0.2.1-canary.1`，
+registry 下载地址：
+`https://registry.npmjs.org/@silvermoon-ai/connector/-/connector-0.2.1-canary.1.tgz`。
+
+| 核对项 | 结果 |
+| --- | --- |
+| 发布前 latest | `0.2.0` |
+| 发布后 latest | `0.2.0`，未改变 |
+| 发布后 canary | `0.2.1-canary.1` |
+| 文件数 / 解包大小 | 14 / 283,256 字节 |
+| SHA-256 | `f5f5c1c0c48ae9dd25fa36d56034e3aa5fe244ba7afcf578a0d9ff6ba94fd6ee` |
+| npm shasum | `e78ebf49832d9a5d4c72a7b947ffaa0bef6ff575` |
+| npm integrity | `sha512-a67CQ1DOo+cxNvIxFBQJcIfxIPc/wd02mFud4fMzEXAZ3tjGIbMVJ9RkWiMmsIuGybUsgz346m8h1tq/48THHQ==` |
+
+SHA-256 和 integrity 分别与 Actions pack 步骤输出逐字一致；
+另从官方 registry 下载准确版本 tarball，重新计算 SHA-256 并执行
+`verify-published npm/connector/v0.2.1-canary.1`，精确字节和频道检查通过。
+本次实际 Actions 产出的包是发布验证基准，不把此前 Windows 本地候选的摘要
+冒充本次发布产物。
+
+在 monorepo 外的新目录中使用官方 registry 安装
+`@silvermoon-ai/connector@0.2.1-canary.1`（非本地 tarball），
+确认安装 manifest 版本；`smoke-npm-package.mjs` 的 CLI `--help`、
+root/adapter 运行时入口和消费者 TypeScript 检查全部通过。
+仅额外安装消费者开发工具 `@types/node@24`，私有 protocol/rpc 无需安装。
+临时公开安装和下载目录验证后清理。
+
+没有发布 latest 版本、修改 latest dist-tag、创建 GitHub Release、登录 Copilot
+或运行真实 Relay/agent 会话。本次证明的是授权的 tag/OIDC canary 发布及公开包消费，
+不是生产 agent 会话验证。所有部署步骤和标准已有对应证据，可提交现实验收。
