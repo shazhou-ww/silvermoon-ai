@@ -75,3 +75,32 @@ npm Trusted Publisher 授权或 provenance 发布。发布后检查已以测试�
 真实外部验收限定为 canary，需记录并核对 latest 前后不变；latest
 仅以源码与测试验证支持，不执行稳定发版。该要求不代表具体 canary 版本/tag
 已经选定，也不代表 npmjs 或 GitHub 授权已配置。
+
+## 授权的 0.2.1-canary.1 候选准备
+
+后续用户明确授权仅准备 `0.2.1-canary.1`，未授权本步骤创建/推送 tag 或发布。
+GitHub 配置的独立验证记录见[部署证据](../Deployment-Evidence.md)。
+本次代码变化只有 Connector manifest 版本从 `0.1.0` 改为
+`0.2.1-canary.1`，未改变运行时、依赖、打包方式或 latest 使用示例。
+
+2026-10-12 重新执行并通过：
+
+- `pnpm install --frozen-lockfile`：锁文件保持一致；无新增依赖。
+- `pnpm test:release`：8 项通过。
+- `node scripts/npm-release.mjs plan npm/connector/v0.2.1-canary.1`：
+  官方 registry 预检通过，输出 package_directory 为 `packages/connector`、
+  version 为 `0.2.1-canary.1`、dist_tag 为 `canary`。
+- Connector 构建通过；以 npm 11.6.2 对该版本实际 pack 并执行 verify-pack，
+  manifest 和准确 tag 匹配，必需文件、私有导入、摘要验证通过。
+- monorepo 外干净安装实际 tarball，仅增加消费者工具 `@types/node@24`；
+  CLI、root/adapter 导出和消费者声明使用检查通过。
+- `pnpm lint`、`git diff --check` 通过；lint 仍只有两处既有 UI warning。
+
+本次输出包为 14 文件、压缩 64,408 字节、解包 290,282 字节：
+
+- SHA-256：`2ef794d5eb1ee0a01d13ae8e68654ece4c5a83ab668a26a37a5d4ebba3a8fd73`。
+- integrity：`sha512-KLLWdO5Cxf1FpcWUwRf6B0WWeEHykM7D+6oZOqPw5hfgjpDeda4tJVorRSHm/W6Dq0p9eYXNTVtxYxulo2FIiQ==`。
+
+registry 只读观察仍为 `latest=0.2.0` 且无 canary，未执行真实发布。
+临时 tarball 和安装目录验证后清理；准确版本的实现候选需重新 submitInner/acceptInner，
+之后才能继续部署及单独确认具体发布 tag 的操作授权。
