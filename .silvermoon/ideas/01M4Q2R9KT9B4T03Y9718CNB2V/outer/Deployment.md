@@ -6,6 +6,8 @@
 
 将已同步主线的候选以普通非 force push 推进到 release，使用现有 Check and deploy 流水线。完整 check、浏览器回归和本地迁移通过后，依次应用 remote D1 迁移、部署 Worker、部署 Pages；不要求升级 Connector。0012 为既有 Session 添加默认 open 的工作标记，Connector 不拥有该字段。记录 release commit、run、迁移和部署结果。
 
+本轮发布手机至少 44px 触控区及桌面/手机详情顶部动作；产品实现为 `981a973a692bcca413d69794886eb7e06419c6b1`。不增加新迁移或 API，生产 0012 已在首版成功应用；记录流水线本次迁移检查是否存在待应用项，不重复手工修改生产数据。
+
 如需回滚，优先回滚 Web，必要时回滚 Worker；保留已增加的列和用户保存的标记，不执行 DROP COLUMN、不回滚真实数据。旧客户端忽略工作标记，不以旧客户端可发送 completed Session 作为新功能的安全保证。
 
 ### D-S02: 准备线上验收入口
@@ -22,4 +24,4 @@ release 流水线的完整检查、本地与 remote 迁移、Worker 和 Pages �
 
 ### D-AC02: 上线验收准备就绪
 
-线上 Web 资产包含已验证的列表及详情完成 / Reactivate、至少 44px 手机触控区和 Show completed 交互，未认证状态修改被拒绝；完整浏览器回归证明默认隐藏、重新显示、详情内恢复、刷新读取及执行限制。生产入口、上述真实账户验收步骤和未执行的操作均如实记录在 [Evidence.md](Evidence.md)，便于用户最终线上验收；该准备标准不替代用户的真实账户验证或 acceptOuter。现有 Evidence 仅对应上一版部署，不作为本轮交付证明。
+线上 Web 资产包含已验证的列表及详情完成 / Reactivate、至少 44px 手机触控区和 Show completed 交互，未认证状态修改被拒绝；完整浏览器回归证明默认隐藏、重新显示、详情内恢复、刷新读取及执行限制。生产入口、上述真实账户验收步骤和未执行的操作均如实记录在 [Evidence.md](Evidence.md)，区分本轮结果与首版历史，不将首版交付证明当作本轮证据；该准备标准不替代用户的真实账户验证或 acceptOuter。
