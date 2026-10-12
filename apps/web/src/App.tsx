@@ -83,6 +83,7 @@ import {
   type SessionSelection,
   type WorkspaceView,
 } from "@/workspace-state"
+import { useSessionViewPreferences } from "@/session-view-preferences"
 
 const relayOrigin =
   import.meta.env.VITE_RELAY_ORIGIN ?? "https://relay.silvermoon.work"
@@ -957,10 +958,6 @@ function App() {
   const [sessionQuery, setSessionQuery] = useState("")
   const [sessionStatusView, setSessionStatusView] =
     useState<SessionStatusView>("all")
-  const [showEndedSessions, setShowEndedSessions] = useState(false)
-  const [showUnavailableSessions, setShowUnavailableSessions] = useState(false)
-  const [showOfflineSessions, setShowOfflineSessions] = useState(false)
-  const [deviceGroupingEnabled, setDeviceGroupingEnabled] = useState(false)
   const [collapsedSessionKeys, setCollapsedSessionKeys] =
     useState<Set<string>>(() => new Set())
   const [expandedDeviceIds, setExpandedDeviceIds] =
@@ -997,6 +994,18 @@ function App() {
   const events = history?.key === selectionKey ? history.events : emptyEvents
   const accountSessionId = account?.sessionId
   const accountId = account?.user.id ?? null
+  const {
+    preferences: {
+      showEnded: showEndedSessions,
+      showUnavailable: showUnavailableSessions,
+      showOffline: showOfflineSessions,
+      groupByDevice: deviceGroupingEnabled,
+    },
+    warning: viewPreferencesWarning,
+    update: updateViewPreference,
+    dismissWarning: dismissViewPreferencesWarning,
+  } = useSessionViewPreferences(accountId)
+  const initializedDeviceGrouping = useRef<string | null>(null)
   const isSettings = workspaceView === "settings"
   const currentDraft = accountId && selection ? drafts.read(accountId, selection) : null
   const followUp = currentDraft?.text ?? ""
@@ -1044,6 +1053,7 @@ function App() {
     setSessionPrompt("")
     setHistorySyncFailure(null)
     setDrawerOpen(false)
+    setExpandedDeviceIds(new Set())
     setBusyAction(null)
     setNotice(null)
     setMobileView("list")
@@ -1617,7 +1627,7 @@ function App() {
     && (!showOfflineSessions || sessionStatusView !== "all")
     && (sessionQuery.trim().length > 0 || visibleSessionCount === 0 || sessionStatusView !== "all")
   const revealOfflineHistory = () => {
-    setShowOfflineSessions(true)
+    updateViewPreference("showOffline", true)
     setSessionStatusView("all")
   }
   const toggleSessionCollapsed = useCallback((session: AgentSession) => {
@@ -1637,15 +1647,23 @@ function App() {
       return next
     })
   }, [])
-  const enableDeviceGrouping = useCallback((enabled: boolean) => {
-    setDeviceGroupingEnabled(enabled)
-    if (!enabled) return
+  useEffect(() => {
+    if (!deviceGroupingEnabled || !accountId) {
+      initializedDeviceGrouping.current = null
+      return
+    }
+    if (initializedDeviceGrouping.current === accountId || sessionDeviceGroups.length === 0) return
+    initializedDeviceGrouping.current = accountId
+    // oxlint-disable-next-line react/set-state-in-effect -- Initialize restored or newly enabled grouping once its device data is available.
     setExpandedDeviceIds((current) => {
       if (current.size > 0) return current
-      const preferred = selectedConnectorId ?? sessionDeviceGroups[0]?.source.id
+      const preferred = sessionDeviceGroups.find((group) => group.source.id === selectedConnectorId)?.source.id
+        ?? sessionDeviceGroups[0]?.source.id
       return preferred ? new Set([preferred]) : current
     })
   }, [
+    accountId,
+    deviceGroupingEnabled,
     selectedConnectorId,
     sessionDeviceGroups,
   ])
@@ -2408,20 +2426,20 @@ function App() {
                   <DropdownMenuCheckboxItem
                     checked={showEndedSessions}
                     onCheckedChange={(checked) =>
-                      setShowEndedSessions(checked === true)}
+                      updateViewPreference("showEnded", checked === true)}
                   >
                     Show ended
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
                     checked={showUnavailableSessions}
                     onCheckedChange={(checked) =>
-                      setShowUnavailableSessions(checked === true)}
+                      updateViewPreference("showUnavailable", checked === true)}
                   >
                     Show unavailable
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
                     checked={showOfflineSessions}
-                    onCheckedChange={(checked) => setShowOfflineSessions(checked === true)}
+                    onCheckedChange={(checked) => updateViewPreference("showOffline", checked === true)}
                   >
                     Show offline Sessions ({devicesRefreshFailed || sessionsRefreshFailed
                       ? "unknown" : sessionStatusCounts.offline})
@@ -2430,7 +2448,7 @@ function App() {
                   <DropdownMenuCheckboxItem
                     checked={deviceGroupingEnabled}
                     onCheckedChange={(checked) =>
-                      enableDeviceGrouping(checked === true)}
+                      updateViewPreference("groupByDevice", checked === true)}
                   >
                     Group by Device
                   </DropdownMenuCheckboxItem>
@@ -2439,6 +2457,12 @@ function App() {
             </div>
           </div>
 
+          {viewPreferencesWarning && (
+            <div className="session-view-notice is-error" role="alert">
+              <span>{viewPreferencesWarning}</span>
+              <button type="button" aria-label="Dismiss view preferences warning" onClick={dismissViewPreferencesWarning}>Dismiss</button>
+            </div>
+          )}
           {(devicesRefreshFailed || sessionsRefreshFailed) && (
             <div className="session-view-notice is-error" role="alert">
               <strong>Unable to refresh Sessions</strong>

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>重命名与管理入口</title><link rel="stylesheet" href="../review.css"></head>
+<body>
+  <header class="scenario-heading"><div><h1>重命名与管理入口</h1><p>同一在线设备，名称由 Studio laptop 改为 Work laptop；静态编辑状态。</p></div><ul class="callouts" aria-label="变化"><li>保留 Rotate token / Revoke</li><li>增加 Rename / Delete</li><li>保存不影响连接</li></ul></header>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title"><header class="state-label"><strong id="before-title">Before</strong><span>Studio laptop · online · 3 Sessions</span></header>
+      <div class="product-surface"><div class="card"><div class="card-header"><div><h2>Devices</h2><p class="description">Add and manage devices that can connect to this account.</p></div><span class="control">Add device</span></div>
+        <div class="row"><div class="main"><i class="dot online" aria-hidden="true"></i><div><strong>Studio laptop</strong><span class="meta">demo · Last used just now</span></div></div><div class="context"><span class="meta">GitHub Copilot</span><span class="meta">3 Sessions</span></div><div class="actions"><span class="badge">online</span><span class="control">Rotate token</span><span class="control ghost">Revoke</span></div></div>
+      </div></div>
+    </section>
+    <section class="state after" aria-labelledby="after-title"><header class="state-label"><strong id="after-title">After</strong><span>同一设备、凭据与 3 Sessions</span></header>
+      <div class="product-surface"><div class="card"><div class="card-header"><div><h2>Devices</h2><p class="description">Add and manage devices that can connect to this account.</p></div><span class="control">Add device</span></div>
+        <div class="row"><div class="main"><i class="dot online" aria-hidden="true"></i><div><strong>Studio laptop</strong><span class="meta">demo · Last used just now</span></div></div><div class="context"><span class="meta">GitHub Copilot</span><span class="meta">3 Sessions</span></div><div class="actions"><span class="badge">online</span><span class="control">Rename</span><span class="control">Rotate token</span><span class="control ghost">Revoke</span><span class="control ghost danger">Delete</span></div></div>
+        <div class="row editing"><div class="field"><strong>Device name</strong><span class="input">Work laptop</span></div><div class="actions"><span class="control solid">Save</span><span class="control ghost">Cancel</span></div></div>
+        <p class="hint">Only the display name changes. Your connection and Sessions stay unchanged.</p>
+      </div></div>
+    </section>
+  </main>
+  <p class="source-note">Before 基于 settings-page.tsx 与 index.css 的设备行；示例不含真实 token。控件为非交互静态示意，不模拟保存。实施时输入去首尾空白、1–80 字符，错误保留编辑内容。</p>
+  <script src="../resize.js"></script>
+</body>
+</html>

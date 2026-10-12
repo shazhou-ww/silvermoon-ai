@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>移除后的只读历史</title><link rel="stylesheet" href="../review.css"></head>
+<body>
+  <header class="scenario-heading"><div><h1>历史仍可发现：offline 不等于 removed</h1><p>同一设备及同一历史消息；Before 为断开后开启 Show offline Sessions，After 为移除后开启拟议历史选项。</p></div><ul class="callouts" aria-label="变化"><li>不丢失归属</li><li>明确已移除、只读</li><li>不提示旧凭据重连</li></ul></header>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title"><header class="state-label"><strong id="before-title">Before</strong><span>Studio laptop · offline · 历史已同步</span></header>
+      <div class="product-surface"><div class="notice">Show offline Sessions: on · All · Group by Device</div><div class="card" style="margin-top:16px"><div class="group-heading"><strong>Studio laptop</strong><span class="badge">offline</span></div><div class="session-row"><strong>Review API changes</strong><p>3 Sessions · Latest: “The review is ready.”</p></div></div><div class="transcript"><strong>Review API changes</strong><p class="meta">Studio laptop · offline</p><p>The review is ready.</p><p class="description">该设备离线，当前无法发送。设备使用有效凭据重新连接后可以再次确认能力。</p><span class="control">Send follow-up（不可用）</span></div></div>
+    </section>
+    <section class="state after" aria-labelledby="after-title"><header class="state-label"><strong id="after-title">After</strong><span>同一历史 · Studio laptop 已移除</span></header>
+      <div class="product-surface"><div class="notice">Show removed Device history: on · All · Group by Device</div><div class="card" style="margin-top:16px"><div class="group-heading"><strong>Studio laptop</strong><span class="badge">removed</span><span class="badge">read-only</span></div><div class="session-row"><strong>Review API changes</strong><p>3 Sessions · Latest: “The review is ready.”</p></div></div><div class="transcript"><strong>Review API changes</strong><p class="meta">Studio laptop · removed · read-only</p><p>The review is ready.</p><p class="description">This Device was removed. Synced history is read-only. To connect this computer again, add a new Device.</p></div><p class="hint">正常 Devices 清单和 New Session 选择器中不再包含此设备。</p></div>
+    </section>
+  </main>
+  <p class="source-note">Before 根据 App.tsx 与 session-list.ts 的离线历史、设备分组和发送能力规则简化；不是源码逐像素截图。After 的历史选项仅说明发现路径，最终筛选布局可调整；不能把“已移除”仅显示为 offline。</p>
+  <script src="../resize.js"></script>
+</body>
+</html>
