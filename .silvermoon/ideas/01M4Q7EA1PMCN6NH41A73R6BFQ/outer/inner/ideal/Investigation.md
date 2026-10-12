@@ -2,9 +2,9 @@
 
 ## 结论摘要
 
-截至 2026-10-12 13:01（UTC+8），匿名公开访问未复现手机或 Teams 告警，因而不能确定根因，也不能将用户报告归类为网站入侵或误报。当前生产 HTML、部署 bundle 与对应 release 源码均未观察到 Cloudflare Web Analytics 的 `beacon.min.js`、`cloudflareinsights` 或 `sendBeacon`；观察到的是 Cloudflare 托管响应中的 Network Error Logging（NEL）响应头，两者不是同一种机制。
+截至 2026-10-12 14:15（UTC+8），匿名公开访问未复现手机或 Teams 告警，因而不能确定根因，也不能将用户报告归类为网站入侵或误报。当前生产 HTML、部署 bundle 与对应 release 源码均未观察到 Cloudflare Web Analytics 的 `beacon.min.js`、`cloudflareinsights` 或 `sendBeacon`；观察到的是 Cloudflare 托管响应中的 Network Error Logging（NEL）响应头，两者不是同一种机制。
 
-域名于 2026-10-06 注册，域名低龄是需要由实际检测产品核对的信誉因素，但注册日期本身不能证明它触发了任何告警。手机浏览器告警、Teams 基础 Malicious URL Protection、Defender Safe Links、ZAP、企业 DLP/端点策略可能使用不同判定与动作，必须以原告警和管理员事件为准，不能互相替代。
+域名于 2026-10-06 注册。微软公开文档将新注册域名列为 SmartScreen 的 URL reputation 因素，并将“过去 30 天注册且尚未归入其他类别”的站点列入 Defender Web Content Filtering 的 Newly registered domains 类别。因此，域名低龄是当前证据支持最强的待查方向，但仍不能证明它触发了手机或 Teams 告警。手机浏览器告警、Teams 基础 Malicious URL Protection、Defender Safe Links、ZAP、企业 DLP/端点策略可能使用不同判定与动作，必须以原告警和管理员事件为准，不能互相替代。
 
 ## 已取得证据
 
@@ -23,6 +23,22 @@
 
 Cloudflare 官方说明：Pages 启用 Web Analytics 后会在后续部署自动注入 analytics beacon；当前生产响应未出现该 beacon。[Pages Web Analytics](https://developers.cloudflare.com/pages/how-to/web-analytics/) 与 [Network Error Logging](https://developers.cloudflare.com/network-error-logging/) 分别描述这两种机制。
 
+### 公共检查与配置观察
+
+本轮先查询既有记录和不会公开页面内容的服务；未向 urlscan、Cloudflare Radar URL Scanner、VirusTotal URL analysis、Sucuri、Mozilla Observatory 或 SecurityHeaders 提交新页面扫描。
+
+| 检查 | 结果 | 证据边界 |
+| --- | --- | --- |
+| SSL Labs Server Test | 非公开结果 `isPublic=false` 已完成；Cloudflare 的两个 IPv4 与两个 IPv6 端点均为 `A`、`hasWarnings=false`。 | 只评估公开 TLS 端点，不检查页面信誉、脚本或企业策略。[SSL Labs API](https://www.ssllabs.com/projects/ssllabs-apis/) |
+| 直接 TLS 握手 | `silvermoon.work` 与 `relay.silvermoon.work` 均协商 TLS 1.3；证书由 Google Trust Services `WE1` 签发，有效期覆盖 2026-10-06 至 2027-01-04。 | 证明调查位置的证书与协议可用，不代表所有检测产品信任该 URL。 |
+| Cloudflare 恶意软件过滤 DNS | `security.cloudflare-dns.com` 返回与普通 Cloudflare DNS 相同的两个 A 记录，而非被拦截域名使用的 `0.0.0.0`。 | 仅说明本次查询未被 Cloudflare 1.1.1.1 for Families 的恶意软件分类阻断，不代表 Google、Microsoft 或企业产品的 verdict。[1.1.1.1 for Families](https://developers.cloudflare.com/1.1.1.1/setup/#1111-for-families) |
+| urlscan 既有记录搜索 | 匿名 Search API 在近 30 天返回 `total=0`；未提交新扫描。 | “无既有记录”不是 clean verdict，也不覆盖私有、unlisted 或更早记录。[urlscan API](https://urlscan.io/docs/api/) |
+| Spamhaus DBL 与 SURBL | 通过当前系统解析器查询均返回 NXDOMAIN，未取得列名响应。 | 只覆盖这两个列表和本次解析路径；不能替代浏览器或 Teams 的信誉数据。 |
+| Google Safe Browsing | Transparency Report 状态端点返回 HTTP `429`，未取得 verdict。 | 限流不是 clean 或 malicious 结果；官方 Lookup API 需要 API key，本次未读取秘密值或另行提交。[Safe Browsing Lookup API](https://developers.google.com/safe-browsing/v4/lookup-api) |
+| Quad9 | 直接 DNS 查询超时，DoH 连接被重置。 | 网络失败，结论为未取得结果，不能按 NXDOMAIN 或放行解释。 |
+| VirusTotal、Norton、FortiGuard、URLhaus | 未登录页面未返回可复核 verdict，或返回 `401`、`403`、超时及 User-Agent 验证页。 | 均记为未取得结果，不能从搜索摘要或页面标题推断站点安全。 |
+| HTTP 安全响应头 | 生产 HTML 有 `X-Content-Type-Options: nosniff` 与 `Referrer-Policy: strict-origin-when-cross-origin`；未观察到 HSTS、CSP、`X-Frame-Options`/`frame-ancestors` 或 `Permissions-Policy`。 | 这是独立的防御加固缺口。微软建议使用 CSP 与安全响应头来降低 SmartScreen 阻断概率，但缺少这些头不能证明本次告警由此触发。 |
+
 ### 手机浏览器
 
 当前只有用户报告，浏览器、系统、告警原文、触发 URL 与时间均未知，不能声称独立复现。Chrome 官方说明 Android 的危险网站警告可由 Google Safe Browsing 对钓鱼、恶意软件、不受欢迎软件或社会工程页面的判断触发；Safari 官方说明 Fraudulent Website Warning 会在疑似钓鱼或恶意软件时使用 Apple、Google Safe Browsing，特定地区还可能使用 Tencent Safe Browsing。具体产品必须由告警界面确认。
@@ -40,6 +56,8 @@ Cloudflare 官方说明：Pages 启用 Web Analytics 后会在后续部署自动
 
 如果实际表现是消息无法发送，还需由管理员排查企业 DLP、条件访问、端点/网络防护或其他消息策略，不能只凭相似文案归因于 Safe Links。[Microsoft Teams Malicious URL Protection](https://learn.microsoft.com/en-us/microsoftteams/malicious-url-protection-teams) 与 [Safe Links](https://learn.microsoft.com/en-us/defender-office-365/safe-links-about) 是当前核对依据。
 
+微软的 [SmartScreen 网站意外阻断排查](https://learn.microsoft.com/en-us/troubleshoot/microsoft-edge/development/unexpected-block-warning) 将新注册域名、恶意历史、托管商和流量列为 URL reputation 维度，也列出页面内容、TLS、用户反馈与动态 JavaScript 行为。其 [Defender Web Content Filtering](https://learn.microsoft.com/en-us/defender-endpoint/web-content-filtering) 文档把过去 30 天注册且尚未归入其他类别的站点列为 Newly registered domains。管理员可在 Defender 中查看域名详情、Microsoft verdict、组织内 prevalence 和关联设备；若没有这些租户数据，不能确认公司侧动作来自哪一项。
+
 ## 假设状态
 
 | 假设 | 当前状态 | 所需证据 |
@@ -47,7 +65,8 @@ Cloudflare 官方说明：Pages 启用 Web Analytics 后会在后续部署自动
 | Cloudflare Web Analytics JavaScript 导致告警 | 本次生产响应不支持；未观察到 beacon。 | 获授权管理员只读核对 Pages Web Analytics 开关及对应部署，不做配置变更。 |
 | Cloudflare NEL 导致告警 | 已观察到 NEL，但无因果证据。 | 实际检测产品给出的 URL 分类、检测名称或事件详情。 |
 | 应用加载其他可疑第三方脚本 | 本次 HTML、bundle 与 release 源码不支持。 | 原告警对应的精确路径与时间；必要时对该公开路径重复同类匿名检查。 |
-| 域名信誉或低龄导致告警 | 合理但未证实；域名注册不足一周。 | 浏览器检测提供方或企业威胁情报中的 verdict、分类、首次/最近判定时间。 |
+| 域名信誉或低龄导致告警 | 当前最强假设但未证实；调查时域名注册约六天，落入微软公开的 30 天 Newly registered domains 定义，且登录型站点可能尚缺少流量与正向信誉。 | Defender URL/domain 页面或实际浏览器检测提供方中的 verdict、分类、组织内 prevalence、首次/最近判定时间。 |
+| 缺少 CSP 等安全响应头影响信誉 | 可作为次要加固因素；微软公开建议包含 CSP 与安全响应头，但无本次因果证据。 | 实际 SmartScreen/Defender verdict；若后续获批加固，分别比较响应头与原环境复验结果。 |
 | 企业策略而非公共信誉导致 Teams 动作 | 合理但未证实。 | Teams/Defender/DLP 管理员确认实际功能、策略或事件 ID。 |
 | 两处告警是同一根因 | 未知。 | 两处告警分别确认检测产品、精确 URL、时间与 verdict 后再比对。 |
 
@@ -57,8 +76,9 @@ Cloudflare 官方说明：Pages 启用 Web Analytics 后会在后续部署自动
 
 1. 手机端的浏览器名称与版本、系统、完整告警原文、显示的检测/帮助链接、发生时间，以及去掉查询参数和片段后的 `scheme + host + path`。截图应遮盖账号、通知、公司信息和其他页面内容。
 2. Teams 的客户端类型与版本、完整提示和时间、去掉查询参数和片段后的 URL；若消息未发送，记录是发送按钮不可用、发送后回退，还是服务端提示拒绝。
-3. 企业管理员只读核对 Teams Messaging safety、Defender Safe Links/ZAP、DLP 或端点事件，返回功能名称、verdict/分类、策略或事件 ID、检测时间；不要关闭保护或加入普遍信任列表。
+3. 企业管理员只读搜索 `silvermoon.work` 与实际触发路径，记录 Defender 的 Microsoft verdict、URL category、组织内 prevalence、关联设备/事件，并核对 Teams Messaging safety、Safe Links/ZAP、DLP 或端点策略；不要关闭保护、提交分析或加入普遍信任列表。
 4. 获授权的 Cloudflare 管理员只读核对 Pages Web Analytics、Workers/Transform Rules 与相同时间附近的安全事件；不得改变生产设置。
+5. 若届时仍无确切告警，可在 2026-11-05 之后复查原环境与管理员分类。该时间仅对应注册满 30 天；分类刷新可能延迟，也可能因其他风险维度继续保留，不能把自然等待当作修复。
 
 若检测产品确认误报，可由对应管理员或站点所有者向该产品的官方渠道提交以下去敏说明，提交前仍需用户明确授权：
 
@@ -66,4 +86,4 @@ Cloudflare 官方说明：Pages 启用 Web Analytics 后会在后续部署自动
 
 ## 方向判断
 
-当前不应修改产品代码、Cloudflare、DNS 或企业策略。下一阶段先以原告警和管理员 verdict 确定检测来源；只有证据指向站点资源或配置时才实施最小修复，否则由对应信誉服务或企业管理员处理，并分别在原手机与原 Teams 环境复验。
+当前不应仅因公共列表未命中而修改产品代码、Cloudflare、DNS 或企业策略。下一阶段优先取得企业管理员的 Microsoft verdict 与原告警信息，并在域名满 30 天后复查分类；只有证据指向站点资源或配置时才实施最小修复。CSP、HSTS 与 frame 限制可作为独立加固候选，但不得冒充告警根因或修复证明。外部信誉或策略问题应由对应服务或企业管理员处理，并分别在原手机与原 Teams 环境复验。
