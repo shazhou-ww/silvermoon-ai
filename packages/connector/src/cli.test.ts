@@ -19,23 +19,22 @@ describe("connector CLI configuration", () => {
     });
   });
 
-  it("uses direct token, explicit options, and environment before profile", async () => {
+  it("uses direct token and explicit Relay options before profile", async () => {
     const directory = await mkdtemp(join(tmpdir(), "silvermoon-cli-"));
     const profilePath = join(directory, "connector.yaml");
     await writeProfile({
       version: 1,
       relay: "https://profile.example.com",
       token: "profile-token",
-      options: { model: "profile-model" },
+      options: { workingDirectory: "profile-directory" },
     }, profilePath);
     const parsed = parseCliOptions([
       "--config",
       profilePath,
       "--relay",
       "https://argument.example.com",
-      "--model",
-      "argument-model",
-      "--approve-all",
+      "--working-directory",
+      "argument-directory",
     ]);
     if ("help" in parsed) throw new Error("Unexpected help result.");
     await expect(resolveCliOptions(parsed, {
@@ -44,8 +43,7 @@ describe("connector CLI configuration", () => {
     })).resolves.toMatchObject({
       relayUrl: "https://argument.example.com",
       token: "environment-token",
-      model: "argument-model",
-      approveAllPermissions: true,
+      workingDirectory: "argument-directory",
     });
   });
 
@@ -81,5 +79,13 @@ describe("connector CLI configuration", () => {
     await expect(resolveCliOptions(parsed, {
       SILVERMOON_CONNECTOR_ID: "legacy",
     })).rejects.toThrow("SILVERMOON_CONNECTOR_ID is no longer supported");
+  });
+
+  it("rejects removed Copilot SDK options", () => {
+    for (const option of ["--copilot-home", "--model", "--approve-all"]) {
+      expect(() => parseCliOptions([option, "value"])).toThrow(
+        `Unknown option: ${option}`,
+      );
+    }
   });
 });

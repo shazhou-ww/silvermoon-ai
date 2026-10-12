@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   ActionType,
   ChatInputAnswerState,
@@ -13,6 +14,7 @@ import {
   MessageKind,
   PendingMessageKind,
   ResponsePartKind,
+  SessionLifecycle,
   chatReducer,
   sessionReducer,
   type ChatAction,
@@ -43,9 +45,8 @@ import type {
   SessionStatus,
 } from "@silvermoon-ai/protocol";
 import WebSocket from "ws";
-import type { AgentAdapterEvent } from "./adapter.js";
+import type { AgentAdapter, AgentAdapterEvent } from "./adapter.js";
 import { NativeStateUnconfirmedError } from "./adapter.js";
-import type { AgentHostSessionProvider } from "./agent-host-provider.js";
 
 const ROOT_CHANNEL = "ahp-root://";
 const REGISTRY_SCHEMA_VERSION = 2;
@@ -78,6 +79,7 @@ export interface AgentHostEndpointMetadata {
 
 export interface VsCodeAgentHostProviderOptions {
   userDataDirectory?: string;
+  workingDirectory?: string;
   refreshIntervalMs?: number;
   log?: (message: string) => void;
 }
@@ -1327,6 +1329,35 @@ class AgentHostConnection {
     );
   }
 
+  async createSession(input: {
+    prompt: string;
+    title?: string;
+    workingDirectoryUri?: string;
+  }): Promise<string> {
+    const resource = `ahp-session:/${randomUUID()}`;
+    await this.client.request("createSession", {
+      channel: resource,
+      provider: COPILOT_PROVIDER,
+      ...(input.workingDirectoryUri
+        ? { workingDirectories: [input.workingDirectoryUri] }
+        : {}),
+    });
+    const session = await this.waitForReadySession(resource);
+    if (input.title) {
+      await this.dispatchSessionAction(session, {
+        type: ActionType.SessionTitleChanged,
+        title: input.title,
+      });
+    }
+    await this.sendMessage(
+      sessionIdFromResource(resource) ?? resource,
+      resource,
+      input.prompt,
+    );
+    await this.refreshCatalog(false);
+    return resource;
+  }
+
   supportsArchive(chat: boolean): boolean {
     const version = /^(\d+)\.(\d+)\.(\d+)$/u.exec(this.entry.protocolVersion);
     if (!version) return false;
@@ -1347,15 +1378,8 @@ class AgentHostConnection {
       }
     } else {
       const session = await this.ensureSession(resource);
-      const sequence = this.nextClientSequence++;
       const action: SessionAction = { type: ActionType.SessionIsArchivedChanged, isArchived: archived };
-      const acknowledgement = session.dispatches.wait(sequence, action.type);
-      try {
-        this.client.dispatch(resource, action, sequence);
-      } catch (error) {
-        session.dispatches.reject(sequence, error instanceof Error ? error : new Error(String(error)));
-      }
-      await acknowledgement;
+      await this.dispatchSessionAction(session, action);
       if (isArchivedStatus(session.state.status) !== archived) {
         throw new Error("Agent Host did not confirm the requested Session archive state.");
       }
@@ -1446,6 +1470,41 @@ class AgentHostConnection {
     });
     this.sessionChannels.set(resource, pending);
     return pending;
+  }
+
+  private async waitForReadySession(resource: string): Promise<TrackedSession> {
+    const session = await this.ensureSession(resource);
+    const deadline = Date.now() + AHP_REQUEST_TIMEOUT_MS;
+    while (session.state.lifecycle === SessionLifecycle.Creating) {
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for Agent Host session creation: ${resource}`);
+      }
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+    }
+    if (session.state.lifecycle === SessionLifecycle.Failed) {
+      throw new Error(
+        session.state.creationError?.message
+          ?? `Agent Host session creation failed: ${resource}`,
+      );
+    }
+    return session;
+  }
+
+  private async dispatchSessionAction(
+    session: TrackedSession,
+    action: SessionAction,
+  ): Promise<void> {
+    const sequence = this.nextClientSequence++;
+    const acknowledgement = session.dispatches.wait(sequence, action.type);
+    try {
+      this.client.dispatch(session.resource, action, sequence);
+    } catch (error) {
+      session.dispatches.reject(
+        sequence,
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
+    await acknowledgement;
   }
 
   private async openSession(resource: string): Promise<TrackedSession> {
@@ -1844,13 +1903,24 @@ class AgentHostConnection {
   }
 }
 
-export class VsCodeAgentHostProvider implements AgentHostSessionProvider {
+export class VsCodeAgentHostProvider implements AgentAdapter {
+  readonly agent = {
+    name: "GitHub Copilot via Agent Host",
+  } as const;
+  readonly capabilities = {
+    setNativeArchive: true,
+    listSessions: true,
+    createSession: true,
+    sendMessage: true,
+    streamEvents: true,
+  } as const;
   private readonly listeners = new Set<
     (event: AgentAdapterEvent) => void
   >();
   private readonly connections = new Map<string, AgentHostConnection>();
   private readonly sessions = new Map<string, HostedSessionBinding>();
   private readonly userDataDirectory: string;
+  private readonly workingDirectoryUri: string | undefined;
   private readonly refreshIntervalMs: number;
   private readonly log: (message: string) => void;
   private refreshPromise: Promise<void> | null = null;
@@ -1862,6 +1932,9 @@ export class VsCodeAgentHostProvider implements AgentHostSessionProvider {
     this.userDataDirectory = resolveVsCodeUserDataDirectory(
       options.userDataDirectory,
     );
+    this.workingDirectoryUri = options.workingDirectory
+      ? pathToFileURL(resolve(options.workingDirectory)).href
+      : undefined;
     this.refreshIntervalMs = options.refreshIntervalMs
       ?? DEFAULT_REFRESH_INTERVAL_MS;
     this.log = options.log ?? ((message) => console.error(message));
@@ -1869,6 +1942,7 @@ export class VsCodeAgentHostProvider implements AgentHostSessionProvider {
 
   async listSessions(): Promise<AgentSession[]> {
     await this.refresh(this.initialized);
+    this.requireAvailableHost();
     this.initialized = true;
     this.startRefreshTimer();
     return [...this.sessions.values()]
@@ -1876,6 +1950,26 @@ export class VsCodeAgentHostProvider implements AgentHostSessionProvider {
       .sort((left, right) =>
         Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
       );
+  }
+
+  async createSession(input: {
+    prompt: string;
+    title?: string;
+  }): Promise<AgentSession> {
+    await this.refresh(true);
+    const connection = this.requireSingleCreateHost();
+    const resource = await connection.createSession({
+      ...input,
+      workingDirectoryUri: this.workingDirectoryUri,
+    });
+    await connection.refreshCatalog(false);
+    this.rebuildSessions(true);
+    const sessionId = sessionIdFromResource(resource);
+    const created = sessionId ? this.sessions.get(sessionId)?.session : undefined;
+    if (!created) {
+      throw new Error(`Created Agent Host session is missing from inventory: ${resource}`);
+    }
+    return created;
   }
 
   hasSession(sessionId: string): boolean {
@@ -1952,6 +2046,22 @@ export class VsCodeAgentHostProvider implements AgentHostSessionProvider {
       });
     }, this.refreshIntervalMs);
     this.refreshTimer.unref();
+  }
+
+  private requireAvailableHost(): void {
+    if (this.connections.size === 0) {
+      throw new Error("No compatible VS Code Agent Host is available.");
+    }
+  }
+
+  private requireSingleCreateHost(): AgentHostConnection {
+    this.requireAvailableHost();
+    if (this.connections.size !== 1) {
+      throw new Error(
+        "Session creation requires exactly one compatible VS Code Agent Host.",
+      );
+    }
+    return this.connections.values().next().value as AgentHostConnection;
   }
 
   private async requireSession(

@@ -9,7 +9,6 @@ const consumer = resolve(process.argv[2]);
 const require = createRequire(resolve(consumer, "package.json"));
 const connector = await import(pathToFileURL(require.resolve("@silvermoon-ai/connector")).href);
 assert.equal(typeof connector.SilvermoonConnector, "function");
-assert.equal(typeof connector.CopilotAgentAdapter, "function");
 assert.equal(typeof connector.VsCodeAgentHostProvider, "function");
 await import(pathToFileURL(require.resolve("@silvermoon-ai/connector/adapter")).href);
 const manifest = JSON.parse(await readFile(
@@ -32,4 +31,4 @@ execFileSync(process.execPath, [
   "--noEmit", "--strict", "--skipLibCheck", "--module", "NodeNext", "--moduleResolution", "NodeNext",
   "--target", "ES2022", "--lib", "ES2022,ESNext.Disposable", "--types", "node", "smoke.mts",
 ], { cwd: consumer, stdio: "inherit" });
-console.log("Clean consumer smoke passed: CLI, both runtime exports and public declarations.");
+console.log("Clean consumer smoke passed: CLI, AHP runtime exports and public declarations.");

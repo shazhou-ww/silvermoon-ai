@@ -22,10 +22,7 @@ const profileSchema = z.object({
   token: z.string().trim().min(1),
   options: z.object({
     workingDirectory: z.string().min(1).optional(),
-    copilotHome: z.string().min(1).optional(),
     vscodeUserDataDirectory: z.string().min(1).optional(),
-    model: z.string().min(1).optional(),
-    approveAllPermissions: z.boolean().optional(),
   }).strict().optional(),
 }).strict();
 

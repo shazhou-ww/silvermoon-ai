@@ -12,7 +12,7 @@ describe("connector profile", () => {
       version: 1,
       relay: "https://relay.example.com",
       token: "secret-token",
-      options: { approveAllPermissions: false },
+      options: { workingDirectory: "." },
     }, path);
     if (process.platform !== "win32") {
       expect((await stat(path)).mode & 0o777).toBe(0o600);

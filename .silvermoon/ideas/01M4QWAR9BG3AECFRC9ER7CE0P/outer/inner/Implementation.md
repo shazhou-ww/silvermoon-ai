@@ -20,10 +20,16 @@
 
 自动化测试证明 list 与所有命令只使用 AHP Session 身份；相同逻辑工作不会再因 SDK metadata 产生第二条新 Session。
 
+证明见 [Implementation-Evidence.md](./Implementation-Evidence.md)：真实 AHP wire fixture 覆盖 create、title、首条消息与 inventory，package 源码及 tarball 均无 SDK adapter。
+
 ### I-AC02: 完整能力与显式失败
 
 测试覆盖 create、send、history、status、event、input 与 archive；Agent Host 断开或目标 URI 缺失时得到明确 offline/error，且没有 SDK fallback。
 
+既有 Agent Host mapping/history/input/archive 测试与新增 unavailable/multi-Host create 测试共同覆盖；无 Host 不再返回空成功。
+
 ### I-AC03: 依赖与兼容性收敛
 
 Connector manifest、源码和构建产物不再引用 Copilot SDK；connector、protocol、worker 与 web 的针对性测试通过，既有 Relay 数据未被迁移或删除。
+
+pnpm lockfile、发布 tarball 与 clean-consumer smoke 已验证依赖和公开导出收敛；本次没有 Worker migration 或生产数据写入。

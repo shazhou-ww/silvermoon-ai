@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { CopilotAgentAdapter } from "./copilot-adapter.js";
 import {
   defaultProfilePath,
   readProfile,
@@ -9,16 +8,14 @@ import {
   type ConnectorProfile,
 } from "./config.js";
 import { SilvermoonConnector } from "./connector.js";
+import { VsCodeAgentHostProvider } from "./vscode-agent-host-provider.js";
 
 interface ParsedCliOptions {
   relayUrl?: string;
   tokenFile?: string;
   profilePath: string;
   workingDirectory?: string;
-  copilotHome?: string;
   vscodeUserDataDirectory?: string;
-  model?: string;
-  approveAllPermissions?: boolean;
   writeConfig: boolean;
 }
 
@@ -27,16 +24,13 @@ export interface CliOptions {
   token: string;
   profilePath: string;
   workingDirectory?: string;
-  copilotHome?: string;
   vscodeUserDataDirectory?: string;
-  model?: string;
-  approveAllPermissions: boolean;
   writeConfig: boolean;
 }
 
 export const HELP = `silvermoon-connector
 
-Expose local GitHub Copilot sessions through Silvermoon Relay.
+Expose local Agent Host sessions through Silvermoon Relay.
 
 Usage:
   silvermoon-connector [options]
@@ -46,28 +40,23 @@ Options:
   --token-file <path>          Read the relay connection token from a file
   --config <path>              Connector profile (default: ~/.silvermoon/connector.yaml)
   --write-config               Atomically save the resolved settings and exit
-  --working-directory <path>   Default working directory for Copilot sessions
-  --copilot-home <path>        Override Copilot session/config storage
+  --working-directory <path>   Working directory for new Agent Host sessions
   --vscode-user-data-dir <path>
                                Override the VS Code user-data directory
-  --model <model>              Default model (SDK default: auto)
-  --approve-all                Auto-approve Copilot permission requests
   --help                       Show this help
 
 Environment:
   SILVERMOON_CONNECTION_TOKEN
   SILVERMOON_CONNECTION_TOKEN_FILE
   SILVERMOON_RELAY_URL
-  SILVERMOON_COPILOT_HOME
-  SILVERMOON_COPILOT_MODEL
   SILVERMOON_VSCODE_USER_DATA_DIR
 
 Token priority is SILVERMOON_CONNECTION_TOKEN, an explicit token file, then
 the profile. Explicit options and environment variables override profile
 settings. Device identity and display name are managed by Relay from the token;
 legacy --id, --display-name, and SILVERMOON_CONNECTOR_ID are not accepted.
-Relay and Agent Host tokens are never printed. --approve-all enables remote
-tool side effects; omit it unless this connector runs in a trusted environment.
+Relay and Agent Host tokens are never printed. Agent permissions are managed
+by the Agent Host and its owning client.
 `;
 
 function takeValue(args: string[], index: number, option: string): string {
@@ -83,14 +72,9 @@ export function parseCliOptions(
 ): ParsedCliOptions | { help: true } {
   if (argv.includes("--help") || argv.includes("-h")) return { help: true };
   const values = new Map<string, string>();
-  let approveAllPermissions: boolean | undefined;
   let writeConfig = false;
   for (let index = 0; index < argv.length; index += 1) {
     const option = argv[index];
-    if (option === "--approve-all") {
-      approveAllPermissions = true;
-      continue;
-    }
     if (option === "--write-config") {
       writeConfig = true;
       continue;
@@ -105,9 +89,7 @@ export function parseCliOptions(
       "--token-file",
       "--config",
       "--working-directory",
-      "--copilot-home",
       "--vscode-user-data-dir",
-      "--model",
     ].includes(option)) {
       throw new Error(`Unknown option: ${option}`);
     }
@@ -119,10 +101,7 @@ export function parseCliOptions(
     tokenFile: values.get("--token-file"),
     profilePath: values.get("--config") ?? defaultProfilePath(),
     workingDirectory: values.get("--working-directory"),
-    copilotHome: values.get("--copilot-home"),
     vscodeUserDataDirectory: values.get("--vscode-user-data-dir"),
-    model: values.get("--model"),
-    approveAllPermissions,
     writeConfig,
   };
 }
@@ -161,18 +140,9 @@ export async function resolveCliOptions(
     profilePath: parsed.profilePath,
     workingDirectory: parsed.workingDirectory
       ?? profile?.options?.workingDirectory,
-    copilotHome: parsed.copilotHome
-      ?? environment.SILVERMOON_COPILOT_HOME
-      ?? profile?.options?.copilotHome,
     vscodeUserDataDirectory: parsed.vscodeUserDataDirectory
       ?? environment.SILVERMOON_VSCODE_USER_DATA_DIR
       ?? profile?.options?.vscodeUserDataDirectory,
-    model: parsed.model
-      ?? environment.SILVERMOON_COPILOT_MODEL
-      ?? profile?.options?.model,
-    approveAllPermissions: parsed.approveAllPermissions
-      ?? profile?.options?.approveAllPermissions
-      ?? false,
     writeConfig: parsed.writeConfig,
   };
 }
@@ -186,13 +156,8 @@ function profileFromOptions(options: CliOptions): ConnectorProfile {
       ...(options.workingDirectory
         ? { workingDirectory: options.workingDirectory }
         : {}),
-      ...(options.copilotHome ? { copilotHome: options.copilotHome } : {}),
       ...(options.vscodeUserDataDirectory
         ? { vscodeUserDataDirectory: options.vscodeUserDataDirectory }
-        : {}),
-      ...(options.model ? { model: options.model } : {}),
-      ...(options.approveAllPermissions
-        ? { approveAllPermissions: true }
         : {}),
     },
   };
@@ -210,12 +175,9 @@ async function main(): Promise<void> {
     process.stdout.write(`Saved connector profile to ${options.profilePath}.\n`);
     return;
   }
-  const adapter = new CopilotAgentAdapter({
+  const adapter = new VsCodeAgentHostProvider({
     workingDirectory: options.workingDirectory,
-    baseDirectory: options.copilotHome,
-    vscodeUserDataDirectory: options.vscodeUserDataDirectory,
-    model: options.model,
-    approveAllPermissions: options.approveAllPermissions,
+    userDataDirectory: options.vscodeUserDataDirectory,
     log: (message) => process.stderr.write(`${message}\n`),
   });
   const connector = new SilvermoonConnector({

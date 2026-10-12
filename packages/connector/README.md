@@ -1,9 +1,9 @@
 # Silvermoon Connector
 
-`silvermoon-connector` exposes GitHub Copilot sessions on one device through
-Silvermoon Relay. It uses the official `@github/copilot-sdk` for persisted
-Copilot sessions and the official Agent Host Protocol (AHP) for live sessions
-owned by VS Code. It does not invoke or depend on the Silvermoon CLI.
+`silvermoon-connector` exposes Agent Host sessions on one device through
+Silvermoon Relay. Agent Host Protocol (AHP) is the only Session inventory,
+identity and operation control plane. The Connector does not invoke the
+Copilot SDK or depend on the Silvermoon CLI.
 
 Connector and relay communicate through a typed tRPC router over one
 authenticated WebSocket:
@@ -16,13 +16,8 @@ authenticated WebSocket:
 ## Requirements
 
 - Node.js 22.12 or newer
-- A locally authenticated GitHub Copilot account
+- VS Code with a compatible Agent Host and an authenticated agent provider
 - A connection token created in the Silvermoon Relay Web UI
-- VS Code with Agent Host support when live editor sessions should be exposed
-
-The Copilot SDK includes its verified platform runtime when available. Set
-`COPILOT_CLI_PATH` only when an existing Copilot CLI installation should be
-used instead.
 
 For the end-user sign-in, device setup, and Session workflow, start with the
 [Relay quick start](../../README.md#quick-start).
@@ -55,7 +50,7 @@ this capability. Stop the older Connector before starting `0.2.1` with the
 same secure profile; do not run two with the same token. Native integration
 was verified on VS Code `1.141.0` / AHP `0.10.0`.
 Both Connector-level support and a current Session-level native state must be
-confirmed. SDK-only Sessions and incompatible Agent Hosts are unsupported.
+confirmed. Incompatible Agent Hosts are unsupported.
 
 Parent Sessions (including their default chat) dispatch
 `session/isArchivedChanged` to the Session resource. Independent child chats
@@ -85,7 +80,7 @@ that file:
 npx --yes @silvermoon-ai/connector@0.2.1 --working-directory .
 ```
 
-Run from the project directory for new Copilot sessions and keep the terminal
+Run from the project directory for new Agent Host sessions and keep the terminal
 open. No token is needed on the command line. Do not run two connectors with
 the same token at once.
 
@@ -150,11 +145,6 @@ This is a development path, not a prerequisite for using the npm release.
 Relay tokens are sent only in the WebSocket `Authorization` header and are
 never printed or included in connector logs.
 
-The SDK uses the local GitHub Copilot authentication available to the user.
-`--approve-all` allows remotely initiated sessions to approve every Copilot
-permission request. This enables unattended tool execution and local side
-effects, so it is intentionally opt-in.
-
 The connector automatically reads the current user's VS Code Agent Host
 endpoint registry and connects to compatible AHP 0.10 or 1.x hosts. Run the
 connector as the same operating-system user as VS Code. For a portable or
@@ -165,8 +155,9 @@ Agent Host endpoint tokens stay in connector memory, are used only for the
 local WebSocket upgrade, and are never printed or persisted by the connector.
 The live provider exposes the default chat for history and follow-up messages.
 When that chat is already running, follow-up text is queued behind the active
-turn; otherwise it starts a new turn. If VS Code disconnects, sessions that
-also exist in SDK storage fall back to their persisted metadata.
+turn; otherwise it starts a new turn. If VS Code disconnects, the Connector
+reports Agent Host unavailability and never switches to another Session
+namespace.
 
 ## Reconnection and state confirmation
 
@@ -199,11 +190,9 @@ heartbeats/reconnect without resending the operation. Results not observed,
 or lost through a connector process restart, are not fabricated.
 
 Adapters should explicitly return `canSendMessage` and
-`executionStateKnown` for each Session. A readable persisted SDK catalog
-confirms that the adapter can attempt continuation, not that the agent is
-currently idle. Such Sessions have unknown execution state until a trustworthy
-status observation is available. Explicit continuation can fail and reports
-that failure normally. Read-only Agent Host Sessions remain read-only.
+`executionStateKnown` for each Session. Agent Host is authoritative for both;
+read-only Sessions remain read-only, and unavailable hosts fail inventory or
+commands explicitly instead of returning an empty or SDK-backed success.
 
 Use the updated Relay with migration
 [`0010_session_confirmation.sql`](../../apps/worker/migrations/0010_session_confirmation.sql). Legacy
@@ -213,7 +202,6 @@ remote messages without confirmation.
 
 ## Embed
 
-The package exports `CopilotAgentAdapter`, `VsCodeAgentHostProvider`,
-`SilvermoonConnector`, and the generic `AgentAdapter` and
-`AgentHostSessionProvider` contracts for embedding a connector in another
-local process or adding another agent implementation later.
+The package exports `VsCodeAgentHostProvider`, `SilvermoonConnector`, and the
+generic `AgentAdapter` contract for embedding a connector in another local
+process or adding another agent implementation later.

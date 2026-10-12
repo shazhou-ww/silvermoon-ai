@@ -63,3 +63,7 @@
 - 未修改 connector、Relay、Web 或生产数据。
 - 未提交本机 Agent Host endpoint、连接 token、完整目录 dump 或用户消息。
 - 此证据不把协议缺口解释为可以采用启发式去重或 SDK fallback 的授权。
+
+删除前的并行来源实现可在 primary `693a1e40bdf5` 的
+[`copilot-adapter.ts`](https://github.com/shazhou-ww/silvermoon-ai/blob/693a1e40bdf51116b0581185cfa7708f2f033181/packages/connector/src/copilot-adapter.ts)
+中复核；当前实现不再保留该运行时文件。

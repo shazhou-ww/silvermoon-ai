@@ -1,6 +1,6 @@
 # Silvermoon Relay
 
-Access GitHub Copilot Sessions on your own devices from a browser.
+Access Agent Host Sessions on your own devices from a browser.
 [Open Silvermoon Relay](https://silvermoon.work).
 
 When work is running on another computer, Relay gives you one place to find
@@ -12,12 +12,12 @@ browser.
 ## When to use it
 
 - Check an agent's progress from another computer or a phone.
-- Find and continue Copilot Sessions across your connected devices.
-- Start a new Copilot Session on an online device without opening a terminal
+- Find and continue VS Code Agent Host Sessions across your connected devices.
+- Start a new Agent Host Session on an online device without opening a terminal
   on that device again.
-- Follow supported live VS Code Sessions alongside saved Copilot Sessions.
-  Live discovery requires VS Code with Agent Host support; not every editor
-  chat is exposed or writable.
+- Follow supported live VS Code Sessions through Agent Host Protocol (AHP).
+  VS Code with Agent Host support must be running; not every editor chat is
+  exposed or writable.
 
 Relay does not keep a sleeping or disconnected device running. Messages and
 Session activity are sent to the Relay service so you can view them remotely;
@@ -31,13 +31,12 @@ open a Session**. You do not need to clone this repository.
 ### 1. Prepare the device that will run your agent
 
 - Install **Node.js 22.12 or newer**, with npm/npx available.
-- Authenticate GitHub Copilot locally as the operating-system user who will
-  run the Connector. If you have not done this, follow GitHub's
-  [Copilot CLI quickstart](https://docs.github.com/en/copilot/get-started/cli-quickstart)
-  and complete `/login` in the CLI. You need an account allowed to use Copilot.
-  Signing into Relay in a browser does **not** sign the local agent into Copilot.
+- Sign into the agent provider in VS Code as the operating-system user who will
+  run the Connector. Signing into Relay in a browser does **not** authenticate
+  the local Agent Host or its providers.
 - Keep this device awake, online, and able to reach the Relay service. For
-  live VS Code Sessions, run VS Code and the Connector as the same user.
+  Sessions, run VS Code with Agent Host support and the Connector as the same
+  user.
 
 The commands below use the public npm package
 [`@silvermoon-ai/connector`](https://www.npmjs.com/package/@silvermoon-ai/connector),
@@ -102,7 +101,7 @@ the profile, so remove stale overrides before starting.
 ### 4. Start the Connector
 
 In a terminal on the agent's device, change to the project directory you
-want new Copilot Sessions to use, then run:
+want new Agent Host Sessions to use, then run:
 
 ```powershell
 npx --yes @silvermoon-ai/connector@0.2.1 --working-directory .
@@ -112,10 +111,8 @@ Keep this terminal running. In Relay, check **Settings > Devices** for the
 device to become **online**, then choose **Back to Sessions**. Use **Ctrl+C**
 in the terminal when you want to stop the Connector.
 
-Do not add `--approve-all` just to get started. It automatically approves
-Copilot permission requests for Connector-managed Sessions, allowing remote
-instructions to run tools and change local files. It is an explicit opt-in
-for a trusted environment, not a requirement for connecting a device.
+Agent permissions and confirmations remain owned by Agent Host and its active
+clients. The Connector does not auto-approve permission requests.
 
 ### 5. Open or start a Session
 
@@ -159,9 +156,9 @@ are reachable through **Show completed** without also enabling **Show ended**.
 For supported live Agent Host Sessions, these actions request VS Code's native
 **Done / Restore** (archive/unarchive), not an independent Relay marker.
 They require an online Device, an upgraded Connector advertising native archive
-capability, and a current confirmed Session. Published older Connectors and
-SDK-only Sessions do not support these actions; Relay disables them rather than
-silently falling back to a local marker. Native confirmation, not delivery,
+capability, and a current confirmed Session. Published older Connectors and legacy Sessions without native capability do
+not support these actions; Relay disables them rather than silently falling
+back to a local marker. Native confirmation, not delivery,
 determines success. Rejection is shown as failure; disconnection or timeout is
 unconfirmed and is never automatically replayed. Refresh to reconcile state.
 
@@ -209,8 +206,8 @@ inspect local work before repeating them.
 
 ## If something is not ready
 
-- **Device stays offline:** check the Connector terminal for errors, local
-  Copilot authentication, network access, and token expiry. Keep only one
+- **Device stays offline:** check the Connector terminal for errors, Agent
+  Host availability, network access, and token expiry. Keep only one
   Connector running per token.
 - **Token was lost or exposed:** in **Settings > Devices**, use **Rotate token**
   and securely configure the Connector with the new profile. Use **Revoke**

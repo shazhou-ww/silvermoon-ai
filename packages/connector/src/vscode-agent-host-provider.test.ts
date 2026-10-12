@@ -850,7 +850,9 @@ describe("VS Code Agent Host discovery", () => {
         join(entries, endpointFileName(entry)),
         JSON.stringify(entry),
       );
-      await expect(provider.listSessions()).resolves.toEqual([]);
+      await expect(provider.listSessions()).rejects.toThrow(
+        "No compatible VS Code Agent Host is available.",
+      );
       expect(logs.join("\n")).not.toContain(token);
       expect(logs).toContainEqual(
         expect.stringContaining("Could not connect to Agent Host"),

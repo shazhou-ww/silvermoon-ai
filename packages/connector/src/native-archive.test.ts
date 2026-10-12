@@ -158,8 +158,9 @@ describe("native Done / Restore Agent Host wire integration", () => {
   it("does not claim native capability for an incompatible old Agent Host", async () => {
     const test = await fixture("0.8.0");
     try {
-      const sessions = await test.provider.listSessions();
-      expect(sessions).toEqual([]);
+      await expect(test.provider.listSessions()).rejects.toThrow(
+        "No compatible VS Code Agent Host is available.",
+      );
       await expect(test.provider.setSessionArchived({ sessionId: "native-parent", archived: true })).rejects.toThrow();
       expect(test.dispatches).toHaveLength(0);
     } finally { await test.close(); }

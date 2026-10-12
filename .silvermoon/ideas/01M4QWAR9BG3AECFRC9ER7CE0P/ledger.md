@@ -4,15 +4,15 @@
 
 ### Implementation steps
 
-- [ ] **I-S01:** 将 AHP provider 提升为完整 adapter
-- [ ] **I-S02:** 移除 Copilot SDK 控制面
-- [ ] **I-S03:** 固化 Relay 兼容性与旧数据边界
+- [x] **I-S01:** 将 AHP provider 提升为完整 adapter
+- [x] **I-S02:** 移除 Copilot SDK 控制面
+- [x] **I-S03:** 固化 Relay 兼容性与旧数据边界
 
 ### Implementation acceptance criteria
 
-- [ ] **I-AC01:** 单一 AHP 身份
-- [ ] **I-AC02:** 完整能力与显式失败
-- [ ] **I-AC03:** 依赖与兼容性收敛
+- [x] **I-AC01:** 单一 AHP 身份
+- [x] **I-AC02:** 完整能力与显式失败
+- [x] **I-AC03:** 依赖与兼容性收敛
 
 ## Deployment
 
