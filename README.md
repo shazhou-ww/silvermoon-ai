@@ -190,3 +190,8 @@ inspect local work before repeating them.
 
 For other configuration options and troubleshooting, see the
 [Connector guide](./packages/connector/README.md).
+
+## Maintainers
+
+For tag-triggered Connector publication, npm Trusted Publisher setup and
+release validation, see [npm package releases](./docs/npm-package-releases.md).

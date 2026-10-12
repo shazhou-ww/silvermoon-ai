@@ -11,7 +11,8 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "dev": "pnpm --parallel --filter @silvermoon-ai/web --filter @silvermoon-ai/worker dev",
     "lint": "oxlint .",
-    "test": "pnpm -r --if-present test",
+    "test": "pnpm test:release && pnpm -r --if-present test",
+    "test:release": "node --test scripts/npm-release.test.mjs",
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {

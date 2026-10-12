@@ -1,0 +1,108 @@
+name: Publish npm package
+
+on:
+  push:
+    tags:
+      - "npm/**"
+
+permissions: {}
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Refresh and verify primary ancestry
+        run: |
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor HEAD refs/remotes/origin/main; then
+            echo "::error::Release commit must be reachable from refreshed origin/main."
+            exit 1
+          fi
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
+          package-manager-cache: false
+
+      - name: Install trusted-publishing npm
+        run: npm install --global npm@11.6.2
+
+      - name: Validate tag, manifest and registry availability
+        id: release
+        run: node scripts/npm-release.mjs plan "$RELEASE_TAG"
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test release contracts
+        run: node --test scripts/npm-release.test.mjs
+
+      - name: Validate and build connector dependency graph
+        run: |
+          pnpm lint
+          pnpm --filter @silvermoon-ai/connector... typecheck
+          pnpm --filter @silvermoon-ai/connector... --if-present test
+          pnpm --filter @silvermoon-ai/connector... build
+
+      - name: Pack and verify the publication candidate
+        id: package
+        env:
+          PACKAGE_DIRECTORY: ${{ steps.release.outputs.package_directory }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/npm-artifacts"
+          npm pack "./$PACKAGE_DIRECTORY" --ignore-scripts --json \
+            --pack-destination "$RUNNER_TEMP/npm-artifacts" > "$RUNNER_TEMP/npm-pack.json"
+          node scripts/npm-release.mjs verify-pack \
+            "$RELEASE_TAG" "$RUNNER_TEMP/npm-pack.json" "$RUNNER_TEMP/npm-artifacts"
+
+      - name: Smoke test outside the monorepo
+        env:
+          TARBALL: ${{ steps.package.outputs.tarball }}
+        run: |
+          CONSUMER="$(mktemp -d "$RUNNER_TEMP/npm-consumer.XXXXXX")"
+          trap 'rm -rf "$CONSUMER"' EXIT
+          cd "$CONSUMER"
+          npm init --yes
+          npm install --ignore-scripts --no-audit --no-fund "$TARBALL"
+          npm install --save-dev --ignore-scripts --no-audit --no-fund @types/node@24
+          node "$GITHUB_WORKSPACE/scripts/smoke-npm-package.mjs" "$CONSUMER"
+
+      - name: Publish the verified tarball through OIDC
+        env:
+          TARBALL: ${{ steps.package.outputs.tarball }}
+          TARBALL_SHA256: ${{ steps.package.outputs.sha256 }}
+          NPM_DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: |
+          echo "$TARBALL_SHA256  $TARBALL" | sha256sum --check --strict -
+          npm publish "$TARBALL" --ignore-scripts --access public \
+            --provenance --tag "$NPM_DIST_TAG" --registry=https://registry.npmjs.org/
+
+      - name: Verify registry bytes and dist-tag
+        env:
+          TARBALL: ${{ steps.package.outputs.tarball }}
+        run: node scripts/npm-release.mjs verify-published "$RELEASE_TAG" "$TARBALL"
