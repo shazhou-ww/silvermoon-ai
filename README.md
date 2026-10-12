@@ -119,6 +119,14 @@ for a trusted environment, not a requirement for connecting a device.
 
 ### 5. Open or start a Session
 
+The Session list's view-options menu remembers **Show ended**, **Show unavailable**,
+**Show offline Sessions**, and **Group by Device** in this browser for each account.
+Your choices survive refreshes, browser restarts, and sign-out, and synchronize
+across tabs signed in to the same account on the same site. They do not sync
+across devices or save search, status filters, Session selection, or expanded
+groups. If browser storage is unavailable, Relay shows a warning and keeps the
+list usable; changes may not survive a refresh.
+
 - **Existing Session:** select it from the Session list. On a narrow screen,
   use the list icon to open navigation. Read the message stream and, when
   sending is available, enter a **Follow-up message** and use **Send follow-up**

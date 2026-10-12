@@ -89,10 +89,15 @@ async function fixture(
   historyCommandStatus: "succeeded" | "failed" = "succeeded",
   pendingInputRequest: AgentInputRequest | null = optionInputRequest,
   deviceState = { status: "online", generation: 1, confirmedGeneration: 1 },
+  accountState = { authenticated: true, user: "user" },
 ) {
   let historySyncRequests = 0
   await page.route("https://relay.silvermoon.work/**", async (route) => {
     const url = new URL(route.request().url())
+    if (!accountState.authenticated && url.pathname !== "/api/logout") {
+      await route.fulfill({ status: 401, json: { error: "authentication-required" } })
+      return
+    }
     const connector = (id: string, displayName: string, status = "online") => ({
       id,
       displayName,
@@ -116,10 +121,13 @@ async function fixture(
     let body: unknown
     if (url.pathname === "/api/me") {
       body = {
-        user: { id: "user", displayName: "Reviewer", avatarUrl: null },
+        user: { id: accountState.user, displayName: "Reviewer", avatarUrl: null },
         identities: [],
         sessionId: "browser-session",
       }
+    } else if (url.pathname === "/api/logout") {
+      accountState.authenticated = false
+      body = { ok: true }
     } else if (["/api/tokens", "/api/sessions"].includes(url.pathname)) {
       body = []
     } else if (url.pathname === "/api/connectors") {
@@ -196,6 +204,246 @@ async function fixture(
     .toBeVisible()
   return () => historySyncRequests
 }
+
+const preferencesKey = "silvermoon:session-view-preferences:user"
+const preferenceNames = ["Show ended", "Show unavailable", "Show offline Sessions (1)", "Group by Device"]
+
+async function openViewOptions(page: Page) {
+  const opener = page.getByRole("button", { name: "Open Sessions", exact: true })
+  if (await opener.isVisible()) await opener.click()
+  const back = page.getByRole("button", { name: "Back to Sessions", exact: true })
+  if (await back.isVisible()) await back.click()
+  await page.getByRole("button", { name: "Session view options", exact: true }).click()
+}
+
+async function expectViewOptions(page: Page, mask: number) {
+  await openViewOptions(page)
+  for (const [index, name] of preferenceNames.entries()) {
+    await expect(page.getByRole("menuitemcheckbox", {
+      name: index === 2 ? /^Show offline Sessions \(/ : name,
+      exact: true,
+    }))
+      .toHaveAttribute("data-state", mask & (1 << index) ? "checked" : "unchecked")
+  }
+  await page.keyboard.press("Escape")
+  const trigger = page.getByRole("button", { name: "Session view options", exact: true })
+  if (mask) await expect(trigger).toHaveAttribute("data-active", "true")
+  else await expect(trigger).not.toHaveAttribute("data-active")
+}
+
+test("all four view option combinations restore after refresh without changing list rules", async ({ page }) => {
+  test.setTimeout(120_000)
+  await fixture(page)
+  await expectViewOptions(page, 0)
+  expect(await page.evaluate((key) => localStorage.getItem(key), preferencesKey)).toBeNull()
+  for (let mask = 0; mask < 16; mask++) {
+    await page.evaluate(({ key, mask }) => localStorage.setItem(key, JSON.stringify({
+      version: 1,
+      showEnded: Boolean(mask & 1),
+      showUnavailable: Boolean(mask & 2),
+      showOffline: Boolean(mask & 4),
+      groupByDevice: Boolean(mask & 8),
+    })), { key: preferencesKey, mask })
+    await page.reload()
+    await expectViewOptions(page, mask)
+    if (mask & 8) {
+      await expect(page.getByRole("button", { name: /Studio laptop/ })).toHaveAttribute("aria-expanded", "true")
+      await expect(page.getByRole("button", { name: /Work desktop/ })).toHaveAttribute("aria-expanded", "false")
+    } else {
+      await expect(page.locator(".session-device-heading")).toHaveCount(0)
+      await expect(page.getByText("Unavailable connector work", { exact: true }))
+        .toHaveCount(mask & 2 ? 1 : 0)
+      await expect(page.getByText("Repair preview deployment", { exact: true }))
+        .toHaveCount(mask & 4 ? 1 : 0)
+    }
+    await expect(page.locator(".session-list").getByText("Release desktop client", { exact: true })).toBeVisible()
+    await expect(page.getByText("Completed migration", { exact: true })).toHaveCount(mask & 1 ? 1 : 0)
+  }
+})
+
+test("menu writes both enabled and disabled preferences and does not persist unrelated view state", async ({ page }, testInfo) => {
+  await fixture(page)
+  for (const name of preferenceNames) {
+    await openViewOptions(page)
+    await page.getByRole("menuitemcheckbox", { name, exact: true }).click()
+  }
+  await expectViewOptions(page, 15)
+  await page.getByRole("button", { name: /Studio laptop/ }).click()
+  await expect(page.getByRole("button", { name: /Studio laptop/ })).toHaveAttribute("aria-expanded", "false")
+  await page.getByRole("textbox", { name: "Search Sessions, Agents, and Devices" }).fill("Release")
+  await page.getByRole("button", { name: "Active 1", exact: true }).click()
+  await page.reload()
+  await expectViewOptions(page, 15)
+  await expect(page.getByRole("textbox", { name: "Search Sessions, Agents, and Devices" })).toHaveValue("")
+  await expect(page.getByRole("button", { name: "All", exact: true })).toHaveAttribute("aria-pressed", "true")
+  await expect(page.getByRole("button", { name: /Studio laptop/ })).toHaveAttribute("aria-expanded", "true")
+  await page.screenshot({ path: testInfo.outputPath("preferences-restored.png") })
+  expect(new URL(page.url()).search).toBe("")
+  for (const name of preferenceNames) {
+    await openViewOptions(page)
+    await page.getByRole("menuitemcheckbox", { name, exact: true }).click()
+  }
+  await page.reload()
+  await expectViewOptions(page, 0)
+  expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), preferencesKey))
+    .toEqual({ version: 1, showEnded: false, showUnavailable: false, showOffline: false, groupByDevice: false })
+})
+
+test("offline shortcut saves visibility but not its switch to All", async ({ page }) => {
+  await fixture(page)
+  await page.getByRole("button", { name: "Active 1", exact: true }).click()
+  await page.getByRole("button", { name: "View offline history (switch to All)", exact: true }).click()
+  await expectViewOptions(page, 4)
+  await page.reload()
+  await expectViewOptions(page, 4)
+  await expect(page.getByText("Repair preview deployment", { exact: true })).toBeVisible()
+})
+
+test("same-account tabs synchronize without affecting filters and other storage", async ({ page, context, browser }) => {
+  await fixture(page)
+  const second = await context.newPage()
+  await fixture(second)
+  await second.getByRole("textbox", { name: "Search Sessions, Agents, and Devices" }).fill("Release")
+  await second.getByRole("button", { name: "Active 1", exact: true }).click()
+  await openViewOptions(page)
+  await page.getByRole("menuitemcheckbox", { name: "Show ended", exact: true }).click()
+  await expectViewOptions(second, 1)
+  await expect(second.getByRole("textbox", { name: "Search Sessions, Agents, and Devices" })).toHaveValue("Release")
+  await expect(second.getByRole("button", { name: "Active 1", exact: true })).toHaveAttribute("aria-pressed", "true")
+  await openViewOptions(second)
+  await second.getByRole("menuitemcheckbox", { name: "Group by Device", exact: true }).click()
+  await expectViewOptions(page, 9)
+  await expect(page.getByRole("button", { name: /Studio laptop/ })).toHaveAttribute("aria-expanded", "true")
+  await page.getByRole("button", { name: /Studio laptop/ }).click()
+  await expect(page.getByRole("button", { name: /Studio laptop/ })).toHaveAttribute("aria-expanded", "false")
+  await second.evaluate(() => {
+    localStorage.setItem("unrelated", "keep")
+    sessionStorage.setItem("silvermoon:session-view-preferences:user", "invalid")
+    localStorage.setItem("silvermoon:session-view-preferences:other", "invalid")
+  })
+  await expectViewOptions(page, 9)
+  await expect(page.getByRole("button", { name: /Studio laptop/ })).toHaveAttribute("aria-expanded", "false")
+  const reopened = await context.newPage()
+  await fixture(reopened)
+  await expectViewOptions(reopened, 9)
+  const isolated = await browser.newContext({ baseURL: new URL(page.url()).origin })
+  try {
+    const fresh = await isolated.newPage()
+    await fixture(fresh)
+    await expectViewOptions(fresh, 0)
+  } finally {
+    await isolated.close()
+  }
+  await second.evaluate((key) => localStorage.removeItem(key), preferencesKey)
+  await expectViewOptions(page, 0)
+  expect(await page.evaluate(() => localStorage.getItem("unrelated"))).toBe("keep")
+  await second.evaluate((key) => localStorage.setItem(key, "{broken"), preferencesKey)
+  await expect(page.getByRole("alert")).toContainText("View preferences could not be restored")
+  await second.reload()
+  await expectViewOptions(second, 0)
+  await openViewOptions(second)
+  await second.getByRole("menuitemcheckbox", { name: "Show ended", exact: true }).click()
+  await expectViewOptions(page, 1)
+  await expect(page.getByRole("alert")).toHaveCount(0)
+  await page.evaluate((key) => {
+    window.dispatchEvent(new StorageEvent("storage", {
+      key, newValue: null, storageArea: localStorage,
+    }))
+    window.dispatchEvent(new StorageEvent("storage", {
+      key, newValue: "{broken", storageArea: sessionStorage,
+    }))
+  }, preferencesKey)
+  await expectViewOptions(page, 1)
+  await second.evaluate(() => localStorage.clear())
+  await expectViewOptions(page, 0)
+})
+
+test("restored grouping expands a visible device when the selected Session is hidden", async ({ page }) => {
+  await fixture(page)
+  await openViewOptions(page)
+  await page.getByRole("menuitemcheckbox", { name: "Group by Device", exact: true }).click()
+  await page.goto("/?connector=travel&session=preview")
+  await expectViewOptions(page, 8)
+  await expect(page.getByRole("button", { name: /Studio laptop/ })).toHaveAttribute("aria-expanded", "true")
+  await expect(page.locator(".session-list").getByText("Release desktop client", { exact: true })).toBeVisible()
+})
+
+test("logout and authentication expiration retain preferences without leaking across accounts", async ({ page, context }) => {
+  const state = { authenticated: true, user: "user" }
+  const device = { status: "online", generation: 1, confirmedGeneration: 1 }
+  await fixture(page, "succeeded", optionInputRequest, device, state)
+  await openViewOptions(page)
+  await page.getByRole("menuitemcheckbox", { name: "Show ended", exact: true }).click()
+  await page.getByRole("button", { name: "Account menu for Reviewer", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Sign out", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Sign in or get started" })).toBeVisible()
+  expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).showEnded, preferencesKey)).toBe(true)
+  state.authenticated = true
+  state.user = "other"
+  await page.reload()
+  await expectViewOptions(page, 0)
+  await openViewOptions(page)
+  await page.getByRole("menuitemcheckbox", { name: "Show unavailable", exact: true }).click()
+  const other = await context.newPage()
+  await fixture(other, "succeeded", optionInputRequest, device, state)
+  state.user = "user"
+  await page.reload()
+  await expectViewOptions(page, 1)
+  await openViewOptions(page)
+  await page.getByRole("menuitemcheckbox", { name: "Show offline Sessions (1)", exact: true }).click()
+  await expectViewOptions(other, 2)
+  await page.evaluate(() => window.dispatchEvent(new Event("relay:authentication-required")))
+  await expect(page.getByRole("heading", { name: "Sign in or get started" })).toBeVisible()
+  expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).showOffline, preferencesKey)).toBe(true)
+  await page.reload()
+  await expectViewOptions(page, 5)
+  await other.close()
+})
+
+test("invalid records and storage failures warn without blocking the current view", async ({ page, context }, testInfo) => {
+  const logs: string[] = []
+  page.on("console", (message) => {
+    if (message.type() === "error") logs.push(message.text())
+  })
+  await fixture(page)
+  await page.evaluate((key) => localStorage.setItem(key, "{broken"), preferencesKey)
+  await page.reload()
+  await expectViewOptions(page, 0)
+  await expect(page.getByRole("alert")).toContainText("View preferences could not be restored")
+  await page.getByRole("button", { name: "Dismiss view preferences warning" }).click()
+  await expect(page.getByRole("alert")).toHaveCount(0)
+  const second = await context.newPage()
+  await fixture(second)
+  await second.getByRole("button", { name: "Dismiss view preferences warning" }).click()
+  await page.evaluate(() => {
+    const setItem = Storage.prototype.setItem
+    Storage.prototype.setItem = function (key, value) {
+      if (key.startsWith("silvermoon:session-view-preferences:")) throw new DOMException("Storage denied", "QuotaExceededError")
+      setItem.call(this, key, value)
+    }
+  })
+  await openViewOptions(page)
+  await page.getByRole("menuitemcheckbox", { name: "Show ended", exact: true }).click()
+  await expectViewOptions(page, 1)
+  await expect(page.getByText("Completed migration", { exact: true })).toBeVisible()
+  await expect(page.getByRole("alert")).toContainText("View preferences could not be saved")
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
+  await page.screenshot({ path: testInfo.outputPath("preferences-write-failure.png") })
+  await expectViewOptions(second, 0)
+  await page.reload()
+  await expectViewOptions(page, 0)
+  expect(logs.some((message) => message.includes('"event":"session-view-preferences-error"'))).toBe(true)
+  await page.addInitScript(() => Object.defineProperty(window, "localStorage", {
+    get() { throw new DOMException("Storage denied", "SecurityError") },
+  }))
+  await page.reload()
+  await expectViewOptions(page, 0)
+  await expect(page.getByRole("alert")).toContainText("View preferences could not be restored")
+  await openViewOptions(page)
+  await page.getByRole("menuitemcheckbox", { name: "Show ended", exact: true }).click()
+  await expectViewOptions(page, 1)
+  await expect(page.getByRole("alert")).toContainText("View preferences could not be saved")
+})
 
 test("status views, parent context, and hover disclosure stay coherent", async ({ page }) => {
   await fixture(page)
