@@ -1,0 +1,29 @@
+# Ledger
+
+## Implementation
+
+### Implementation steps
+
+- [ ] **I-S01:** 复核发布机制
+- [ ] **I-S02:** 验证输出包
+- [ ] **I-S03:** 完善维护说明
+
+### Implementation acceptance criteria
+
+- [ ] **I-AC01:** 发布指令有明确边界
+- [ ] **I-AC02:** 包可独立消费
+- [ ] **I-AC03:** 操作说明完整
+
+## Deployment
+
+### Deployment steps
+
+- [ ] **D-S01:** 确认外部发布前提
+- [ ] **D-S02:** 执行另行授权的首发
+- [ ] **D-S03:** 验证公开发布结果
+
+### Deployment acceptance criteria
+
+- [ ] **D-AC01:** 外部身份与保护一致
+- [ ] **D-AC02:** 真实 OIDC 发布成功
+- [ ] **D-AC03:** 公开包与候选一致
