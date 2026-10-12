@@ -2878,6 +2878,12 @@ function App() {
                       }}>Stop watching this result</button>
                     </div>
                   )}
+                  {nativeWorkStateUnavailable(selectedAgentSession, selectedConnector) && (
+                    <div className="session-connection-notice" role="status">
+                      <strong>Native Done / Restore unavailable.</strong>
+                      <span>{nativeWorkStateUnavailable(selectedAgentSession, selectedConnector)}</span>
+                    </div>
+                  )}
                   <TranscriptScroll key={selectionKey}>
                       <div className="transcript-origin">
                         <span>Session opened</span>
@@ -2908,12 +2914,6 @@ function App() {
                           <span>{selectedAgentSession.nativeArchived === true
                             ? "Use Reactivate at the top of this Session to request native Restore. It does not send a message."
                             : "This marker does not prove native Done. It will not automatically archive your VS Code Session."}</span>
-                        </div>
-                      )}
-                      {selectedAgentSession && nativeWorkStateUnavailable(selectedAgentSession, selectedConnector) && (
-                        <div className="session-archive-notice">
-                          <strong>Native Done / Restore unavailable.</strong>
-                          <span>{nativeWorkStateUnavailable(selectedAgentSession, selectedConnector)}</span>
                         </div>
                       )}
                       {selectedSessionArchived && selectedConfirmationCurrent && selectedAgentSession.nativeArchived !== true && (

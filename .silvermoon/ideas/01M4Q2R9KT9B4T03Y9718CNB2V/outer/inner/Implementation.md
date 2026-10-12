@@ -14,6 +14,8 @@
 
 原生 Session 使用 `SessionIsArchivedChanged`，独立 child chat 使用 `ChatIsArchivedChanged`，不向默认 chat 下发 child 动作，不额外级联。沿用现有 provider 仅接纳 AHP 0.10.x / 1.x 的兼容范围，并核对 initialize 返回的精确协商版本；每个目标须有显式原生状态，SDK-only 不声明 Session 级能力。列表和详情共用动作；禁用原因在详情明示，原生完成项通过 Show completed 直接可达。原生状态与 Agent 活动标签继续分开，已移除设备不可恢复访问。
 
+原生能力禁用原因属于实时连接信息，放在消息滚动区域外并复用连接提示样式；在线、离线与重连时提示文字换行不能改变历史内部布局或阅读滚动位置。保留原有禁用解释，不通过删除提示、放宽滚动断言或跳过测试来通过部署检查。
+
 ### I-S03: 验证联动与兼容边界
 
 用自动化验证身份隔离、Session/chat 定位、能力协商、确认/拒绝/断线/旧结果、双向同步、旧标记迁移及列表/详情。验证本机实际受支持版本的 Done / Restore；只在有明确操作授权时使用专用测试 Session，不将协议调查或 mock 当作真实联动证据。既有 [Evidence.md](Evidence.md) 是旧版历史，不证明本轮已完成。

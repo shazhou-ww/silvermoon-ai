@@ -9,6 +9,12 @@
 - 0013 增加原生状态和能力，保留所有旧标记、身份和历史。原生库存是工作状态投影权威；普通事件不改原生状态，没有批量归档或自动 Restore。旧 Web 的无 connection 请求被明确拒绝，旧 Connector 与 SDK-only 来源禁用，而不是 Relay-only 伪成功。
 - 列表与详情保持共用 glyph、44px 手机触控区与草稿。Show completed 不要求 Show ended；原生状态优先于残留 nativeStatus 标签。动作完成后重新读取当前库存和设备确认，防止操作回执覆写后来的本机状态。详情焦点在 pending 解除后的已提交渲染中恢复，切换 Session/账户后不会抢焦点。
 
+### 部署门禁发现的滚动回归修复
+
+正式 release `30c839d5d59aece1f9ca6d3ef32b69d6e48824c1` 的 [run 38247807570](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38247807570) 在浏览器阶段失败（194 passed、2 failed、2 skipped），未执行生产迁移或部署。桌面/手机离线场景发现历史 `scrollTop` 减少 24px；本地复现手机及 320px 相同回归。原因是实时原生能力提示位于消息历史内部，连接变化使文本换行高度改变，触发浏览器滚动锚定。
+
+修复将实时原生能力提示移出历史滚动区，复用既有连接提示样式和 status 语义，保留全部禁用原因；不改变协议、Connector、Worker 或原生语义。原有精确滚动断言未放宽，39 项相关浏览器测试在 desktop / mobile / 320px 全通过，包括离线草稿与重连、列表/详情动作、Restore、pending/unknown、焦点及能力门控。Web lint 与 typecheck 通过，仅两个既有 Fast Refresh warnings。修改 Inner 后重新提交准确实现，并沿用户“不再验收实现、完成直接部署”的明确授权进入 Outer；已公开 Connector 0.2.1 不重新发布或移动 tag。
+
 2026-10-12 验证：
 
 | 检查 | 结果与限制 |
