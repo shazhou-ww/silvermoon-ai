@@ -41,11 +41,11 @@ open a Session**. You do not need to clone this repository.
 
 The commands below use the public npm package
 [`@silvermoon-ai/connector`](https://www.npmjs.com/package/@silvermoon-ai/connector),
-version **0.2.0** (the current release verified for this guide). Check that
+version **0.2.1** (includes native Done / Restore). Check that
 it can run before handling a token:
 
 ```powershell
-npx --yes @silvermoon-ai/connector@0.2.0 --help
+npx --yes @silvermoon-ai/connector@0.2.1 --help
 ```
 
 ### 2. Sign in and add a device
@@ -79,7 +79,7 @@ then removes the temporary token from the shell environment:
 $secret = Read-Host "Connection token (the value after token:)" -AsSecureString
 try {
     $env:SILVERMOON_CONNECTION_TOKEN = [System.Net.NetworkCredential]::new("", $secret).Password
-    npx --yes @silvermoon-ai/connector@0.2.0 --relay https://relay.silvermoon.work --write-config
+    npx --yes @silvermoon-ai/connector@0.2.1 --relay https://relay.silvermoon.work --write-config
     if ($LASTEXITCODE -ne 0) { throw "Connector configuration failed; do not continue." }
 } finally {
     Remove-Item Env:\SILVERMOON_CONNECTION_TOKEN -ErrorAction SilentlyContinue
@@ -105,7 +105,7 @@ In a terminal on the agent's device, change to the project directory you
 want new Copilot Sessions to use, then run:
 
 ```powershell
-npx --yes @silvermoon-ai/connector@0.2.0 --working-directory .
+npx --yes @silvermoon-ai/connector@0.2.1 --working-directory .
 ```
 
 Keep this terminal running. In Relay, check **Settings > Devices** for the
@@ -173,6 +173,13 @@ rules can affect child read-only state, read status, or additional worktree
 cleanup/recreation. Restore does not bypass message capability confirmation.
 Offline and removed-device history remains readable, but cannot be restored
 through Relay.
+
+Upgrade by stopping the old Connector with **Ctrl+C**, then starting
+`npx --yes @silvermoon-ai/connector@0.2.1 --working-directory .` with the
+existing secure profile. Do not run both with the same token. Refresh Relay
+after the new inventory is confirmed. Native integration has been verified on
+VS Code **1.141.0** using AHP **0.10.0**; capability confirmation, not just the
+editor version number, controls availability.
 
 ## Manage devices
 

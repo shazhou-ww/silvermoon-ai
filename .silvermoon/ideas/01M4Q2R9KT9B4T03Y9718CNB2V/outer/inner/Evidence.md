@@ -22,7 +22,28 @@
 | 本地 D1 | 0013 在真实本地 D1 成功，远程未应用 |
 | 视觉检查 | 查看 1440px 与 320px 实际浏览器截图，glyph 与详情恢复入口可达，无横向溢出；提示不遮挡按钮。测试状态来自 fixture |
 
-待完成：经明确授权的专用真实 VS Code Session 双向 Done / Restore；记录实际 VS Code 版本及原生副作用。尚未操作任何真实 Session、发布新 npm 版本或部署本轮生产变更。I-S03、I-AC01、I-AC02 保持未完成，不将 mock、health 或静态资产检查当作真实联动证据。
+### 真实本机专用测试
+
+用户明确授权“允许创建并操作专用测试 Session”。2026-10-12 19:21 +08 在实际运行的 VS Code **1.141.0**、Agent Host **0.10.0** 上新建 `ed54b852-3854-4aaa-9013-f515b9ea5a86`，标题 `Silvermoon native Done Restore smoke 2026-10-12T11:21:12.793Z`。仅使用会话专用空目录，没有操作已有工作 Session。
+
+空白会话不进入持久原生目录并在连接关闭后由 Host 清理，所以第二次专用创建只发送一轮无工具、无文件修改的 Ready 初始化。随后正式验证全部通过：
+
+- 构建出的真实 provider 发 Done → 独立连接读原生 flag 65；Restore → flag 1。
+- 独立原生客户端发 Done / Restore → provider 两次读取分别为 `nativeArchived=true/false`，不是 fixture。
+- 四次操作的 Session ID、创建时间一致，历史均只有初始化的一轮，没有自动发送新消息。
+- 最终已 Restore；全部测试客户端断开后重新连接，原生目录与 Session 状态仍存在，flag 1，变更统计 additions/deletions/files 全为 0。
+
+这是实际 Agent Host 与 Connector 的联动证据，不是点击 VS Code UI 的视觉验证，也不是生产 Relay 账户操作；完整手机/本机线上验收归 Outer。该专用测试没有附加 git worktree，未将“未发生 worktree 清理”推广为其他 Session 无原生副作用。没有发布 npm 或部署生产；用户随后明确授权 **@silvermoon-ai/connector@0.2.1 → latest / npm/connector/v0.2.1**，公开注册表当前为 latest=0.2.0、canary=0.2.1-canary.1，0.2.1 尚不存在。准确打包验证另列于后续证据。
+
+### 0.2.1 准确发布候选
+
+- manifest 已为 0.2.1；README 升级步骤匹配这个版本，说明旧 0.2.0 / 0.2.1-canary.1 不支持原生动作，不改 profile，不允许同 token 双开。
+- release 合同 8 项、lint、Connector 依赖图 typecheck / test / build 全通过；Connector 39 通过、1 既有跳过，protocol 7 通过。
+- 官方 `npm-release.mjs plan npm/connector/v0.2.1` 通过，准确结果为 packages/connector、version=0.2.1、dist_tag=latest，注册表确认目标版本未存在。
+- 本地实际 `npm pack --ignore-scripts` 的 SHA-256 为 `0d3fe2851c362a760203fb5878b8020e695591294457f490738a1384197ce152`；verify-pack 验证实际 bytes、身份、CLI、exports/declarations 与私有 workspace 依赖内联通过。
+- 在仓库外空白 consumer 安装该精确 tarball（无脚本），既有 consumer smoke 验证 CLI、两个 runtime entrypoint 和 public TypeScript 声明全部通过；这不是公网 npm 安装证明。公网候选 bytes 以后以发布 workflow 自身的核对为准。
+
+本轮 I-* 实现证据已就绪。尚未推发布 tag、发布 npm 或部署生产；Outer 按用户已授权版本和既有无需再次实现人工审阅、直接部署指令推进，最终线上验收仍由用户决定。
 
 ## 手机与详情操作更新
 

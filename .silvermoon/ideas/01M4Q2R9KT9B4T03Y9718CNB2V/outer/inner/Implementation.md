@@ -18,6 +18,8 @@
 
 用自动化验证身份隔离、Session/chat 定位、能力协商、确认/拒绝/断线/旧结果、双向同步、旧标记迁移及列表/详情。验证本机实际受支持版本的 Done / Restore；只在有明确操作授权时使用专用测试 Session，不将协议调查或 mock 当作真实联动证据。既有 [Evidence.md](Evidence.md) 是旧版历史，不证明本轮已完成。
 
+用户已授权创建专用测试 Session，实际使用 VS Code 1.141.0 / AHP 0.10.0 验证。为让原生目录保留测试 Session，仅在初始化时发送一轮“只回复 Ready，不使用工具、不改文件”；Done / Restore 两方向不追加消息，原生 flag 为 65 ↔ 1，同一身份和一轮历史保留，最终恢复并在连接关闭后重查。独立原生客户端验证底层本机状态，不声称已点击 VS Code UI 或执行生产 Relay smoke。已授权 Connector 0.2.1 / latest / npm/connector/v0.2.1；在实现验收前核对该准确版本的打包及仓库外消费，实际发布由 Outer 阶段完成。
+
 ## Acceptance criteria
 
 ### I-AC01: 原生联动结果可信
