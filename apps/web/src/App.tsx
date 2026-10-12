@@ -21,15 +21,18 @@ import {
   Search,
   Send,
   Settings,
+  Undo2,
   WifiOff,
   Wrench,
   X,
 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import { Tooltip } from "radix-ui"
 import type {
   AgentInputQuestion,
   AgentInputRequest,
+  SessionWorkState,
 } from "@silvermoon-ai/protocol"
 import { Button } from "@/components/ui/button"
 import {
@@ -150,6 +153,7 @@ interface AgentSession {
   parentSessionId: string | null
   title: string | null
   status: string
+  workState?: SessionWorkState
   nativeStatus?: string | null
   createdAt: string
   updatedAt: string
@@ -912,6 +916,8 @@ function App() {
   const [tokens, setTokens] = useState<ConnectionToken[]>([])
   const [connectors, setConnectors] = useState<Connector[]>([])
   const [agentSessions, setAgentSessions] = useState<AgentSession[]>([])
+  const [workStatePendingKey, setWorkStatePendingKey] = useState<string | null>(null)
+  const workStateMutation = useRef<{ revision: number; pending: boolean }>({ revision: 0, pending: false })
   const [history, setHistory] = useState<{
     key: string
     events: AgentSessionEvent[]
@@ -1000,6 +1006,7 @@ function App() {
   const accountId = account?.user.id ?? null
   const {
     preferences: {
+      showCompleted: showCompletedSessions,
       showEnded: showEndedSessions,
       showUnavailable: showUnavailableSessions,
       showOffline: showOfflineSessions,
@@ -1039,6 +1046,8 @@ function App() {
     setTokens([])
     setConnectors([])
     setAgentSessions([])
+    workStateMutation.current = { revision: workStateMutation.current.revision + 1, pending: false }
+    setWorkStatePendingKey(null)
     setSessionsLoadedForKey(null)
     setDevicesRefreshFailed(false)
     setSessionsRefreshFailed(false)
@@ -1219,6 +1228,7 @@ function App() {
       if (polling) return
       polling = true
       if (firstLoad) setSessionsLoading(true)
+      const workStateRevision = workStateMutation.current.revision
       try {
         const groups = await Promise.all(
           connectorIds.map(async (connectorId) => {
@@ -1248,7 +1258,8 @@ function App() {
             return sessions
           }),
         )
-        if (active) {
+        if (active && !workStateMutation.current.pending
+          && workStateRevision === workStateMutation.current.revision) {
           setAgentSessions(groups.flat())
           setSessionsLoadedForKey(connectorIdKey)
           setSessionsRefreshFailed(false)
@@ -1316,6 +1327,7 @@ function App() {
       : null
     const fallback = requestedSession ?? agentSessions.find((session) =>
       connectors.some((connector) => connector.id === session.connectorId && connector.status === "online")
+      && session.workState !== "completed"
       && !["closed", "gone"].includes(session.status),
     ) ?? null
     // oxlint-disable-next-line react/set-state-in-effect -- A replacement Session restores the default transcript filters.
@@ -1434,6 +1446,7 @@ function App() {
   const selectedSessionArchived = selectedAgentSession
     ? sessionIsArchived(selectedAgentSession)
     : false
+  const selectedSessionCompleted = selectedAgentSession?.workState === "completed"
   const transcriptItems = useMemo(
     () => buildTranscript(events),
     [events],
@@ -1583,8 +1596,9 @@ function App() {
   const sessionStatusCounts = useMemo(
     () => deriveSessionFacets(agentSessions, connectorById, {
       query: sessionQuery, showEnded: showEndedSessions, showUnavailable: showUnavailableSessions,
+      showCompleted: showCompletedSessions,
     }),
-    [agentSessions, connectorById, sessionQuery, showEndedSessions, showUnavailableSessions],
+    [agentSessions, connectorById, sessionQuery, showEndedSessions, showUnavailableSessions, showCompletedSessions],
   )
   const visibleAgentSessions = useMemo(
     () =>
@@ -1594,6 +1608,7 @@ function App() {
         showEnded: showEndedSessions,
         showUnavailable: showUnavailableSessions,
         showOffline: showOfflineSessions,
+        showCompleted: showCompletedSessions,
         collapsedSessionKeys,
       }),
     [
@@ -1605,6 +1620,7 @@ function App() {
       showEndedSessions,
       showUnavailableSessions,
       showOfflineSessions,
+      showCompletedSessions,
     ],
   )
   const sessionDeviceGroups = useMemo(
@@ -1616,13 +1632,15 @@ function App() {
       query: sessionQuery, statusView: sessionStatusView,
       showEnded: showEndedSessions, showUnavailable: showUnavailableSessions,
       showOffline: showOfflineSessions,
+      showCompleted: showCompletedSessions,
     },
   ).filter((item) => !item.isContext).length, [
     agentSessions, connectorById, sessionQuery, sessionStatusView,
     showEndedSessions, showUnavailableSessions, showOfflineSessions,
+    showCompletedSessions,
   ])
   const hasCustomSessionView =
-    showEndedSessions || showUnavailableSessions || showOfflineSessions || deviceGroupingEnabled
+    showEndedSessions || showUnavailableSessions || showOfflineSessions || showCompletedSessions || deviceGroupingEnabled
   const selectedSource = selectedConnectorId ? connectorById.get(selectedConnectorId) : undefined
   const selectedDisplayStatus = selectedAgentSession
     ? sessionDisplayStatus(selectedAgentSession, selectedSource) : "unknown"
@@ -1690,6 +1708,8 @@ function App() {
     [newSessionConnectorId, onlineCreateConnectors],
   )
   const canSendFollowUp = selectedConfirmationCurrent
+    && !selectedSessionCompleted
+    && (!selectedAgentSession || workStatePendingKey !== sessionKey(selectedAgentSession))
     && selectedAgentSession?.capabilityConfirmed === true
     && selectedConnector?.status === "online"
     && selectedConnector.capabilities.sendMessage
@@ -2124,6 +2144,47 @@ function App() {
     }
   }
 
+  async function changeSessionWorkState(session: AgentSession) {
+    if (workStateMutation.current.pending) return
+    const epoch = authEpoch.current
+    const key = sessionKey(session)
+    const workState = session.workState === "completed" ? "open" : "completed"
+    workStateMutation.current = { revision: workStateMutation.current.revision + 1, pending: true }
+    setWorkStatePendingKey(key)
+    setError(null)
+    setNotice(null)
+    try {
+      const result = await api<{ connectorId: string; sessionId: string; workState: SessionWorkState }>(
+        `/api/connectors/${encodeURIComponent(session.connectorId)}/sessions/${encodeURIComponent(session.id)}/work-state`,
+        { method: "POST", body: JSON.stringify({ workState }) },
+      )
+      if (epoch !== authEpoch.current) return
+      if (result.connectorId !== session.connectorId || result.sessionId !== session.id || result.workState !== workState) {
+        throw new Error("The work status response does not match this Session.")
+      }
+      setAgentSessions((current) => current.map((item) =>
+        sessionKey(item) === key ? { ...item, workState: result.workState } : item,
+      ))
+      setNotice(workState === "completed"
+        ? `Marked "${sessionLabel(session)}" completed. This does not stop the Agent. Use Show completed to find it.`
+        : `Reactivated "${sessionLabel(session)}". Nothing was sent; existing filters and read-only limits still apply.`)
+      if (workState === "completed" && !showCompletedSessions) {
+        window.requestAnimationFrame(() =>
+          document.querySelector<HTMLButtonElement>(".session-view-trigger")?.focus())
+      }
+    } catch (caught) {
+      if (epoch === authEpoch.current) {
+        setError(caught instanceof Error ? caught.message : "Session work status could not be changed.")
+      }
+    } finally {
+      if (epoch === authEpoch.current) {
+        workStateMutation.current = { revision: workStateMutation.current.revision + 1, pending: false }
+        setWorkStatePendingKey(null)
+        setSessionRefreshAttempt((attempt) => attempt + 1)
+      }
+    }
+  }
+
   if (loading) {
     return <LoginPage error={null} loading />
   }
@@ -2169,6 +2230,12 @@ function App() {
       && session.id === selectedSessionId
     const isCollapsed = collapsedSessionKeys.has(sessionKey(session))
     const preview = executionStateCurrent ? sessionPreview(session) : session.lastMessagePreview
+    const completed = session.workState === "completed"
+    const workStateAction = completed ? "Reactivate" : "Mark completed"
+    const workStateHint = completed
+      ? "Restore unfinished work. Does not send a message or unarchive the Agent."
+      : "Mark work completed in Relay. Does not stop the Agent."
+    const workStateTipId = `work-state-${encodeURIComponent(session.connectorId)}-${encodeURIComponent(session.id)}`
     return (
       <div
         key={`${session.connectorId}:${session.id}`}
@@ -2227,6 +2294,7 @@ function App() {
                 ? `Agent status: ${session.nativeStatus}`
                 : undefined}
             >
+              {completed && <span className="session-work-state">Completed</span>}
               <span className="session-item-status">
                 {sessionStatusLabel(displayStatus)}
               </span>
@@ -2251,12 +2319,37 @@ function App() {
             {formatRelativeTime(session.lastActivityAt)}
           </time>
         </button>
+        {connector && !connector.removedAt && (
+          <span className="session-work-action">
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <button
+                  type="button"
+                  className="session-work-glyph"
+                  aria-label={`${workStateAction}: ${sessionLabel(session)}`}
+                  title={`${workStateAction} — ${workStateHint}`}
+                  disabled={workStatePendingKey !== null}
+                  onClick={() => void changeSessionWorkState(session)}
+                >
+                  {workStatePendingKey === sessionKey(session)
+                    ? <LoaderCircle className="animate-spin" aria-hidden="true" />
+                    : completed ? <Undo2 aria-hidden="true" /> : <Check aria-hidden="true" />}
+                </button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content className="session-work-tooltip" id={workStateTipId} side="left" sideOffset={6}>
+                  <strong>{workStateAction}</strong> {workStateHint}
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          </span>
+        )}
       </div>
     )
   }
 
   return (
-    <>
+    <Tooltip.Provider delayDuration={300}>
       <main className={`relay-app mobile-view-${mobileView} workspace-view-${workspaceView}`}>
         <header className="relay-brand">
           <RelayMark />
@@ -2474,6 +2567,13 @@ function App() {
                   className="session-view-menu"
                 >
                   <DropdownMenuCheckboxItem
+                    checked={showCompletedSessions}
+                    onCheckedChange={(checked) =>
+                      updateViewPreference("showCompleted", checked === true)}
+                  >
+                    Show completed
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
                     checked={showEndedSessions}
                     onCheckedChange={(checked) =>
                       updateViewPreference("showEnded", checked === true)}
@@ -2585,7 +2685,7 @@ function App() {
                   const groupCounts = deriveSessionFacets(
                     agentSessions.filter((session) => session.connectorId === group.source.id),
                     connectorById,
-                    { query: sessionQuery, showEnded: showEndedSessions, showUnavailable: showUnavailableSessions },
+                    { query: sessionQuery, showEnded: showEndedSessions, showUnavailable: showUnavailableSessions, showCompleted: showCompletedSessions },
                   )
                   return (
                     <section
@@ -2786,6 +2886,12 @@ function App() {
                         )}
                       </div>
 
+                      {selectedSessionCompleted && (
+                        <div className="history-state-notice" role="status">
+                          <strong>This Session is completed in Relay.</strong>
+                          <span>Read its saved history. Use Show completed and the Reactivate icon in the Session list to continue; native read-only limits still apply.</span>
+                        </div>
+                      )}
                       {selectedSessionArchived && selectedConfirmationCurrent && (
                         <div className="history-state-notice" role="status">
                           <strong>This Session is archived and read-only.</strong>
@@ -2922,7 +3028,9 @@ function App() {
                             }
                           }}
                           placeholder={
-                            selectedConfirmationCurrent && selectedAgentSession.canSendMessage === false
+                            selectedSessionCompleted
+                              ? "Reactivate from the Session list before sending"
+                              : selectedConfirmationCurrent && selectedAgentSession.canSendMessage === false
                               ? "This Session is read-only"
                               : hasCurrentPendingInput
                               ? pendingInputAllowsCustomAnswer
@@ -2933,7 +3041,7 @@ function App() {
                               : "This Session cannot receive messages right now"
                           }
                           rows={2}
-                          disabled={selectedConfirmationCurrent && selectedAgentSession.canSendMessage === false}
+                          disabled={selectedSessionCompleted || (selectedConfirmationCurrent && selectedAgentSession.canSendMessage === false)}
                         />
                         <div className="composer-toolbar">
                           <div className="composer-status" aria-live="polite">
@@ -2948,6 +3056,8 @@ function App() {
                                     {activeCommand.status === "unknown" ? "result not confirmed" : activeCommand.status}
                                   </>
                                 )
+                              : selectedSessionCompleted
+                              ? <span>Completed · Reactivate from the Session list to continue.</span>
                               : selectedDisplayStatus === "offline"
                               ? (
                                   <>
@@ -3123,7 +3233,7 @@ function App() {
         </DialogContent>
       </Dialog>
 
-    </>
+    </Tooltip.Provider>
   )
 }
 

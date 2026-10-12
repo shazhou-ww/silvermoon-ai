@@ -20,6 +20,7 @@ export interface HierarchicalSession {
 }
 
 export interface FilterableSession extends HierarchicalSession {
+  workState?: SessionWorkState
   title: string | null
   status: string
   lastMessagePreview: string | null
@@ -57,6 +58,7 @@ export interface SessionStatusCounts {
 }
 
 export interface SessionListOptions {
+  showCompleted?: boolean
   query: string
   statusView: SessionStatusView
   showEnded: boolean
@@ -154,8 +156,9 @@ export function sessionDisplayStatus(
 export function sessionMatchesScope(
   session: FilterableSession,
   source: SessionSource | undefined,
-  options: Pick<SessionListOptions, "query" | "showEnded" | "showUnavailable">,
+  options: Pick<SessionListOptions, "query" | "showEnded" | "showUnavailable" | "showCompleted">,
 ): boolean {
+  if (session.workState === "completed" && !options.showCompleted) return false
   const status = normalizedSessionStatus(session.status)
   if (status === "closed" && !options.showEnded) return false
   if (status === "gone" && !options.showUnavailable) return false
@@ -171,7 +174,7 @@ export function sessionMatchesScope(
 export function deriveSessionFacets(
   sessions: readonly FilterableSession[],
   sources: ReadonlyMap<string, SessionSource>,
-  options: Pick<SessionListOptions, "query" | "showEnded" | "showUnavailable">,
+  options: Pick<SessionListOptions, "query" | "showEnded" | "showUnavailable" | "showCompleted">,
 ) {
   const scoped = sessions.filter((session) =>
     sessionMatchesScope(session, sources.get(session.connectorId), options),
@@ -193,7 +196,7 @@ export function deriveSessionFacets(
     ).length,
     hiddenLifecycle: sessions.filter((session) =>
       sessionMatchesScope(session, sources.get(session.connectorId), {
-        ...options, showEnded: true, showUnavailable: true,
+        ...options, showEnded: true, showUnavailable: true, showCompleted: true,
       }),
     ).length - scoped.length,
   }
@@ -287,6 +290,7 @@ export function deriveVisibleSessions<T extends FilterableSession>(
 ): OrderedSession<T>[] {
   const query = options.query.trim().toLocaleLowerCase()
   const parentByKey = buildValidParentMap(sessions)
+  const sessionsByKey = new Map(sessions.map((session) => [sessionKey(session), session]))
   const directlyIncluded = new Set<string>()
 
   for (const session of sessions) {
@@ -306,7 +310,8 @@ export function deriveVisibleSessions<T extends FilterableSession>(
   for (const key of directlyIncluded) {
     let parentKey = parentByKey.get(key)
     while (parentKey) {
-      if (!includedKeys.has(parentKey)) {
+      if (!includedKeys.has(parentKey)
+        && (options.showCompleted || sessionsByKey.get(parentKey)?.workState !== "completed")) {
         includedKeys.add(parentKey)
         contextKeys.add(parentKey)
       }
@@ -369,3 +374,4 @@ export function orderSessionHierarchy<T extends HierarchicalSession>(
     new Set(),
   )
 }
+import type { SessionWorkState } from "@silvermoon-ai/protocol"

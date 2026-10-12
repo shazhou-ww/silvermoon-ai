@@ -25,6 +25,9 @@ export const sessionStatusSchema = z.enum([
   "unknown",
 ]);
 
+export const sessionWorkStateSchema = z.enum(["open", "completed"]);
+export type SessionWorkState = z.infer<typeof sessionWorkStateSchema>;
+
 export const connectorCapabilitiesSchema = z.object({
   listSessions: z.boolean(),
   createSession: z.boolean(),

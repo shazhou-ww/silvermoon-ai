@@ -6,9 +6,20 @@ import {
   connectorCommandSchema,
   connectorIdSchema,
   PROTOCOL_VERSION,
+  sessionWorkStateSchema,
 } from "./index";
 
 describe("relay protocol", () => {
+  it("validates Relay work state without giving Connector observations authority over it", () => {
+    expect(sessionWorkStateSchema.parse("completed")).toBe("completed");
+    expect(sessionWorkStateSchema.safeParse("archived").success).toBe(false);
+    expect(agentSessionSchema.parse({
+      id: "session", title: null, status: "idle",
+      createdAt: "2026-10-10T00:00:00Z", updatedAt: "2026-10-10T00:00:00Z",
+      workState: "open",
+    })).not.toHaveProperty("workState");
+  });
+
   it("accepts connector identities and complete capability sets", () => {
     expect(connectorIdSchema.parse("studio-laptop")).toBe("studio-laptop");
     expect(connectorCapabilitiesSchema.parse({

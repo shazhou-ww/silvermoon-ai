@@ -425,7 +425,7 @@ test("switching Devices with the same Session ID clears stale history and resets
   await scrollFromBottom(page, 900)
   state.delaySecondSession = true
   if (isMobile) await page.getByRole("button", { name: "Back to Sessions" }).click()
-  await page.getByRole("button", { name: /Second Session/ }).click()
+  await page.locator(".session-item-select").filter({ hasText: "Second Session" }).click()
   await expect(page.getByText("Message 39", { exact: true })).toHaveCount(0)
   await expect(page.getByText("Second device 29", { exact: true })).toBeVisible()
   await expect.poll(() => bottomDistance(page)).toBeLessThanOrEqual(1)
@@ -508,7 +508,7 @@ test("layout changes follow only at latest, including a hidden mobile workspace"
     await page.getByRole("button", { name: "Back to Sessions" }).click()
     state.events.push(message(40, "Arrived while hidden"))
     await expect(page.getByText("Arrived while hidden", { exact: true })).toHaveCount(1)
-    await page.getByRole("button", { name: /First Session/ }).click()
+    await page.locator(".session-item-select").filter({ hasText: "First Session" }).click()
     expect(await scrollRegion(page).evaluate((element) => element.scrollTop)).toBe(position)
     await expect(jumpButton(page)).toBeVisible()
   }
@@ -558,7 +558,7 @@ test("short history needs no return control and follows after mobile list naviga
   if (isMobile) await page.getByRole("button", { name: "Back to Sessions" }).click()
   state.events.push(...Array.from({ length: 39 }, (_, index) => message(index + 1)))
   await expect(page.getByText("Message 39", { exact: true })).toHaveCount(1)
-  if (isMobile) await page.getByRole("button", { name: /First Session/ }).click()
+  if (isMobile) await page.locator(".session-item-select").filter({ hasText: "First Session" }).click()
   await expect.poll(() => bottomDistance(page)).toBeLessThanOrEqual(1)
   await expect(jumpButton(page)).toHaveCount(0)
 })

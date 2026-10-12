@@ -159,7 +159,8 @@ export class ConnectorSession extends DurableObject<Env> {
              AND (?5 <> 'session.message' OR json_extract(capabilities_json, '$.sendMessage') = 1))
          AND (?5 <> 'session.message' OR EXISTS (
            SELECT 1 FROM agent_sessions WHERE user_id = ?3 AND connector_id = ?4 AND id = ?6
-             AND confirmed_connection_id = ?2 AND capability_confirmed = 1 AND can_send_message = 1))`,
+             AND confirmed_connection_id = ?2 AND capability_confirmed = 1 AND can_send_message = 1
+             AND work_state = 'open'))`,
     ).bind(
       command.commandId, connection.connectionId, connection.userId, connection.connectorId,
       command.type, command.type === "session.message" ? command.sessionId : null,
