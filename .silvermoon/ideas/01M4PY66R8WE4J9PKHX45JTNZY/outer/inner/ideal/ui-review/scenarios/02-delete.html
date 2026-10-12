@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>删除确认</title><link rel="stylesheet" href="../review.css"></head>
+<body>
+  <header class="scenario-heading"><div><h1>删除确认：连接资格不可恢复</h1><p>同一在线设备；Before 没有 Delete，Revoke 仅处理当前 token。</p></div><ul class="callouts" aria-label="变化"><li>说明全部 token 失效</li><li>保留已同步历史</li><li>不承诺停止本地任务</li></ul></header>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title"><header class="state-label"><strong id="before-title">Before</strong><span>Studio laptop · online · 3 Sessions</span></header>
+      <div class="product-surface"><div class="card"><div class="card-header"><div><h2>Devices</h2><p class="description">Add and manage devices that can connect to this account.</p></div><span class="control">Add device</span></div>
+        <div class="row"><div class="main"><i class="dot online" aria-hidden="true"></i><div><strong>Studio laptop</strong><span class="meta">demo · Last used just now</span></div></div><div class="context"><span class="meta">GitHub Copilot</span><span class="meta">3 Sessions</span></div><div class="actions"><span class="badge">online</span><span class="control">Rotate token</span><span class="control ghost">Revoke</span></div></div>
+      </div><p class="hint">当前 Revoke 直接执行，不显示确认框；设备仍保留在清单。</p></div>
+    </section>
+    <section class="state after" aria-labelledby="after-title"><header class="state-label"><strong id="after-title">After</strong><span>同一设备 · 删除前确认</span></header>
+      <div class="product-surface"><div class="card"><div class="card-header"><div><h2>Devices</h2><p class="description">Add and manage devices that can connect to this account.</p></div><span class="control">Add device</span></div>
+        <div class="row"><div class="main"><i class="dot online" aria-hidden="true"></i><div><strong>Studio laptop</strong><span class="meta">demo · Last used just now</span></div></div><div class="context"><span class="meta">GitHub Copilot</span><span class="meta">3 Sessions</span></div><div class="actions"><span class="badge">online</span><span class="control">Rename</span><span class="control">Rotate token</span><span class="control ghost">Revoke</span><span class="control ghost danger">Delete</span></div></div>
+      </div>
+      <section class="dialog-preview" aria-labelledby="delete-title"><h3 id="delete-title">Delete Studio laptop?</h3><p>This Device is online. It will be removed from your available Devices.</p><ul><li>All connection tokens will be invalidated and the Relay connection will be closed.</li><li>Your 3 synced Sessions and their history will remain available as read-only.</li><li>This does not delete local data, stop local agents, or recall instructions already sent.</li></ul><p>To connect this computer again, add a new Device and configure its new token.</p><div class="dialog-actions"><span class="control">Cancel</span><span class="control destructive">Delete device</span></div></section>
+      </div>
+    </section>
+  </main>
+  <p class="source-note">确认框为静态截面，非实际 modal。生产交互需 dialog 语义、焦点管理和提交中防重复；若访问已禁用但断开未确认，显示该差异与重试，而不是“全部完成”。离线设备使用相同边界，不等待本机在线。</p>
+  <script src="../resize.js"></script>
+</body>
+</html>

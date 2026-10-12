@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>设备重命名与移除 · UI 评审</title>
+  <style>
+    :root { color-scheme: light; --canvas: #f4f5f6; --surface: #fff; --ink: #1b1d1f; --muted: #62686e; --border: #d8dcdf; --accent: #176b62; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--canvas); font: 14px/1.5 "Segoe UI", sans-serif; }
+    a { font: inherit; }
+    a:focus-visible, iframe:focus-visible { outline: 3px solid #176b62; outline-offset: 3px; }
+    .skip-link { position: absolute; top: 8px; left: 8px; padding: 8px; background: white; transform: translateY(-150%); }
+    .skip-link:focus { transform: translateY(0); }
+    header, main, footer { width: min(1480px, calc(100% - 40px)); margin-inline: auto; }
+    header { display: flex; justify-content: space-between; gap: 24px; padding: 28px 0 20px; border-bottom: 1px solid var(--border); }
+    h1 { margin: 0; font-size: 27px; }
+    header p { margin: 6px 0 0; color: var(--muted); }
+    .status { color: #8a5a08; white-space: nowrap; }
+    main { padding: 20px 0; }
+    .decision { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 16px 18px; background: white; border: 1px solid var(--border); border-radius: 8px; }
+    .eyebrow { margin: 0 0 4px; color: var(--muted); }
+    h2 { margin: 0; font-size: 18px; }
+    .deltas { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 0; padding: 0; list-style: none; }
+    .deltas li { padding: 5px 8px; color: #125d55; background: #e8f3f1; border-radius: 5px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 18px; padding: 4px; background: #e8eaec; border: 1px solid var(--border); border-radius: 7px; }
+    .tab { padding: 9px 12px; color: var(--muted); border-radius: 5px; text-decoration: none; }
+    .tab[aria-selected="true"] { color: var(--ink); background: white; }
+    .frame-shell { margin-top: 12px; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: white; }
+    iframe { display: block; width: 100%; height: 760px; border: 0; }
+    .review-end { margin-top: 18px; }
+    .review-end p, footer { color: var(--muted); }
+    .source { color: var(--accent); }
+    footer { padding-bottom: 28px; }
+    @media (max-width: 720px) { header, main, footer { width: calc(100% - 24px); } header { flex-direction: column; gap: 8px; } .decision { grid-template-columns: 1fr; } h1 { font-size: 23px; } .tab { flex: 1 1 140px; text-align: center; } }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#review">跳至评审内容</a>
+  <header>
+    <div><h1>设备重命名与安全移除</h1><p>基于当前 Devices 源码；使用同一测试设备、外壳和比例比较前后状态。</p></div>
+    <span class="status">说明性评审材料</span>
+  </header>
+  <main id="review">
+    <section class="decision" aria-labelledby="decision-title">
+      <div><p class="eyebrow">待评审决定</p><h2 id="decision-title">增加重命名和删除入口，删除保留只读历史</h2></div>
+      <ul class="deltas" aria-label="关键变化"><li>改名不重连</li><li>删除明确确认</li><li>历史可发现、不可发送</li></ul>
+    </section>
+    <section aria-label="评审场景">
+      <nav class="tabs" role="tablist" aria-label="选择场景">
+        <a class="tab" role="tab" aria-selected="true" href="scenarios/01-rename.html" target="scenario-frame">重命名与管理入口</a>
+        <a class="tab" role="tab" aria-selected="false" href="scenarios/02-delete.html" target="scenario-frame">删除确认</a>
+        <a class="tab" role="tab" aria-selected="false" href="scenarios/03-history.html" target="scenario-frame">保留历史</a>
+      </nav>
+      <div class="frame-shell"><iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-rename.html" title="重命名与管理入口对照"></iframe></div>
+    </section>
+    <section class="review-end" aria-label="评审结论">
+      <p>此 bundle 不是生产 UI 或规范性行为契约。行为边界见 <a class="source" href="../Idea.md">Idea.md</a>；身份与历史关系见 <a class="source" href="../Business-Data-Model-Review.md">业务模型</a>。</p>
+      <strong>是否同意这些管理入口、删除确认边界与只读历史方向？</strong>
+    </section>
+  </main>
+  <footer>产品控件沿用现有英文界面；After 为拟议静态状态，不连接后端。最终历史筛选布局和断开失败重试方式在实施阶段细化；失败不得伪装成功。已检查三场景在 1440px / 390px 下的渲染、无横向或嵌套滚动、场景切换与键盘焦点，以及单独打开场景。生产弹窗及保存行为不在静态材料中模拟。</footer>
+  <script>
+    const frame = document.querySelector("#scenario-frame");
+    const tabs = [...document.querySelectorAll(".tab")];
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => {
+        tabs.forEach(candidate => candidate.setAttribute("aria-selected", String(candidate === tab)));
+        frame.title = `${tab.textContent.trim()}对照`;
+      });
+      tab.addEventListener("keydown", event => {
+        let next = null;
+        if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+        if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+        if (event.key === "Home") next = 0;
+        if (event.key === "End") next = tabs.length - 1;
+        if (next === null) return;
+        event.preventDefault();
+        tabs[next].click();
+        tabs[next].focus();
+      });
+    });
+    window.addEventListener("message", event => {
+      if (event.source !== frame.contentWindow || event.data?.type !== "ui-review:height") return;
+      const height = Number(event.data.height);
+      if (Number.isFinite(height) && height > 0) frame.style.height = `${Math.max(320, height)}px`;
+    });
+  </script>
+</body>
+</html>
