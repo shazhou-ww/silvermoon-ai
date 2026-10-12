@@ -265,6 +265,7 @@ export async function beginOAuth(
   authorize.searchParams.set("state", state);
   authorize.searchParams.set("code_challenge", await sha256Base64Url(codeVerifier));
   authorize.searchParams.set("code_challenge_method", "S256");
+  authorize.searchParams.set("prompt", "select_account");
   if (providerValue === "github") {
     authorize.searchParams.set("scope", "read:user user:email");
   } else {
