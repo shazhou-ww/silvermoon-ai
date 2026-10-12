@@ -20,6 +20,12 @@
 ## 当前证据与边界
 
 - 当前 [Google 授权 URL 构造](../../../../../../apps/worker/src/oauth.ts) 设置了 scope、state、PKCE、nonce 等参数，但未设置强制账号选择参数。浏览器已有登录状态与这一现象一致；后续需确认修复方案，不将单一参数直接当作完整修复结论。
+- 三家当前官方机制均支持在授权请求中使用 `prompt=select_account`，但仍需分别验证实际效果与取消行为：
+  - [Google OpenID Connect 授权参数](https://developers.google.com/identity/openid-connect/openid-connect#authenticationuriparameters)说明 `select_account` 会在已有登录状态下要求选择账号。
+  - [Microsoft authorization code flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow#request-an-authorization-code)说明 `select_account` 会中断单点登录并列出会话内、已记住或其他账号选项；当前 Relay 使用 `consumers` 端点。
+  - [GitHub OAuth account picker 公告](https://github.blog/changelog/2024-06-07-account-picker-updates-for-oauth-and-github-app-sign-in/)说明 OAuth `/authorize` 支持 `prompt=select_account`，用于中断原本可能立即完成的认证。
+- 当前 [Relay 退出实现](../../../../../../apps/worker/src/api.ts)只撤销 Relay 浏览器 session 并清除 Relay cookie，不退出 Google、Microsoft 或 GitHub 的浏览器会话。这是需要保留的会话边界，而不是通过退出整个提供商规避账号选择。
+- 当前 callback 仍以 state、发起浏览器 cookie、未消费事务、PKCE，以及 Google/Microsoft 的 nonce 和 issuer/tenant 校验保护登录；准备中的方案不得放宽这些检查。提供商取消当前会作为不完整 callback 返回 Relay 通用登录失败提示，后续需纳入回归验证。
 - 本次临时浏览器拦截尝试未成功完成账号选择；已撤销拦截，未修改产品代码。没有把这些尝试计作成功验收。
 - 用户明确要求跳过本次真实账号切换验收，另建本 idea 后续处理。原账号登录及偏好已恢复，见 [原部署证据](../../../../01M4PWVNA4MQ3FKEX986PB8JBV/outer/Deployment-Evidence.md)。
 - 当前记录的是三种提供商的登录切换流程问题，不是视图偏好的账号隔离实现失败；三者的根因和所需切换机制仍需分别核实。

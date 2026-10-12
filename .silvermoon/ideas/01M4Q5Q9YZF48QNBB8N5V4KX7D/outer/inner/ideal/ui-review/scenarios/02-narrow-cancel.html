@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>窄屏取消与返回</title>
+  <style>
+    :root { --ink: #17212b; --muted: #66717f; --border: #d8dee5; --surface: #fbfcfd; }
+    * { box-sizing: border-box; }
+    html { min-width: 300px; background: var(--surface); }
+    body { min-width: 300px; margin: 0; padding: 18px; color: var(--ink); background: var(--surface); font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", sans-serif; }
+    .scenario-heading { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr); gap: 24px; align-items: end; margin-bottom: 14px; }
+    h1 { margin: 0; font-size: 20px; }
+    .scenario-heading p { margin: 4px 0 0; color: var(--muted); }
+    .callouts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; margin: 0; padding: 0; list-style: none; }
+    .callouts li { padding: 5px 8px; color: #30428f; background: #edf0ff; border-radius: 5px; font-size: 12px; font-weight: 650; }
+    .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+    .state { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 9px; }
+    .state.after { border-color: #8d9de1; }
+    .state-label { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; background: #f1f3f5; border-bottom: 1px solid var(--border); }
+    .state-label span { color: var(--muted); font-size: 12px; }
+    .product-surface { min-height: 590px; padding: 18px; background: radial-gradient(circle at 90% 0%, #e8ecff, transparent 13rem), #f3f5f7; }
+    .phone { width: min(100%, 340px); min-height: 540px; margin: auto; overflow: hidden; background: #fff; border: 7px solid #27313c; border-radius: 26px; box-shadow: 0 15px 35px rgba(23, 33, 43, 0.14); }
+    .phone-bar { width: 92px; height: 17px; margin: 0 auto 12px; background: #27313c; border-radius: 0 0 11px 11px; }
+    .content { padding: 18px; }
+    .brand { font-weight: 750; }
+    h2 { margin: 30px 0 5px; font-size: 25px; line-height: 1.15; }
+    p { color: var(--muted); }
+    .provider { margin-top: 18px; padding: 12px; text-align: center; background: #fff; border: 1px solid var(--border); border-radius: 8px; font-weight: 650; }
+    .result { margin-top: 18px; padding: 12px; background: #f4f6f8; border-left: 3px solid #9aa5b1; border-radius: 6px; }
+    .result strong, .result span { display: block; }
+    .result span { margin-top: 5px; color: var(--muted); font-size: 12px; }
+    .picker { margin-top: 18px; padding: 14px; background: #fafbfc; border: 1px solid var(--border); border-radius: 10px; }
+    .account { margin-top: 8px; padding: 10px; background: #fff; border: 1px solid var(--border); border-radius: 7px; }
+    .cancel { width: 100%; margin-top: 14px; padding: 10px; color: #44505e; background: transparent; border: 1px solid #aeb7c1; border-radius: 7px; font-weight: 650; }
+    .error { margin-top: 16px; padding: 11px; color: #7f2e2e; background: #fff0f0; border: 1px solid #efcaca; border-radius: 7px; }
+    .error strong, .error span { display: block; }
+    .error span { margin-top: 4px; font-size: 12px; }
+    @media (max-width: 760px) {
+      body { padding: 12px; }
+      .scenario-heading, .comparison { grid-template-columns: 1fr; }
+      .callouts { justify-content: flex-start; }
+      .product-surface { min-height: 560px; padding: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="scenario-heading">
+    <div><h1>窄屏 · 取消与返回</h1><p>相同窄屏宽度；不通过退出整个提供商来切换账号。</p></div>
+    <ul class="callouts" aria-label="可见变化"><li>账号选择仍由 provider 承担</li><li>取消回到 Relay 的既有错误状态</li></ul>
+  </header>
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before</strong><span>390px · 已登录提供商</span></header>
+      <div class="product-surface">
+        <div class="phone">
+          <div class="phone-bar"></div>
+          <div class="content">
+            <div class="brand">Silvermoon · Relay</div>
+            <h2>Sign in or get started</h2>
+            <p>Choose an account to continue.</p>
+            <div class="provider">Continue with GitHub</div>
+            <div class="result">
+              <strong>缺少可取消的选择步骤</strong>
+              <span>已有 provider session 可能直接完成认证，并进入原 Relay 账号。</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After</strong><span>390px · 已登录提供商</span></header>
+      <div class="product-surface">
+        <div class="phone">
+          <div class="phone-bar"></div>
+          <div class="content">
+            <div class="brand">提供商托管账号选择（示意）</div>
+            <div class="picker">
+              <strong>选择账号</strong>
+              <p>可选原账号、另一现成账号或其他账号。</p>
+              <div class="account">现有账号 A</div>
+              <div class="account">现有账号 B</div>
+              <button class="cancel" type="button">取消</button>
+            </div>
+            <div class="error" role="alert">
+              <strong>Sign-in unsuccessful</strong>
+              <span>取消后回到 Relay，可重试或选择另一提供商；不会创建或重绑账号。</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({ type: "ui-review:height", height: document.documentElement.scrollHeight }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>

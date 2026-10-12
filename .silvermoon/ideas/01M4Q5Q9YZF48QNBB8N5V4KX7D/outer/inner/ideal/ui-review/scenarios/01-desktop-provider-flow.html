@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>桌面三家主流程</title>
+  <style>
+    :root { --ink: #17212b; --muted: #66717f; --border: #d8dee5; --surface: #fbfcfd; --accent: #4055b5; }
+    * { box-sizing: border-box; }
+    html { min-width: 300px; background: var(--surface); }
+    body { min-width: 300px; margin: 0; padding: 18px; color: var(--ink); background: var(--surface); font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", sans-serif; }
+    .scenario-heading { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr); gap: 24px; align-items: end; margin-bottom: 14px; }
+    h1 { margin: 0; font-size: 20px; }
+    .scenario-heading p { margin: 4px 0 0; color: var(--muted); }
+    .callouts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; margin: 0; padding: 0; list-style: none; }
+    .callouts li { padding: 5px 8px; color: #30428f; background: #edf0ff; border-radius: 5px; font-size: 12px; font-weight: 650; }
+    .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+    .state { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 9px; }
+    .state.after { border-color: #8d9de1; }
+    .state-label { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; background: #f1f3f5; border-bottom: 1px solid var(--border); }
+    .state-label span { color: var(--muted); font-size: 12px; }
+    .product-surface { min-height: 560px; padding: 22px; background: radial-gradient(circle at 88% 5%, #e9edff, transparent 15rem), #f3f5f7; }
+    .brand { display: flex; align-items: center; gap: 8px; margin-bottom: 34px; font-weight: 750; }
+    .moon { display: grid; width: 27px; height: 27px; place-items: center; color: #fff; background: #4055b5; border-radius: 50%; }
+    .login-card { width: min(100%, 390px); margin: auto; padding: 23px; background: rgba(251, 252, 253, 0.96); border: 1px solid var(--border); border-radius: 13px; box-shadow: 0 16px 40px rgba(23, 33, 43, 0.1); }
+    h2 { margin: 0; font-size: 19px; }
+    .login-card > p { margin: 6px 0 18px; color: var(--muted); }
+    .provider { display: grid; grid-template-columns: 24px 1fr 18px; gap: 10px; align-items: center; width: 100%; margin-top: 9px; padding: 10px 12px; background: #fff; border: 1px solid var(--border); border-radius: 8px; font-weight: 650; }
+    .provider i { display: grid; width: 22px; height: 22px; place-items: center; color: #fff; border-radius: 50%; font-size: 11px; font-style: normal; }
+    .google { background: #4285f4; } .microsoft { background: #00a4ef; } .github { background: #24292f; }
+    .arrow { color: #8b95a1; }
+    .flow-result { width: min(100%, 390px); margin: 18px auto 0; padding: 14px; background: #fff; border: 1px dashed #aeb7c1; border-radius: 9px; }
+    .flow-result strong, .flow-result span { display: block; }
+    .flow-result span { margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .picker { display: grid; gap: 8px; margin-top: 12px; }
+    .account { display: grid; grid-template-columns: 32px 1fr; gap: 10px; align-items: center; padding: 9px; background: #f6f7f9; border: 1px solid var(--border); border-radius: 7px; }
+    .avatar { display: grid; width: 32px; height: 32px; place-items: center; color: #4055b5; background: #e2e7ff; border-radius: 50%; font-weight: 750; }
+    .account span { color: var(--muted); font-size: 12px; }
+    .provider-note { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 11px; }
+    .provider-note b { padding: 3px 6px; color: #485362; background: #eceff2; border-radius: 4px; font-size: 11px; }
+    @media (max-width: 760px) {
+      body { padding: 12px; }
+      .scenario-heading, .comparison { grid-template-columns: 1fr; }
+      .callouts { justify-content: flex-start; }
+      .product-surface { min-height: 500px; padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="scenario-heading">
+    <div><h1>桌面 · 三家主流程</h1><p>相同 Relay 登录页、已有提供商会话、相同三种入口。</p></div>
+    <ul class="callouts" aria-label="可见变化"><li>不改变 Relay 登录页入口</li><li>提供商页明确出现账号选择</li></ul>
+  </header>
+  <main class="comparison">
+    <section class="state before" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before</strong><span>桌面 · 已登录提供商</span></header>
+      <div class="product-surface">
+        <div class="brand"><span class="moon">S</span>Silvermoon <span>Relay</span></div>
+        <div class="login-card">
+          <h2>Sign in or get started</h2>
+          <p>Choose an account to continue.</p>
+          <div class="provider"><i class="google">G</i><span>Continue with Google</span><span class="arrow">›</span></div>
+          <div class="provider"><i class="microsoft">M</i><span>Continue with Microsoft</span><span class="arrow">›</span></div>
+          <div class="provider"><i class="github">GH</i><span>Continue with GitHub</span><span class="arrow">›</span></div>
+        </div>
+        <div class="flow-result">
+          <strong>点击后可能立即完成认证</strong>
+          <span>已有 provider session 被直接复用，用户没有切换机会，回到原 Relay 账号。</span>
+        </div>
+      </div>
+    </section>
+    <section class="state after" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After</strong><span>桌面 · 已登录提供商</span></header>
+      <div class="product-surface">
+        <div class="brand"><span class="moon">S</span>Silvermoon <span>Relay</span></div>
+        <div class="login-card">
+          <h2>选择用于 Relay 的账号</h2>
+          <p>此页面由所选提供商托管；以下账号均为匿名示意。</p>
+          <div class="picker">
+            <div class="account"><span class="avatar">A</span><div><strong>现有账号 A</strong><span>可继续使用原账号</span></div></div>
+            <div class="account"><span class="avatar">B</span><div><strong>现有账号 B</strong><span>可明确切换到另一账号</span></div></div>
+            <div class="account"><span class="avatar">+</span><div><strong>使用其他账号</strong><span>由提供商完成登录或 MFA</span></div></div>
+          </div>
+          <div class="provider-note"><b>Google</b><b>Microsoft</b><b>GitHub</b><span>各自托管同等选择机会</span></div>
+        </div>
+        <div class="flow-result">
+          <strong>选择后回到对应 Relay 账号</strong>
+          <span>身份绑定和账号隔离规则保持不变；Relay 不读取提供商密码或 MFA。</span>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({ type: "ui-review:height", height: document.documentElement.scrollHeight }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>
