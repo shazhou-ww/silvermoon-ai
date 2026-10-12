@@ -1355,7 +1355,7 @@ class AgentHostConnection {
       input.prompt,
     );
     await this.waitForReadySession(session);
-    await this.refreshCatalog(false);
+    await this.waitForCatalogSession(resource);
     return resource;
   }
 
@@ -1492,6 +1492,18 @@ class AgentHostConnection {
       );
     }
     return session;
+  }
+
+  private async waitForCatalogSession(resource: string): Promise<void> {
+    const deadline = Date.now() + AHP_REQUEST_TIMEOUT_MS;
+    while (!this.catalogByResource.has(resource)) {
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Timed out waiting for Agent Host catalog entry: ${resource}`,
+        );
+      }
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+    }
   }
 
   private async dispatchSessionAction(
@@ -1966,7 +1978,6 @@ export class VsCodeAgentHostProvider implements AgentAdapter {
       ...input,
       workingDirectoryUri: this.workingDirectoryUri,
     });
-    await connection.refreshCatalog(false);
     this.rebuildSessions(true);
     const sessionId = sessionIdFromResource(resource);
     const created = sessionId ? this.sessions.get(sessionId)?.session : undefined;

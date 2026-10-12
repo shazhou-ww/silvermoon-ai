@@ -89,6 +89,14 @@ async function fixture(hostCount = 1) {
         if (action.data.type === ActionType.ChatTurnStarted && summary) {
           socket.send(JSON.stringify({
             jsonrpc: "2.0",
+            method: "root/sessionAdded",
+            params: {
+              channel: "ahp-root://",
+              summary,
+            },
+          }));
+          socket.send(JSON.stringify({
+            jsonrpc: "2.0",
             method: "action",
             params: {
               channel: summary.resource,

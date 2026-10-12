@@ -28,13 +28,27 @@ Chat created; its backing stays deferred until the first send
 
 根因是 Connector 在 first send 之前等待 `SessionReady`，而 Host 在 first send 之前有意保持 deferred，形成顺序死锁。失败 command 没有不确定结果，也没有 Relay Session/event 数据写入。
 
-## 修复候选
+## canary.2 前置修复
 
 - 修复顺序：create → subscribe → optional title → first send → wait ready → refresh inventory。
 - wire fixture 的 Session snapshot 初始为 `Creating`，只在 `ChatTurnStarted` 后发 `SessionReady`。
 - `pnpm --filter @silvermoon-ai/connector test -- agent-host-adapter.test.ts`：3/3 通过。
 - `pnpm --filter @silvermoon-ai/connector typecheck`：通过。
 - 已明确授权 `0.3.0-canary.2`；`.1` 保持不可变，不重发、不删除。
+
+## canary.2 发布与生产结果
+
+- tag/source：`npm/connector/v0.3.0-canary.2` / `8970cf637da8ad0e42289196781ea06c755786c2`。
+- Actions run：[38256177553](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38256177553)。
+- npm 接受 publish 并返回 `+ @silvermoon-ai/connector@0.3.0-canary.2` 与 provenance；registry processing 超过 workflow 的 12×15 秒验证窗口，run 因暂不可见失败。稍后公开版本可见，shasum `e87f44b2e21861b5bddf6c60a3185e3055366279`，`latest` 仍为 `0.2.1`。
+- public clean install 与 smoke 通过。
+- Home PC create smoke 让 Host 成功 materialize `ahp-session:/0b4ca31e-0a77-4184-a96b-a6ba7a430f9b`、执行首条消息并生成固定回复，但 Connector 在 `root/sessionAdded` 后用 reconciliation 期间的旧 `listSessions` 覆盖 catalog，command 误报 missing 并发布瞬时 `gone`。
+
+## canary.3 修复候选
+
+- create 不再在 ready 后主动 refresh catalog；等待 root catalog 已包含创建 URI，再由 provider rebuild inventory。
+- wire fixture 按生产顺序发送 `root/sessionAdded` → `session/ready`，防止旧快照覆盖 authoritative notification。
+- 精确候选：`@silvermoon-ai/connector@0.3.0-canary.3`；`.1` 与 `.2` 均保持不可变。
 
 ## Device 边界
 

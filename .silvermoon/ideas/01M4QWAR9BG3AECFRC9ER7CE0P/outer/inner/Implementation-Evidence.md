@@ -3,9 +3,10 @@
 ## 实施结果
 
 - `0.3.0-canary.1` 发布后生产 create smoke 暴露 deferred backing 顺序缺陷：Host 只有收到 first send 才转为 ready，Connector 却先等待 ready，导致 15 秒超时。修复将顺序改为 create → subscribe → title → first send → wait ready → refresh，并以 lifecycle 初始为 Creating 的 wire fixture 防回归。
-- 已授权修复 release candidate 为 `@silvermoon-ai/connector@0.3.0-canary.2`；manifest 使用该精确版本。此版本只准备 canary，不移动 `latest`，也不移动或删除不可变的 `.1`。
+- `0.3.0-canary.2` 让 Host 成功 materialize 并执行首条消息，但 create command 仍失败：Connector 在收到 authoritative `root/sessionAdded` 后立即调用 `listSessions`，被 Host reconciliation 的短暂旧快照覆盖并误报 missing。
+- `0.3.0-canary.3` 删除 create 后的即时 catalog refresh，改为等待 root notification 已加入同一 URI；wire fixture 在 `SessionReady` 前发送 `root/sessionAdded`，覆盖生产事件顺序。
 - `VsCodeAgentHostProvider` 现在直接实现完整 `AgentAdapter`，声明 list/create/send/stream/archive 能力。
-- 创建流程在唯一兼容 Agent Host 上发送 AHP `createSession`，使用新的 `ahp-session:/<uuid>` URI，按需派发 `session/titleChanged`，再向默认 chat 派发首条消息。
+- 创建流程在唯一兼容 Agent Host 上发送 AHP `createSession`，使用新的 `ahp-session:/<uuid>` URI，按需派发 `session/titleChanged`，向默认 chat 派发首条消息，等待 ready 与 authoritative root catalog entry。
 - inventory、send、history、实时事件、input request 与原生 archive 均沿已有 AHP connection 和 Session/chat resource 执行。
 - 没有兼容 Host 时 inventory/create 显式失败；多个 Host 且没有目标选择时 create 显式失败，不任意选取进程。
 - 删除 `CopilotAgentAdapter`、SDK 专用 provider contract 与测试；CLI 直接构造 AHP provider。
