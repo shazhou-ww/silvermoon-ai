@@ -12,6 +12,9 @@
 只允许 `npm/connector/v<version>` 且版本精确匹配 manifest；稳定版使用
 `latest`，具名预发行使用对应频道。发布 commit 必须可达刷新后的主线，
 重复版本明确失败；沿用 npm environment 和 Trusted Publishing，不增加自动 tag 或定时发布。
+明确支持 `latest` 和 `canary`：维护者分别推送稳定版或
+`npm/connector/v<version>-canary.<identifier>` tag，两者版本均精确匹配已提交
+manifest。canary 仅使用 `canary` dist-tag；不自动派生版本或打 tag。
 
 ### I-S02: 验证输出包
 
@@ -30,6 +33,8 @@
 ### I-AC01: 发布指令有明确边界
 
 通过契约测试及工作流检查，证明只接受 allowlist 中包的匹配版本，错误 tag 和已存在版本明确失败，且不向 PR 授予发布权。
+分别证明稳定版使用 `latest`、显式 canary 版使用 `canary`，canary 发布指令
+不使用 `latest`。真实 canary 发布与安装结果在部署阶段验证，不要求真实 latest 发版。
 
 ### I-AC02: 包可独立消费
 

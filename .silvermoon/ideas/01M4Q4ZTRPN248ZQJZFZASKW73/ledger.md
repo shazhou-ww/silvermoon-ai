@@ -19,7 +19,7 @@
 ### Deployment steps
 
 - [ ] **D-S01:** 确认外部发布前提
-- [ ] **D-S02:** 执行另行授权的首发
+- [ ] **D-S02:** 执行授权的 canary 首发
 - [ ] **D-S03:** 验证公开发布结果
 
 ### Deployment acceptance criteria

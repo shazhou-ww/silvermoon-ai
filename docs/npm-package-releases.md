@@ -40,6 +40,13 @@ Before creating a release tag, a package/repository administrator must:
    - Workflow filename: `publish-npm.yml`
    - Environment: `npm`
    - Allowed action: direct `npm publish` (not stage-only).
+   Open the package's **Settings → Trusted publishing → Add trusted publisher**,
+   select **GitHub Actions**, enter these values and save. The same publisher
+   authorizes both `latest` and `canary`; no channel-specific token is needed.
+   npm currently requires a new publisher configuration to complete its first
+   successful publish within two days, or it expires. Configure it when the
+   first authorized canary release is ready; recreate an expired configuration
+   instead of falling back to a token.
 2. Create the GitHub environment **`npm`**. Its custom deployment policy must
    allow only release tags matching `npm/*/*`, not branches. Add required
    reviewers if releases require approval. This environment holds no npm secret.
@@ -118,6 +125,15 @@ the npm Trusted Publisher identity before another publication.
    `1.2.3` is an example, not a release instruction. Use the exact approved
    committed version. Do not tag an unmerged branch, move an existing tag,
    push all tags, or run `npm publish` locally.
+
+For canary, commit an explicit unpublished version such as `1.2.3-canary.1`
+and push `npm/connector/v1.2.3-canary.1` at that reviewed main commit.
+The example is not a version selection or release authorization. The workflow
+publishes with `--tag canary`; it does not modify `latest`. Both channels are
+supported, but this mechanism's first real deployment verification uses only
+canary: record the existing `latest` value before publication, verify canary
+metadata and install the published version outside the monorepo, then confirm
+`latest` is unchanged. A real stable release is not required for that gate.
 
 The workflow validates the tag, manifest and official registry before
 installing frozen dependencies. It then lints, typechecks, tests and builds

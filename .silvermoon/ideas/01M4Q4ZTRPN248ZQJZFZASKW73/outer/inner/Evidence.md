@@ -63,3 +63,15 @@ deploy key、恢复特例或自动 GitHub Release。
 npm Trusted Publisher 授权或 provenance 发布。发布后检查已以测试输入验证
 版本、频道、完整性和精确字节要求，但不是实际 registry 首发证据。
 这些外部结果继续按[部署计划](../Deployment.md)追踪，部署条目全部未勾选。
+
+## latest / canary 评审反馈
+
+用户于 2026-10-12 明确选择维护者打 tag 的方式，不增加每日 canary 自动化。
+现有 `releasePlan` 对稳定版本返回 `latest`，对
+`1.2.3-canary.42.g0123456789ab` 返回 `canary`；两者均要求精确匹配 manifest。
+已有发布契约测试覆盖该双频道映射，工作流将该输出作为显式 `--tag` 参数。
+本次按反馈补充契约和维护说明，不需要修改发布算法。
+
+真实外部验收限定为 canary，需记录并核对 latest 前后不变；latest
+仅以源码与测试验证支持，不执行稳定发版。该要求不代表具体 canary 版本/tag
+已经选定，也不代表 npmjs 或 GitHub 授权已配置。
