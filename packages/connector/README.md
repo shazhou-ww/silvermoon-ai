@@ -140,6 +140,14 @@ also exist in SDK storage fall back to their persisted metadata.
 
 ## Reconnection and state confirmation
 
+CI retains the local WebSocket reconnection regression tests. The in-flight
+command test waits for inventory and result events on their specific connection
+identities, without requiring a transient global registration count. It uses
+the normal heartbeat interval so unrelated lease traffic does not drive the
+scenario; the dedicated heartbeat test keeps its short interval.
+The release deploy job still depends on the full check job, then rebuilds the
+same commit with `pnpm build` instead of running lint, types, and tests again.
+
 On each Relay connection, the connector advertises `confirmationVersion: 1`
 and uploads an inventory scoped to the connection identity returned by Relay.
 Current Session snapshots use increasing observation sequences. Snapshots

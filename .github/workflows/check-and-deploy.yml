@@ -48,7 +48,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
+      - run: pnpm build
       - name: Apply D1 migrations
         run: pnpm --filter @silvermoon-ai/worker exec wrangler d1 migrations apply silvermoon-relay --remote
       - name: Deploy relay Worker
