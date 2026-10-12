@@ -54,7 +54,7 @@ Connector 在本图代表当前持久化的连接身份，不是正在讨论的�
 | Session event | 现有事件或内容快照可更新 | 维持现有保留策略，不因为完成而删除；因此本图不标记为 AO |
 
 1. Session 唯一身份仍为 `(user_id, connector_id, session_id)`，不能仅按 session_id 操作，避免跨账户或跨 Connector 修改。
-2. 工作状态为账户共享的持久状态，不是浏览器偏好；离线操作同样需要服务器确认。
+2. 工作状态为账户共享的持久状态，不是浏览器偏好；设备仅离线时可操作，但同样需要服务器确认。已移除设备的历史保持只读，不允许借 Reactivate 恢复访问。
 3. 单次变更原子且幂等；重复完成或 Reactivate 不产生命令、复制 Session 或改变消息。
 4. Connector 的库存、历史、执行状态和新事件不会覆盖工作状态，也不会自动 Reactivate；并发用户操作以服务器已提交结果为准。
 5. Completed 默认不在日常列表；显示已完成项时继续展示真实执行状态。从 Completed 发送新指令前需主动 Reactivate，之后仍执行全部原有发送权限检查。
@@ -65,7 +65,7 @@ Connector 在本图代表当前持久化的连接身份，不是正在讨论的�
 - 既有 Session 默认为 `open`，不把 `idle`、`closed` 或未知执行状态自动转换为 Completed。
 - 兼容新增 Relay 字段，Connector 不新增完成/Reactivate 命令，旧客户端的 upsert 必须不覆盖该字段。
 - 新状态不是数据删除；旧 Web 回滚可以暂时不展示标记，但不能清空已保存状态。
-- 独立 Device 模型正在其他 idea 推进；本次保持既有复合 Session 身份，实施时需检查两者的迁移顺序和删除规则，不能让删除 Device 与完成 Session 混为一谈。
+- 主线同期合入 [设备删除规则](../../../../../../apps/worker/migrations/0011_device_management.sql)：设备逻辑移除保留 Session 身份及历史，但禁止更新其 Session。本次保留此边界，不把已移除设备当作普通离线设备，不让完成与 Reactivate 绕过只读限制。
 
 ## 待确认的范围
 
