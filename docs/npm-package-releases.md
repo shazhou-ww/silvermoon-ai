@@ -6,6 +6,11 @@ This follows the tag and npm Trusted Publishing approach in Silvermoon.
 There is no local publication, scheduled canary, manual workflow dispatch,
 automatic version bump, or automatic GitHub Release.
 
+Agents can use the repository-owned
+[publish-npm-packages skill](../.agents/skills/publish-npm-packages/SKILL.md)
+to prepare, publish or verify `latest` and `canary` releases. Invoking the skill
+does not itself authorize a tag push, account configuration or npm publication.
+
 ## Package and tag contract
 
 | Release key | npm package | Directory | Tag |
