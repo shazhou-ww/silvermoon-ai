@@ -90,6 +90,7 @@ export class CopilotAgentAdapter implements AgentAdapter {
     name: "GitHub Copilot",
   } as const;
   readonly capabilities = {
+    setNativeArchive: true,
     listSessions: true,
     createSession: true,
     sendMessage: true,
@@ -194,6 +195,13 @@ export class CopilotAgentAdapter implements AgentAdapter {
       lastMessagePreview: input.message.slice(0, 512),
     });
     await active.session.send({ prompt: input.message });
+  }
+
+  async setSessionArchived(input: { sessionId: string; archived: boolean }): Promise<AgentSession> {
+    if (!this.agentHostProvider?.hasSession(input.sessionId) || !this.agentHostProvider.setSessionArchived) {
+      throw new Error("Native Done / Restore is not supported for this Session.");
+    }
+    return this.agentHostProvider.setSessionArchived(input);
   }
 
   async loadSessionHistory(

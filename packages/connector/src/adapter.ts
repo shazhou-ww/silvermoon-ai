@@ -22,6 +22,9 @@ export interface AgentAdapter {
     message: string;
   }): Promise<void>;
   loadSessionHistory(sessionId: string): Promise<AgentSessionEvent[]>;
+  setSessionArchived?(input: { sessionId: string; archived: boolean }): Promise<AgentSession>;
   subscribe(listener: (event: AgentAdapterEvent) => void): () => void;
   close?(): Promise<void> | void;
 }
+
+export class NativeStateUnconfirmedError extends Error {}

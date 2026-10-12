@@ -1,5 +1,29 @@
 # 完成与 Reactivate：实现证据
 
+## 当前：原生 Done / Restore 联动
+
+已接受 Ideal `d9dfb90e315d5601f652194c1e093675b04e8af2`。本节为当前原生联动候选；下方手机与首版独立标记记录均为历史，不能证明当前原生联动真实上线。
+
+- 新可选协议能力及原生命令贯通 Adapter / hosted provider / Connector / Worker。父 Session 与 default chat 使用 Session channel，独立 child 使用自己的 chat channel。确认须匹配 client sequence 与动作类型，并验证实际 native flag 和库存；拒绝不改变状态，不一致/超时/断线明确未确认，不重放。
+- Worker 校验账户、设备、Session、当前 connection、原生能力及匹配命令结果；归档项恢复独立于 canSendMessage。旧连接/旧 observation 的既有保护沿用，失败结果不得夹带 Session 状态。最后派发拒绝命令后保留在线订阅，避免拒绝后的合法恢复失去接收入口。
+- 0013 增加原生状态和能力，保留所有旧标记、身份和历史。原生库存是工作状态投影权威；普通事件不改原生状态，没有批量归档或自动 Restore。旧 Web 的无 connection 请求被明确拒绝，旧 Connector 与 SDK-only 来源禁用，而不是 Relay-only 伪成功。
+- 列表与详情保持共用 glyph、44px 手机触控区与草稿。Show completed 不要求 Show ended；原生状态优先于残留 nativeStatus 标签。动作完成后重新读取当前库存和设备确认，防止操作回执覆写后来的本机状态。详情焦点在 pending 解除后的已提交渲染中恢复，切换 Session/账户后不会抢焦点。
+
+2026-10-12 验证：
+
+| 检查 | 结果与限制 |
+|---|---|
+| `pnpm check` | lint、全部类型、单元测试、构建通过；后续去除新增 unused import/焦点 effect 警告，lint 仅留两个既有 Fast Refresh warning |
+| Connector 自动化 | 39 通过、1 既有跳过；含真实 WebSocket 传输上的模拟 AHP 服务，验证四种正确 channel/action、拒绝/不一致、客户端本机状态通知、旧不兼容 Host、准确 ack、Connector 结果/未确认上传；原生确认后回执上传失败保持 unknown，不误报原生拒绝；不是实际 VS Code 集成 |
+| 协议自动化 | 7 通过，验证向后兼容能力、显式原生状态及 archive 命令的 boolean/身份形状 |
+| Worker 自动化 | 33 通过；新增在线原生命令接受但不乐观写入、错误 flag 拒绝、确认后投影、原生 Restore、unknown 回执、offline/unsupported、旧标记保留与旧库存保护 |
+| Web 单元 | 72 通过；新增 Show completed 无需 Show ended 与显式 native flag 优先 |
+| 浏览器 | 13 场景 × desktop / mobile / 320px narrow，共 39 全通过；pending/unknown 不显示成功、不重放，旧 Connector/离线禁用且详情说明，完成/恢复、历史/草稿/焦点、跨浏览器、过期库存、44px 与长标题 |
+| 本地 D1 | 0013 在真实本地 D1 成功，远程未应用 |
+| 视觉检查 | 查看 1440px 与 320px 实际浏览器截图，glyph 与详情恢复入口可达，无横向溢出；提示不遮挡按钮。测试状态来自 fixture |
+
+待完成：经明确授权的专用真实 VS Code Session 双向 Done / Restore；记录实际 VS Code 版本及原生副作用。尚未操作任何真实 Session、发布新 npm 版本或部署本轮生产变更。I-S03、I-AC01、I-AC02 保持未完成，不将 mock、health 或静态资产检查当作真实联动证据。
+
 ## 手机与详情操作更新
 
 已明确接受 `idealRevision=ba3ee658c830adc18c88fa69a78bc08adc61a3ac`，继续现有 idea，不创建新项。以下为本轮实现与验证；后面的首版记录保留为历史证据。

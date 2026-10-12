@@ -9,6 +9,7 @@ import type { z } from "zod";
 import { TRPCClientError } from "@trpc/client";
 import WebSocket from "ws";
 import type { AgentAdapter, AgentAdapterEvent } from "./adapter.js";
+import { NativeStateUnconfirmedError } from "./adapter.js";
 
 export interface SilvermoonConnectorOptions {
   relayUrl: string;
@@ -218,6 +219,7 @@ export class SilvermoonConnector {
       return;
     }
     const commandConnectionId = command.connectionId ?? this.connectionId ?? undefined;
+    let nativeConfirmed = false;
     await client.commandAccepted.mutate({ commandId: command.commandId });
     if (generation !== this.connectionGeneration) return;
     try {
@@ -255,6 +257,27 @@ export class SilvermoonConnector {
         await client.commandCompleted.mutate({
           commandId: command.commandId,
           outcome: "succeeded",
+        });
+        return;
+      }
+      if (command.type === "session.archive") {
+        if (!this.options.adapter.setSessionArchived) {
+          throw new Error("Native Done / Restore is not supported by this Connector.");
+        }
+        const updated = await this.options.adapter.setSessionArchived({
+          sessionId: command.sessionId, archived: command.archived,
+        });
+        if (updated.id !== command.sessionId || updated.nativeArchived !== command.archived) {
+          throw new NativeStateUnconfirmedError("Native Done / Restore confirmation did not match the requested Session state.");
+        }
+        nativeConfirmed = true;
+        if (generation !== this.connectionGeneration) return;
+        await client.commandCompleted.mutate({
+          commandId: command.commandId,
+          commandConnectionId,
+          outcome: "succeeded",
+          session: updated,
+          observation: this.nextObservation(),
         });
         return;
       }
@@ -300,7 +323,7 @@ export class SilvermoonConnector {
         commandId: command.commandId,
         outcome: "failed",
         error: {
-          code: "copilot-command-failed",
+          code: nativeConfirmed || error instanceof NativeStateUnconfirmedError ? "native-state-unconfirmed" : "copilot-command-failed",
           message: errorMessage(error).slice(0, 2_048),
         },
       });

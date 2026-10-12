@@ -44,6 +44,7 @@ import type {
 } from "@silvermoon-ai/protocol";
 import WebSocket from "ws";
 import type { AgentAdapterEvent } from "./adapter.js";
+import { NativeStateUnconfirmedError } from "./adapter.js";
 import type { AgentHostSessionProvider } from "./agent-host-provider.js";
 
 const ROOT_CHANNEL = "ahp-root://";
@@ -99,6 +100,7 @@ interface TrackedSession {
   resource: string;
   state: SessionState;
   subscription: Subscription;
+  dispatches: AgentHostDispatchAcknowledger;
 }
 
 interface TrackedChat {
@@ -111,6 +113,7 @@ interface TrackedChat {
 }
 
 interface PendingDispatch {
+  actionType: string;
   resolve(): void;
   reject(error: Error): void;
   timeout: ReturnType<typeof setTimeout>;
@@ -130,6 +133,7 @@ export class AgentHostDispatchAcknowledger {
         ));
       }, this.timeoutMs);
       this.pending.set(clientSequence, {
+        actionType,
         resolve: () => {
           clearTimeout(timeout);
           resolve();
@@ -149,10 +153,10 @@ export class AgentHostDispatchAcknowledger {
     rejectionReason?: string,
   ): boolean {
     const pending = this.pending.get(clientSequence);
-    if (!pending) return false;
+    if (!pending || pending.actionType !== actionType) return false;
     this.pending.delete(clientSequence);
     if (rejectionReason) {
-      pending.reject(new Error(
+      pending.reject(new AgentHostDispatchRejectedError(
         `Agent Host rejected ${actionType}: ${rejectionReason}`,
       ));
     } else {
@@ -176,6 +180,8 @@ export class AgentHostDispatchAcknowledger {
     }
   }
 }
+
+export class AgentHostDispatchRejectedError extends Error {}
 
 interface ConnectionCallbacks {
   onCatalogChanged(connection: AgentHostConnection): void;
@@ -311,7 +317,9 @@ function sameSession(left: AgentSession, right: AgentSession): boolean {
     && left.lastMessagePreview === right.lastMessagePreview
     && left.parentSessionId === right.parentSessionId
     && left.canSendMessage === right.canSendMessage
-    && left.executionStateKnown === right.executionStateKnown;
+    && left.executionStateKnown === right.executionStateKnown
+    && left.canSetNativeArchive === right.canSetNativeArchive
+    && left.nativeArchived === right.nativeArchived;
 }
 
 function preferredBinding(
@@ -345,6 +353,7 @@ export function agentHostSummaryToSession(
     status: sessionStatus(summary.status),
     executionStateKnown: summary.status !== undefined,
     nativeStatus: summary.status === undefined ? null : String(summary.status),
+    nativeArchived: summary.status === undefined ? undefined : isArchivedStatus(summary.status),
     createdAt,
     updatedAt,
     lastMessagePreview: boundedText(summary.activity ?? summary.title, 512),
@@ -384,6 +393,7 @@ export function agentHostSummaryToSubsessions(
         status: sessionStatus(chat.status),
         executionStateKnown: chat.status !== undefined,
         nativeStatus: chat.status === undefined ? null : String(chat.status),
+        nativeArchived: chat.status === undefined ? undefined : isArchivedStatus(chat.status),
         createdAt: parent.createdAt,
         updatedAt: parent.updatedAt,
         lastMessagePreview: null,
@@ -1227,11 +1237,14 @@ class AgentHostConnection {
     const rootSubscription = client.attachSubscription(ROOT_CHANNEL);
     const clientId = `silvermoon-connector-${randomUUID()}`;
     try {
-      await client.initialize({
+      const initialized = await client.initialize({
         clientId,
         protocolVersions: [entry.protocolVersion],
         initialSubscriptions: [ROOT_CHANNEL],
       });
+      if (initialized.protocolVersion !== entry.protocolVersion) {
+        throw new Error("Agent Host selected an unexpected protocol version.");
+      }
     } catch (error) {
       await client.shutdown();
       throw error;
@@ -1312,6 +1325,42 @@ class AgentHostConnection {
       chat,
       createAgentHostMessageAction(chat.state, message),
     );
+  }
+
+  supportsArchive(chat: boolean): boolean {
+    const version = /^(\d+)\.(\d+)\.(\d+)$/u.exec(this.entry.protocolVersion);
+    if (!version) return false;
+    const major = Number(version[1]);
+    const minor = Number(version[2]);
+    return major > 0 || minor >= (chat ? 9 : 1);
+  }
+
+  async setArchived(sessionId: string, resource: string, archived: boolean, chatResource?: string): Promise<void> {
+    if (!this.supportsArchive(Boolean(chatResource))) {
+      throw new Error("Agent Host version does not support native Done / Restore for this Session.");
+    }
+    if (chatResource) {
+      const chat = await this.ensureChat(sessionId, chatResource);
+      await this.dispatchChatAction(chat, { type: ActionType.ChatIsArchivedChanged, isArchived: archived });
+      if (isArchivedStatus(chat.state.status) !== archived) {
+        throw new Error("Agent Host did not confirm the requested chat archive state.");
+      }
+    } else {
+      const session = await this.ensureSession(resource);
+      const sequence = this.nextClientSequence++;
+      const action: SessionAction = { type: ActionType.SessionIsArchivedChanged, isArchived: archived };
+      const acknowledgement = session.dispatches.wait(sequence, action.type);
+      try {
+        this.client.dispatch(resource, action, sequence);
+      } catch (error) {
+        session.dispatches.reject(sequence, error instanceof Error ? error : new Error(String(error)));
+      }
+      await acknowledgement;
+      if (isArchivedStatus(session.state.status) !== archived) {
+        throw new Error("Agent Host did not confirm the requested Session archive state.");
+      }
+    }
+    await this.refreshCatalog(false);
   }
 
   async loadSessionHistory(
@@ -1409,6 +1458,7 @@ class AgentHostConnection {
       resource,
       state: result.snapshot.state as SessionState,
       subscription,
+      dispatches: new AgentHostDispatchAcknowledger(),
     };
     void this.consumeSession(tracked);
     return tracked;
@@ -1419,6 +1469,11 @@ class AgentHostConnection {
       for await (const event of tracked.subscription) {
         if (event.type !== "action") continue;
         if (!event.params.action.type.startsWith("session/")) continue;
+        const origin = event.params.origin;
+        if (origin?.clientId === this.clientId) {
+          tracked.dispatches.settle(origin.clientSeq, event.params.action.type, event.params.rejectionReason);
+        }
+        if (event.params.rejectionReason) continue;
         tracked.state = sessionReducer(
           tracked.state,
           event.params.action as SessionAction,
@@ -1426,12 +1481,14 @@ class AgentHostConnection {
         );
       }
     } catch (error) {
+      tracked.dispatches.rejectAll(errorMessage(error));
       if (!this.closed) {
         this.log(
           `Agent Host session subscription failed: ${errorMessage(error)}`,
         );
       }
     }
+    tracked.dispatches.rejectAll("session subscription closed");
   }
 
   private ensureChat(
@@ -1852,6 +1909,25 @@ export class VsCodeAgentHostProvider implements AgentHostSessionProvider {
     );
   }
 
+  async setSessionArchived(input: { sessionId: string; archived: boolean }): Promise<AgentSession> {
+    const binding = await this.requireSession(input.sessionId);
+    if (!binding.session.canSetNativeArchive) {
+      throw new Error("Native Done / Restore is not confirmed for this Session.");
+    }
+    try {
+      await binding.connection.setArchived(input.sessionId, binding.resource, input.archived, binding.chatResource);
+      await this.refresh(true);
+      const updated = this.sessions.get(input.sessionId)?.session;
+      if (!updated || updated.nativeArchived !== input.archived) {
+        throw new NativeStateUnconfirmedError("Native Done / Restore result could not be confirmed in the Session inventory.");
+      }
+      return updated;
+    } catch (error) {
+      if (error instanceof AgentHostDispatchRejectedError) throw error;
+      throw new NativeStateUnconfirmedError(errorMessage(error));
+    }
+  }
+
   subscribe(listener: (event: AgentAdapterEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -2027,6 +2103,9 @@ export class VsCodeAgentHostProvider implements AgentHostSessionProvider {
           });
         }
         for (const candidate of candidates) {
+          candidate.session.canSetNativeArchive =
+            candidate.connection.supportsArchive(Boolean(candidate.chatResource))
+            && candidate.session.nativeArchived !== undefined;
           const current = next.get(candidate.session.id);
           next.set(
             candidate.session.id,

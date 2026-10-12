@@ -21,6 +21,7 @@ export interface HierarchicalSession {
 
 export interface FilterableSession extends HierarchicalSession {
   workState?: SessionWorkState
+  nativeArchived?: boolean | null
   title: string | null
   status: string
   lastMessagePreview: string | null
@@ -30,6 +31,7 @@ export interface FilterableSession extends HierarchicalSession {
 }
 
 export interface SessionSource {
+  capabilities?: { setNativeArchive?: boolean }
   id: string
   displayName: string
   status: "online" | "offline" | "unknown"
@@ -99,7 +101,9 @@ export function normalizedSessionStatus(status: string): SessionStatus {
 export function sessionIsArchived(session: {
   status: string
   nativeStatus?: string | null
+  nativeArchived?: boolean | null
 }): boolean {
+  if (session.nativeArchived != null) return session.nativeArchived
   const nativeStatus = Number(session.nativeStatus)
   return session.status === "closed"
     || (Number.isInteger(nativeStatus) && (nativeStatus & 64) !== 0)
@@ -160,7 +164,8 @@ export function sessionMatchesScope(
 ): boolean {
   if (session.workState === "completed" && !options.showCompleted) return false
   const status = normalizedSessionStatus(session.status)
-  if (status === "closed" && !options.showEnded) return false
+  if (status === "closed" && !options.showEnded
+    && !(session.nativeArchived === true && options.showCompleted)) return false
   if (status === "gone" && !options.showUnavailable) return false
   const query = options.query.trim().toLocaleLowerCase()
   return !query || [

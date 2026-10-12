@@ -97,9 +97,12 @@ async function fixture(
     requests: string[]
     removed: boolean
     titles?: Map<string, string>
+    nativeSupported?: boolean
+    operationStatus?: "accepted" | "succeeded" | "failed" | "unknown"
   } = { values: new Map(), failure: false, gate: Promise.resolve(), requests: [], removed: false },
 ) {
   let historySyncRequests = 0
+  const nativeCommands = new Map<string, { connectorId: string; sessionId: string; workState: SessionWorkState }>()
   await page.route("https://relay.silvermoon.work/**", async (route) => {
     const url = new URL(route.request().url())
     if (!accountState.authenticated && url.pathname !== "/api/logout") {
@@ -115,6 +118,7 @@ async function fixture(
         createSession: true,
         sendMessage: true,
         streamEvents: true,
+        setNativeArchive: workStatus.nativeSupported !== false,
       },
       status: id === "studio" ? deviceState.status : status,
       removedAt: id === "studio" && workStatus.removed ? "2026-10-12T00:00:00Z" : null,
@@ -159,8 +163,16 @@ async function fixture(
       const connectorId = url.pathname.split("/")[3]
       const sessionId = url.pathname.split("/")[5]
       const workState = route.request().postDataJSON().workState
-      workStatus.values.set(`${connectorId}:${sessionId}`, workState)
-      body = { connectorId, sessionId, workState }
+      const id = `native-${nativeCommands.size + 1}`
+      nativeCommands.set(id, { connectorId, sessionId, workState })
+      body = { command: { id, type: "session.archive", status: "sent" } }
+    } else if (url.pathname.startsWith("/api/commands/native-")) {
+      const id = url.pathname.split("/").at(-1)!
+      const command = nativeCommands.get(id)!
+      const status = workStatus.operationStatus ?? "succeeded"
+      if (status === "succeeded") workStatus.values.set(`${command.connectorId}:${command.sessionId}`, command.workState)
+      body = { id, connectorId: command.connectorId, sessionId: command.sessionId,
+        type: "session.archive", status, error: status === "failed" ? { code: "native-rejected", message: "VS Code rejected the action." } : null }
     } else if (url.pathname.endsWith("/events/sync")) {
       historySyncRequests += 1
       body = {
@@ -200,12 +212,17 @@ async function fixture(
         .map((session) => ({
           ...session,
           workState: workStatus.values.get(`${connectorId}:${session.id}`) ?? "open",
+          nativeArchived: workStatus.values.has(`${connectorId}:${session.id}`)
+            ? workStatus.values.get(`${connectorId}:${session.id}`) === "completed"
+            : session.status === "closed" ? null : false,
+          canSetNativeArchive: workStatus.nativeSupported !== false,
           title: workStatus.titles?.get(session.id) ?? session.title,
           createdAt: session.lastActivityAt,
           updatedAt: session.lastActivityAt,
           lastMessagePreview: `${session.title} preview`,
-          canSendMessage: session.status !== "closed",
-          nativeStatus: session.status === "closed" ? "65" : null,
+          canSendMessage: workStatus.values.get(`${connectorId}:${session.id}`) !== "completed"
+            && (session.status !== "closed" || workStatus.values.get(`${connectorId}:${session.id}`) === "open"),
+          nativeStatus: session.status === "closed" && workStatus.values.get(`${connectorId}:${session.id}`) !== "open" ? "65" : "1",
           pendingInputRequest: session.id === "signing"
             ? pendingInputRequest
             : null,
@@ -256,7 +273,7 @@ test("detail work state completes and reactivates in place with history, draft a
   await expect(action).toHaveAccessibleName("Mark completed: Release desktop client")
   await action.focus()
   const tooltip = page.locator(".session-work-tooltip:visible")
-  await expect(tooltip).toContainText("Does not stop the Agent")
+  await expect(tooltip).toContainText("Native archive")
   await page.screenshot({ path: testInfo.outputPath("detail-open.png") })
   await action.press("Enter")
   await expect(action).toHaveAccessibleName("Reactivate: Release desktop client")
@@ -268,7 +285,7 @@ test("detail work state completes and reactivates in place with history, draft a
   expect(page.url()).toBe(originalUrl)
   await expect(page.locator("#session-follow-up")).toBeDisabled()
   await expect(page.locator("#session-follow-up")).toHaveValue("Keep this draft while organizing work")
-  await expect(page.getByText("This Session is completed in Relay.", { exact: true })).toBeVisible()
+  await expect(page.getByText("This Session is Done in VS Code.", { exact: true })).toBeVisible()
   await expect(page.locator(".session-list .session-item-title").filter({ hasText: "Release desktop client" })).toHaveCount(0)
   await expect(page.locator(".session-list .session-item-title").filter({ hasText: "Confirm signing identity" })).toHaveCount(1)
   await action.focus()
@@ -344,21 +361,19 @@ test("detail work state completion does not steal focus after navigating to anot
   expect(state.requests).toHaveLength(1)
 })
 
-test("detail work state Reactivate preserves native archive and read-only history", async ({ page }) => {
+test("detail native Restore is available through Show completed and preserves history", async ({ page }) => {
   const state = workStatusFixture()
   state.values.set("studio:ended", "completed")
   await fixture(page, undefined, undefined, undefined, undefined, state)
   await showCompleted(page)
-  await openViewOptions(page)
-  await page.getByRole("menuitemcheckbox", { name: "Show ended", exact: true }).click()
   await page.locator(".session-item-select").filter({ hasText: "Completed migration" }).click()
   const action = page.locator(".session-work-action.is-detail:visible button")
   await expect(action).toHaveAccessibleName("Reactivate: Completed migration")
   await expect(page.getByText("Saved activity remains visible.", { exact: true })).toBeVisible()
   await action.click()
   await expect(action).toHaveAccessibleName("Mark completed: Completed migration")
-  await expect(page.locator("#session-follow-up")).toBeDisabled()
-  await expect(page.getByText("This Session is archived and read-only.", { exact: true })).toBeVisible()
+  await expect(page.locator("#session-follow-up")).toBeEnabled()
+  await expect(page.getByText("This Session is archived and read-only.", { exact: true })).toHaveCount(0)
   await expect(page.getByText("Saved activity remains visible.", { exact: true })).toBeVisible()
   expect(state.requests).toHaveLength(1)
 })
@@ -412,7 +427,7 @@ test("work state glyph completes running work, preserves open children and react
   const complete = page.locator(".session-list").getByRole("button", { name: "Mark completed: Release desktop client", exact: true })
   await complete.focus()
   await expect(page.locator("#work-state-studio-release")).toBeVisible()
-  await expect(page.locator("#work-state-studio-release")).toContainText("Does not stop the Agent")
+  await expect(page.locator("#work-state-studio-release")).toContainText("Native archive")
   const tooltip = await page.locator("#work-state-studio-release").boundingBox()
   expect(tooltip).not.toBeNull()
   expect(tooltip!.x).toBeGreaterThanOrEqual(0)
@@ -425,7 +440,7 @@ test("work state glyph completes running work, preserves open children and react
   await expect(page.locator(".session-list").getByText("Release desktop client", { exact: true })).toHaveCount(0)
   await expect(page.locator(".session-list").getByText("Confirm signing identity", { exact: true })).toBeVisible()
   await expect(page.locator("#session-follow-up")).toBeDisabled()
-  await expect(page.getByText(/Marked "Release desktop client" completed/)).toBeVisible()
+  await expect(page.getByText(/VS Code confirmed Done for "Release desktop client"/)).toBeVisible()
   await expect(page.getByRole("button", { name: "Session view options" })).toBeFocused()
   await showCompleted(page)
   const row = page.locator(".session-list-item").filter({ has: page.locator(".session-item-title", { hasText: "Release desktop client" }) })
@@ -465,14 +480,39 @@ test("work state failures retain the row, block duplicate requests and do not cl
   expect(state.values.size).toBe(0)
 })
 
-test("work state reactivation preserves native archive and saved history", async ({ page }) => {
+test("native work state waits for confirmation and leaves unknown results visible without replay", async ({ page }) => {
+  const state: ReturnType<typeof workStatusFixture> & { operationStatus: "accepted" | "unknown" } = {
+    ...workStatusFixture(), operationStatus: "accepted",
+  }
+  await fixture(page, undefined, undefined, undefined, undefined, state)
+  const action = page.locator(".session-list").getByRole("button", { name: "Mark completed: Release desktop client", exact: true })
+  await action.click()
+  await expect(action).toBeDisabled()
+  await expect(page.locator(".session-list").getByText("Release desktop client", { exact: true })).toBeVisible()
+  await expect(page.getByText(/VS Code confirmed Done/)).toHaveCount(0)
+  state.operationStatus = "unknown"
+  await expect(page.getByText(/result is unconfirmed.*nothing will be retried automatically/)).toBeVisible()
+  await expect(action).toBeEnabled()
+  expect(state.requests).toHaveLength(1)
+  expect(state.values.size).toBe(0)
+})
+
+test("native work state clearly disables old Connectors in the list and detail", async ({ page }) => {
+  const state = { ...workStatusFixture(), nativeSupported: false }
+  await fixture(page, undefined, undefined, undefined, undefined, state)
+  await expect(page.locator(".session-list").getByRole("button", { name: "Mark completed: Release desktop client", exact: true })).toBeDisabled()
+  await page.locator(".session-item-select").filter({ hasText: "Release desktop client" }).click()
+  await expect(page.locator(".session-work-action.is-detail:visible button")).toBeDisabled()
+  await expect(page.getByText("Native Done / Restore is not supported. Upgrade the Connector or use VS Code.", { exact: true })).toBeVisible()
+  expect(state.requests).toHaveLength(0)
+})
+
+test("native Restore preserves saved history and does not send a message", async ({ page }) => {
   const state = workStatusFixture()
   state.values.set("studio:ended", "completed")
   await fixture(page, undefined, undefined, undefined, undefined, state)
   await showCompleted(page)
-  await expect(page.locator(".session-list").getByRole("button", { name: "Reactivate: Completed migration" })).toHaveCount(0)
-  await openViewOptions(page)
-  await page.getByRole("menuitemcheckbox", { name: "Show ended", exact: true }).click()
+  await expect(page.locator(".session-list").getByRole("button", { name: "Reactivate: Completed migration" })).toBeVisible()
   await page.locator(".session-item-select").filter({ hasText: "Completed migration" }).click()
   await expect(page.getByText("Saved activity remains visible.", { exact: true })).toBeVisible()
   await expect(page.locator("#session-follow-up")).toBeDisabled()
@@ -481,8 +521,7 @@ test("work state reactivation preserves native archive and saved history", async
   const back = page.getByRole("button", { name: "Back to Sessions", exact: true })
   if (await back.isVisible()) await back.click()
   await page.locator(".session-list").getByRole("button", { name: "Reactivate: Completed migration", exact: true }).click()
-  await expect(page.locator(".session-list").getByText("Completed migration", { exact: true })).toBeVisible()
-  await expect(page.locator("#session-follow-up")).toBeDisabled()
+  await expect(page.locator(".session-list").getByText("Completed migration", { exact: true })).toHaveCount(0)
   expect(state.values.get("studio:ended")).toBe("open")
 })
 
@@ -496,7 +535,7 @@ test("work state is shared across browsers, while glyph actions do not select an
   if (await back.isVisible()) await back.click()
   const previousUrl = page.url()
   await page.locator(".session-list").getByRole("button", { name: "Mark completed: Release desktop client", exact: true }).click()
-  await expect(page.getByText(/Marked "Release desktop client" completed/)).toBeVisible()
+  await expect(page.getByText(/VS Code confirmed Done for "Release desktop client"/)).toBeVisible()
   expect(page.url()).toBe(previousUrl)
   const context = await browser.newContext()
   try {
@@ -509,7 +548,7 @@ test("work state is shared across browsers, while glyph actions do not select an
   }
 })
 
-test("work state changes work offline but removed Device history has no writable glyph", async ({ page }) => {
+test("native work state actions are disabled offline and removed Device history has no writable glyph", async ({ page }) => {
   const state = workStatusFixture()
   const device = { status: "online", generation: 1, confirmedGeneration: 1 }
   await fixture(page, undefined, undefined, device, undefined, state)
@@ -518,16 +557,13 @@ test("work state changes work offline but removed Device history has no writable
     version: 1, showCompleted: true, showEnded: false, showUnavailable: false, showOffline: true, groupByDevice: false,
   })), preferencesKey)
   await page.reload()
-  await page.locator(".session-list").getByRole("button", { name: "Mark completed: Release desktop client", exact: true }).click()
-  await page.locator(".session-list").getByRole("button", { name: "Reactivate: Release desktop client", exact: true }).click()
+  await expect(page.locator(".session-list").getByRole("button", { name: "Mark completed: Release desktop client", exact: true })).toBeDisabled()
   await page.locator(".session-item-select").filter({ hasText: "Release desktop client" }).click()
   await expect(page.locator("#session-follow-up")).toBeVisible()
   await page.locator("#session-follow-up").fill("Keep this local draft")
   const detailAction = page.locator(".session-work-action.is-detail:visible button")
-  await detailAction.click()
-  await expect(detailAction).toHaveAccessibleName("Reactivate: Release desktop client")
-  await detailAction.click()
-  await expect(detailAction).toHaveAccessibleName("Mark completed: Release desktop client")
+  await expect(detailAction).toBeDisabled()
+  expect(state.requests).toHaveLength(0)
   await expect(page.getByRole("button", { name: "Send follow-up", exact: true })).toBeDisabled()
   state.removed = true
   await page.reload()
@@ -539,7 +575,7 @@ test("work state changes work offline but removed Device history has no writable
   await expect(page.locator(".session-list").getByText("Release desktop client", { exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "Mark completed: Release desktop client", exact: true })).toHaveCount(0)
   await expect(page.locator(".session-work-action.is-detail button")).toHaveCount(0)
-  expect(state.requests).toHaveLength(4)
+  expect(state.requests).toHaveLength(0)
 })
 
 test("work state is not overwritten by an older inventory response", async ({ page }) => {
@@ -564,7 +600,7 @@ test("work state is not overwritten by an older inventory response", async ({ pa
   })
   await expect.poll(() => pending).toBe(true)
   await page.locator(".session-list").getByRole("button", { name: "Mark completed: Release desktop client", exact: true }).click()
-  await expect(page.getByText(/Marked "Release desktop client" completed/)).toBeVisible()
+  await expect(page.getByText(/VS Code confirmed Done for "Release desktop client"/)).toBeVisible()
   release()
   await expect(page.locator(".session-list").getByText("Release desktop client", { exact: true })).toHaveCount(0)
   await showCompleted(page)

@@ -157,16 +157,22 @@ export class ConnectorSession extends DurableObject<Env> {
            WHERE user_id = ?3 AND id = ?4 AND connection_id = ?2 AND status = 'online'
              AND (?5 <> 'session.create' OR json_extract(capabilities_json, '$.createSession') = 1)
              AND (?5 <> 'session.message' OR json_extract(capabilities_json, '$.sendMessage') = 1))
+         AND (?5 <> 'session.archive' OR EXISTS (
+           SELECT 1 FROM agent_sessions WHERE user_id = ?3 AND connector_id = ?4 AND id = ?6
+             AND confirmed_connection_id = ?2 AND can_set_native_archive = 1 AND native_archived IS NOT NULL)
+           AND EXISTS (SELECT 1 FROM connectors WHERE user_id = ?3 AND id = ?4
+             AND json_extract(capabilities_json, '$.setNativeArchive') = 1))
          AND (?5 <> 'session.message' OR EXISTS (
            SELECT 1 FROM agent_sessions WHERE user_id = ?3 AND connector_id = ?4 AND id = ?6
              AND confirmed_connection_id = ?2 AND capability_confirmed = 1 AND can_send_message = 1
-             AND work_state = 'open'))`,
+             AND COALESCE(native_archived, work_state = 'completed') = 0))`,
     ).bind(
       command.commandId, connection.connectionId, connection.userId, connection.connectorId,
-      command.type, command.type === "session.message" ? command.sessionId : null,
+      command.type, command.type === "session.message" || command.type === "session.archive" ? command.sessionId : null,
     ).run();
     if (sent.meta.changes !== 1) {
-      waiter.resolve(null);
+      if (this.connections.has(connection)) this.commandWaiters.add(waiter);
+      else waiter.resolve(null);
       return { delivered: false };
     }
     waiter.resolve(command);
@@ -224,6 +230,26 @@ export class ConnectorSession extends DurableObject<Env> {
       commandAccepted: (commandId) =>
         this.commandAccepted(attachment, commandId),
       commandCompleted: async (input) => {
+        const pending = await this.env.DB.prepare(
+          `SELECT type, session_id, payload_json, connection_id, status FROM connector_commands
+           WHERE id = ?1 AND user_id = ?2 AND connector_id = ?3`,
+        ).bind(input.commandId, attachment.userId, attachment.connectorId)
+          .first<{ type: string; session_id: string | null; payload_json: string; connection_id: string | null; status: string }>();
+        if (pending?.type === "session.archive" && input.outcome === "failed" && input.session) {
+          throw new TRPCError({ code: "CONFLICT", message: "An unconfirmed native result cannot update Session state." });
+        }
+        if (pending?.type === "session.archive" && input.outcome === "succeeded") {
+          const command = connectorCommandSchema.parse(JSON.parse(pending.payload_json));
+          if (command.type !== "session.archive" || pending.connection_id !== attachment.connectionId
+            || !["sent", "accepted"].includes(pending.status)
+            || input.commandConnectionId !== attachment.connectionId
+            || input.observation?.connectionId !== attachment.connectionId
+            || input.session?.id !== command.sessionId
+            || input.session.nativeArchived !== command.archived
+            || input.session.canSetNativeArchive !== true) {
+            throw new TRPCError({ code: "CONFLICT", message: "Native archive result does not match the current command." });
+          }
+        }
         if (input.session) {
           await this.upsertSession(attachment, input.session, input.observation);
         }
@@ -411,8 +437,8 @@ export class ConnectorSession extends DurableObject<Env> {
         (user_id, connector_id, id, title, status, native_status, created_at, updated_at,
          last_activity_at, last_message_preview, parent_session_id,
          can_send_message, confirmed_connection_id, observation_sequence,
-         execution_state_known, capability_confirmed)
-       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
+         execution_state_known, capability_confirmed, can_set_native_archive, native_archived)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?17, ?18
        WHERE EXISTS (SELECT 1 FROM connectors WHERE user_id = ?1 AND id = ?2 AND connection_id = ?16)
        ON CONFLICT (user_id, connector_id, id) DO UPDATE SET
          title = excluded.title,
@@ -428,6 +454,8 @@ export class ConnectorSession extends DurableObject<Env> {
          observation_sequence = excluded.observation_sequence,
          execution_state_known = excluded.execution_state_known,
          capability_confirmed = excluded.capability_confirmed,
+         can_set_native_archive = excluded.can_set_native_archive,
+         native_archived = COALESCE(excluded.native_archived, agent_sessions.native_archived),
          last_message_preview = CASE
            WHEN julianday(excluded.last_activity_at) >= julianday(agent_sessions.last_activity_at)
            THEN COALESCE(excluded.last_message_preview, agent_sessions.last_message_preview)
@@ -452,6 +480,8 @@ export class ConnectorSession extends DurableObject<Env> {
         observation && session.executionStateKnown === true ? 1 : 0,
         observation && session.canSendMessage !== undefined ? 1 : 0,
         attachment.connectionId,
+        observation && session.canSetNativeArchive === true ? 1 : 0,
+        observation && session.nativeArchived !== undefined ? (session.nativeArchived ? 1 : 0) : null,
       )
       .run();
     if (result.meta.changes === 0) {
@@ -563,6 +593,15 @@ export class ConnectorSession extends DurableObject<Env> {
       .first<{ connection_id: string | null }>();
     if (!command || !command.connection_id || command.connection_id !== commandConnectionId) {
       throw new TRPCError({ code: "CONFLICT", message: "Command result belongs to another connection." });
+    }
+    if (error?.code === "native-state-unconfirmed") {
+      await this.env.DB.prepare(
+        `UPDATE connector_commands SET result_uncertain_at = CURRENT_TIMESTAMP,
+           error_code = ?1, error_message = ?2, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?3 AND user_id = ?4 AND connector_id = ?5 AND type = 'session.archive'
+           AND connection_id = ?6 AND status IN ('sent', 'accepted')`,
+      ).bind(error.code, error.message ?? null, commandId, attachment.userId, attachment.connectorId, commandConnectionId).run();
+      return;
     }
     const completion = this.env.DB.prepare(
       `UPDATE connector_commands SET status = ?1, error_code = ?2,

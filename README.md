@@ -150,18 +150,29 @@ list. Hover or focus a row to see its action; detail actions stay visible.
 On phones and touch screens, both actions stay visible with a touch target
 of at least 44 by 44 CSS pixels. Enable **Show completed**
 in Session view options to read completed history and use the **Reactivate**
-return-arrow icon in the list or detail header to mark the same Session
-unfinished again. You can complete and reactivate without leaving the detail
+return-arrow icon in the list or detail header to restore the same Session
+in VS Code. You can complete and reactivate without leaving the detail
 view; saved history and local drafts remain available. Existing search,
-status, ended, unavailable and offline filters still apply.
+status, unavailable and offline filters still apply. Native completed Sessions
+are reachable through **Show completed** without also enabling **Show ended**.
 
-This is an account-owned Relay work marker, shared across browsers and devices.
-It does not stop or start the Agent, delete history, change native archives,
-or cascade to parent or child Sessions. Connector updates and new events do
-not reset it. A completed Session must be reactivated before sending another
-follow-up; reactivation does not send a message or bypass online, capability
-confirmation or native read-only restrictions. Ordinary offline Sessions can
-be marked or reactivated; removed-device history stays read-only.
+For supported live Agent Host Sessions, these actions request VS Code's native
+**Done / Restore** (archive/unarchive), not an independent Relay marker.
+They require an online Device, an upgraded Connector advertising native archive
+capability, and a current confirmed Session. Published older Connectors and
+SDK-only Sessions do not support these actions; Relay disables them rather than
+silently falling back to a local marker. Native confirmation, not delivery,
+determines success. Rejection is shown as failure; disconnection or timeout is
+unconfirmed and is never automatically replayed. Refresh to reconcile state.
+
+Local VS Code Done / Restore is reflected in Relay. Old Relay-only completion
+markers are retained as legacy data and never automatically archive Sessions;
+fresh native state takes precedence. Relay does not send a message, stop an
+Agent, delete history, or dispatch cascading child commands. Native archive
+rules can affect child read-only state, read status, or additional worktree
+cleanup/recreation. Restore does not bypass message capability confirmation.
+Offline and removed-device history remains readable, but cannot be restored
+through Relay.
 
 ## Manage devices
 

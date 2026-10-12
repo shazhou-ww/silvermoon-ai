@@ -15,6 +15,7 @@ import type { SessionWorkState } from "@silvermoon-ai/protocol"
 
 interface TestSession {
   workState?: SessionWorkState
+  nativeArchived?: boolean | null
   id: string
   connectorId: string
   parentSessionId: string | null
@@ -66,6 +67,14 @@ const sources = new Map<string, SessionSource>([
 ])
 
 describe("removed Device history", () => {
+  it("makes native Done reachable via Show completed without Show ended", () => {
+    const archived = { ...session("done", null, "2026-10-12T00:00:00Z", "device-1", "closed"),
+      workState: "completed" as const, nativeArchived: true }
+    const options = { query: "", statusView: "all" as const, showEnded: false, showUnavailable: false }
+    expect(deriveVisibleSessions([archived], sources, options)).toHaveLength(0)
+    expect(deriveVisibleSessions([archived], sources, { ...options, showCompleted: true })).toHaveLength(1)
+    expect(sessionIsArchived({ ...archived, nativeArchived: false, nativeStatus: "65" })).toBe(false)
+  })
   it("keeps attribution, requires offline visibility and never confirms execution", () => {
     const removedSources = new Map(sources)
     removedSources.set("device-1", { ...sources.get("device-1")!, removedAt: "2026-10-12T00:00:00Z" })

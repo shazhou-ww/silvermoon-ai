@@ -6,9 +6,13 @@
 
 细化 Connector/协议的 Session 级能力和 Done / Restore 命令，用实际 Agent Host 的 Session/chat 绑定下发正确原生动作，验证确认及拒绝。账户 API、入队和派发核对完整身份、当前连接、能力及设备访问；归档项恢复不沿用“可发送消息”门控。记录已确认、失败及未确认，不把下发当作成功、不自动重放。
 
+采用向后兼容的可选 `setNativeArchive` / `canSetNativeArchive` / `nativeArchived` 及 `session.archive` 命令，继续使用协议 v2；只有新能力确认的来源才收到新命令。0013 添加独立原生状态及操作能力列，旧 `work_state` 原样保留，API 投影优先采用已观测原生状态，不生成迁移命令。操作绑定已有命令记录与当前 connection；结果须匹配指定 Session、请求原生 flag、当前连接及 observation，旧结果不能覆写新库存。原生拒绝为失败，超时/断线/不一致为未确认；Web 收到可信结果后再读取当前库存和连接，不用请求值乐观更新。
+
 ### I-S02: 同步原生权威与交互
 
 本机手动 Done / Restore 双向同步；旧 Relay 标记保留为非原生权威，不批量转成命令。支持来源经当前连接确认后使用原生结果；未确认、不支持和旧 Connector 明确禁用。列表/详情复用 glyph 与至少 44px 触控区，Show completed 可直接提供原生完成历史和 Restore，不被 Show ended 阻挡；发送仍遵守能力与连接约束。核对父 Session/default chat 和独立子 chat 的不同原生语义。
+
+原生 Session 使用 `SessionIsArchivedChanged`，独立 child chat 使用 `ChatIsArchivedChanged`，不向默认 chat 下发 child 动作，不额外级联。沿用现有 provider 仅接纳 AHP 0.10.x / 1.x 的兼容范围，并核对 initialize 返回的精确协商版本；每个目标须有显式原生状态，SDK-only 不声明 Session 级能力。列表和详情共用动作；禁用原因在详情明示，原生完成项通过 Show completed 直接可达。原生状态与 Agent 活动标签继续分开，已移除设备不可恢复访问。
 
 ### I-S03: 验证联动与兼容边界
 

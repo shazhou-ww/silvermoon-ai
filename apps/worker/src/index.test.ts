@@ -177,6 +177,10 @@ async function createSchema(): Promise<void> {
     await env.DB.prepare(statement).run();
   }
   await env.DB.prepare((env as AppEnv & { SESSION_WORK_STATE_SQL: string }).SESSION_WORK_STATE_SQL).run();
+  const nativeArchiveSql = (env as AppEnv & { NATIVE_SESSION_ARCHIVE_SQL: string }).NATIVE_SESSION_ARCHIVE_SQL;
+  for (const statement of nativeArchiveSql.split(";").map(value => value.trim()).filter(Boolean)) {
+    await env.DB.prepare(statement).run();
+  }
 }
 
 function sessionHeaders(values: { token: string; csrf: string }): HeadersInit {
@@ -1004,7 +1008,7 @@ describe("relay identity and token service", () => {
     expect(authenticated).toMatchObject({ userId: "user-01" });
   });
 
-  it("persists reversible work state for offline account-owned Sessions without changing history or native status", async () => {
+  it("rejects native state changes while offline without changing legacy markers or history", async () => {
     const token = await createToken(appEnv, "user-01", { name: "Offline work status device" });
     const id = token.metadata.deviceId;
     const now = new Date().toISOString();
@@ -1030,10 +1034,10 @@ describe("relay identity and token service", () => {
       const changed = await SELF.fetch(route, {
         method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ workState }),
       });
-      expect(changed.status).toBe(200);
-      expect(await changed.json()).toEqual({ connectorId: id, sessionId: "parent", workState });
+      expect(changed.status).toBe(409);
+      expect(await changed.json()).toEqual({ error: "native-session-state-unconfirmed" });
       expect(await env.DB.prepare("SELECT * FROM agent_sessions WHERE connector_id = ?1 AND id = 'parent'").bind(id).first())
-        .toEqual({ ...before, work_state: workState });
+        .toEqual(before);
       expect(await env.DB.prepare("SELECT work_state FROM agent_sessions WHERE connector_id = ?1 AND id = 'child'").bind(id).first<string>("work_state")).toBe("open");
       expect(await env.DB.prepare("SELECT work_state FROM agent_sessions WHERE connector_id = ?1 AND id = 'parent'")
         .bind(otherDevice.metadata.deviceId).first<string>("work_state")).toBe("open");
@@ -1157,6 +1161,7 @@ describe("relay identity and token service", () => {
       confirmationVersion: 1,
       agent: { name: "Test agent", version: "1.0.0" },
       capabilities: {
+        setNativeArchive: true,
         listSessions: true,
         createSession: true,
         sendMessage: true,
@@ -1588,10 +1593,35 @@ describe("relay identity and token service", () => {
       message: "Show me the test output.",
     });
     const workStateRoute = `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-new/work-state`;
-    const completed = await SELF.fetch(workStateRoute, {
-      method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ workState: "completed" }),
+    const unsupportedNative = await SELF.fetch(workStateRoute, {
+      method: "POST", headers: sessionHeaders(session),
+      body: JSON.stringify({ workState: "completed", connectionId: currentConnectionId }),
     });
-    expect(completed.status).toBe(200);
+    expect(unsupportedNative.status).toBe(409);
+    expect(await unsupportedNative.json()).toEqual({ error: "native-done-restore-unsupported" });
+    await env.DB.prepare(`UPDATE agent_sessions SET can_set_native_archive = 1, native_archived = 0, work_state = 'completed'
+      WHERE connector_id = ?1 AND id = 'session-new'`).bind(connectorId).run();
+    const completed = await SELF.fetch(workStateRoute, {
+      method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ workState: "completed", connectionId: currentConnectionId }),
+    });
+    expect(completed.status).toBe(202);
+    const completeReceipt = await completed.json<{ command: { id: string } }>();
+    expect(await env.DB.prepare("SELECT native_archived FROM agent_sessions WHERE connector_id = ?1 AND id = 'session-new'")
+      .bind(connectorId).first<number>("native_archived")).toBe(0);
+    sendRpc(113, "mutation", "commandCompleted", {
+      commandId: completeReceipt.command.id, commandConnectionId: currentConnectionId, outcome: "succeeded",
+      session: { id: "session-new", title: "Incorrect result", status: "idle", nativeArchived: false,
+        canSetNativeArchive: true, createdAt: now, updatedAt: now },
+    });
+    await expect.poll(() => frames.find(frame => frame.id === 113 && frame.error)).toBeDefined();
+    expect(await env.DB.prepare("SELECT status FROM connector_commands WHERE id = ?1")
+      .bind(completeReceipt.command.id).first<string>("status")).toBe("sent");
+    sendRpc(114, "mutation", "commandCompleted", {
+      commandId: completeReceipt.command.id, commandConnectionId: currentConnectionId, outcome: "succeeded",
+      session: { id: "session-new", title: "Investigate CI", status: "closed", nativeArchived: true,
+        canSetNativeArchive: true, executionStateKnown: true, canSendMessage: false, createdAt: now, updatedAt: now },
+    });
+    await waitForData(114);
     const blocked = await SELF.fetch(
       `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-new/messages`,
       { method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ message: "Blocked", connectionId: currentConnectionId }) },
@@ -1635,6 +1665,7 @@ describe("relay identity and token service", () => {
         id: "session-new", title: "Investigate CI", status: "running",
         createdAt: now, updatedAt: now, lastMessagePreview: "Current observation",
         executionStateKnown: true, canSendMessage: true,
+        nativeArchived: true, canSetNativeArchive: true,
       },
     });
     await waitForData(11);
@@ -1668,16 +1699,42 @@ describe("relay identity and token service", () => {
     expect(await env.DB.prepare(
       "SELECT work_state FROM agent_sessions WHERE user_id = 'user-01' AND connector_id = ?1 AND id = 'session-new'",
     ).bind(connectorId).first<string>("work_state")).toBe("completed");
+    expect(await env.DB.prepare("SELECT can_set_native_archive, native_archived, observation_sequence FROM agent_sessions WHERE connector_id = ?1 AND id = 'session-new'")
+      .bind(connectorId).first()).toMatchObject({ can_set_native_archive: 1, native_archived: 1, observation_sequence: 100 });
     const reactivated = await SELF.fetch(workStateRoute, {
-      method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ workState: "open" }),
+      method: "POST", headers: sessionHeaders(session), body: JSON.stringify({ workState: "open", connectionId: currentConnectionId }),
     });
-    expect(reactivated.status).toBe(200);
+    expect(reactivated.status).toBe(202);
+    const restoreReceipt = await reactivated.json<{ command: { id: string } }>();
+    observationSequence = 100;
+    sendRpc(115, "mutation", "commandCompleted", {
+      commandId: restoreReceipt.command.id, commandConnectionId: currentConnectionId, outcome: "succeeded",
+      session: { id: "session-new", title: "Investigate CI", status: "running", nativeArchived: false,
+        canSetNativeArchive: true, executionStateKnown: true, canSendMessage: true, createdAt: now, updatedAt: now },
+    });
+    await waitForData(115);
     expect(await env.DB.prepare(
       `SELECT status, can_send_message, observation_sequence FROM agent_sessions
        WHERE user_id = 'user-01' AND connector_id = ?1 AND id = 'session-new'`,
     ).bind(connectorId).first()).toMatchObject({
-      status: "running", can_send_message: 1, observation_sequence: 100,
+      status: "running", can_send_message: 1, observation_sequence: 101,
     });
+    const uncertain = await SELF.fetch(workStateRoute, {
+      method: "POST", headers: sessionHeaders(session),
+      body: JSON.stringify({ workState: "completed", connectionId: currentConnectionId }),
+    });
+    expect(uncertain.status).toBe(202);
+    const uncertainCommand = await uncertain.json<{ command: { id: string } }>();
+    sendRpc(116, "mutation", "commandCompleted", {
+      commandId: uncertainCommand.command.id, outcome: "failed",
+      error: { code: "native-state-unconfirmed", message: "Timed out waiting for Agent Host." },
+    });
+    await waitForData(116);
+    const uncertainReceipt = await SELF.fetch(`https://relay.silvermoon.work/api/commands/${uncertainCommand.command.id}`,
+      { headers: sessionHeaders(session) });
+    expect(await uncertainReceipt.json()).toMatchObject({ status: "unknown" });
+    expect(await env.DB.prepare("SELECT native_archived FROM agent_sessions WHERE connector_id = ?1 AND id = 'session-new'")
+      .bind(connectorId).first<number>("native_archived")).toBe(0);
     const staleMessage = await SELF.fetch(
       `https://relay.silvermoon.work/api/connectors/${connectorId}/sessions/session-new/messages`,
       {
