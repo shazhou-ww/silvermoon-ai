@@ -27,15 +27,15 @@ used instead.
 For the end-user sign-in, device setup, and Session workflow, start with the
 [Relay quick start](../../README.md#quick-start).
 
-The public npm release verified for that guide is `0.2.0`. Run it without
+The guide targets Connector `0.2.1`. Run it without
 cloning this repository:
 
 ```powershell
-npx --yes @silvermoon-ai/connector@0.2.0 --help
+npx --yes @silvermoon-ai/connector@0.2.1 --help
 ```
 
 Alternatively, install the executable globally with
-`npm install --global @silvermoon-ai/connector@0.2.0` and use
+`npm install --global @silvermoon-ai/connector@0.2.1` and use
 `silvermoon-connector` for the commands below.
 
 The published package includes the Silvermoon protocol and RPC implementation
@@ -49,9 +49,11 @@ retry behavior; do not publish locally.
 
 ## Native Done / Restore
 
-This source tree supports native archive commands for live VS Code Agent Host
-Sessions. The previously published `0.2.0` quick-start release does not provide
-this capability; no new npm release is implied by these source changes.
+Connector `0.2.1` supports native archive commands for live VS Code Agent Host
+Sessions. The previously published `0.2.0` and `0.2.1-canary.1` do not provide
+this capability. Stop the older Connector before starting `0.2.1` with the
+same secure profile; do not run two with the same token. Native integration
+was verified on VS Code `1.141.0` / AHP `0.10.0`.
 Both Connector-level support and a current Session-level native state must be
 confirmed. SDK-only Sessions and incompatible Agent Hosts are unsupported.
 
@@ -80,7 +82,7 @@ The connector reads the Relay address, token, and non-sensitive options from
 that file:
 
 ```powershell
-npx --yes @silvermoon-ai/connector@0.2.0 --working-directory .
+npx --yes @silvermoon-ai/connector@0.2.1 --working-directory .
 ```
 
 Run from the project directory for new Copilot sessions and keep the terminal
@@ -123,7 +125,7 @@ These steps use a terminal and the profile copied from **Copy profile**:
    ```
 
 4. Change to your project directory and run
-   `npx --yes @silvermoon-ai/connector@0.2.0 --working-directory .`.
+   `npx --yes @silvermoon-ai/connector@0.2.1 --working-directory .`.
 
 Do not share this file or use a public/shared clipboard to transfer it.
 
