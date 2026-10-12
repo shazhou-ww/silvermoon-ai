@@ -4,13 +4,13 @@
 
 ### Implementation steps
 
-- [ ] **I-S01:** 复现并统一窄屏回退行为
-- [ ] **I-S02:** 补充导航回归验证
+- [x] **I-S01:** 复现并统一窄屏回退行为
+- [x] **I-S02:** 补充导航回归验证
 
 ### Implementation acceptance criteria
 
-- [ ] **I-AC01:** 窄屏返回列表正确
-- [ ] **I-AC02:** 既有导航保持一致
+- [x] **I-AC01:** 窄屏返回列表正确
+- [x] **I-AC02:** 既有导航保持一致
 
 ## Deployment
 

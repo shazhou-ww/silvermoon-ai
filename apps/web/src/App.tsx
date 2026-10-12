@@ -15,7 +15,6 @@ import {
   Laptop,
   LoaderCircle,
   LogOut,
-  Menu,
   MoreHorizontal,
   Plus,
   Search,
@@ -37,7 +36,6 @@ import type {
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -744,51 +742,6 @@ function updateLocationSelection(
   )
 }
 
-function SessionNavigation({
-  inDrawer,
-  open,
-  onOpenChange,
-  restoreFocus,
-  children,
-}: {
-  inDrawer: boolean
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  restoreFocus: () => void
-  children: React.ReactNode
-}) {
-  if (!inDrawer) return <>{children}</>
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="session-navigation-drawer"
-        showCloseButton={false}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault()
-          restoreFocus()
-        }}
-      >
-        <DialogTitle className="sr-only">Sessions</DialogTitle>
-        <DialogDescription className="sr-only">
-          Choose a Session to leave Settings.
-        </DialogDescription>
-        <DialogClose asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="session-navigation-close"
-            aria-label="Close Sessions"
-          >
-            <X aria-hidden="true" />
-          </Button>
-        </DialogClose>
-        {children}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 function initialAuthError(): string | null {
   return new URLSearchParams(window.location.search).has("authError")
     ? "We couldn’t verify that sign-in. Try again or choose another provider."
@@ -947,7 +900,6 @@ function App() {
     () => workspaceRoute(window.location).view,
   )
   const [deviceFormOpen, setDeviceFormOpen] = useState(false)
-  const [drawerOpen, setDrawerOpen] = useState(false)
   const [navigationRevision, setNavigationRevision] = useState(0)
   const [narrowViewport, setNarrowViewport] = useState(
     () => window.matchMedia("(max-width: 760px)").matches,
@@ -995,7 +947,6 @@ function App() {
   const settingsPageRef = useRef<HTMLElement>(null)
   const desktopHeadingRef = useRef<HTMLHeadingElement>(null)
   const mobileHeadingRef = useRef<HTMLHeadingElement>(null)
-  const openSessionsRef = useRef<HTMLButtonElement>(null)
   const addDeviceRef = useRef<HTMLButtonElement>(null)
   const deviceNameRef = useRef<HTMLInputElement>(null)
   const selectedConnectorId = selection?.connectorId ?? null
@@ -1065,7 +1016,6 @@ function App() {
     setSessionTitle("")
     setSessionPrompt("")
     setHistorySyncFailure(null)
-    setDrawerOpen(false)
     setExpandedDeviceIds(new Set())
     setBusyAction(null)
     setNotice(null)
@@ -1092,7 +1042,6 @@ function App() {
     const media = window.matchMedia("(max-width: 760px)")
     const change = () => {
       setNarrowViewport(media.matches)
-      if (!media.matches) setDrawerOpen(false)
     }
     media.addEventListener("change", change)
     return () => media.removeEventListener("change", change)
@@ -1371,7 +1320,6 @@ function App() {
     setNavigationRevision((revision) => revision + 1)
     setSelection(nextSelection)
     setMobileView(nextSelection ? "session" : "list")
-    setDrawerOpen(false)
   }, [selection])
 
   const navigate = useCallback((
@@ -1412,12 +1360,20 @@ function App() {
 
   const openSessionList = useCallback(() => {
     if (routeRef.current !== "session") {
-      navigate("session", null)
+      const nextSelection = routeRef.current === "settings"
+        ? selectionFromLocation()
+        : selection
+      const url = workspaceUrl(window.location.href, "session", null)
+      if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== url) {
+        window.history.pushState({}, "", url)
+      }
+      applyRoute("session", nextSelection)
+      setMobileView("list")
       return
     }
     setMobileView("list")
     updateLocationSelection(null, "push")
-  }, [navigate])
+  }, [applyRoute, selection])
 
   const selectedSessionAvailable = Boolean(
     selectedConnectorId
@@ -2363,14 +2319,12 @@ function App() {
           <div className="mobile-topbar-context">
             {isSettings ? (
               <button
-                ref={openSessionsRef}
                 type="button"
                 className="mobile-back-button"
-                onClick={() => setDrawerOpen(true)}
-                aria-label="Open Sessions"
-                aria-expanded={drawerOpen}
+                onClick={openSessionList}
+                aria-label="Back to Sessions"
               >
-                <Menu aria-hidden="true" />
+                <ArrowLeft aria-hidden="true" />
               </button>
             ) : mobileView === "session" && (
               <button
@@ -2464,17 +2418,6 @@ function App() {
           </DropdownMenu>
         </header>
 
-        <SessionNavigation
-          inDrawer={isSettings && narrowViewport}
-          open={drawerOpen}
-          onOpenChange={setDrawerOpen}
-          restoreFocus={() => {
-            if (routeRef.current === "settings" && window.location.hash === "#devices") {
-              settingsPageRef.current?.querySelector<HTMLElement>("#settings-devices")?.focus()
-            } else if (routeRef.current === "settings") openSessionsRef.current?.focus()
-            else (narrowViewport ? mobileHeadingRef : desktopHeadingRef).current?.focus()
-          }}
-        >
         <aside className="session-rail" aria-label="Sessions">
           <div className="session-rail-heading">
             <div>
@@ -2744,7 +2687,6 @@ function App() {
             </button>
           </div>
         </aside>
-        </SessionNavigation>
 
         {isSettings && (
           <SettingsPage

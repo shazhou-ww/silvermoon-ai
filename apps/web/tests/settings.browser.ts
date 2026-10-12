@@ -176,7 +176,7 @@ async function select(page: Page, title: string) {
   await expect(input(page)).toBeVisible()
 }
 
-test("Settings is a route with two modules and icon-only account controls", async ({ page }) => {
+test("Settings is a route with two modules and icon-only account controls", async ({ page, isMobile }) => {
   const state = await fixture(page)
   const response = await page.goto("/settings?connector=one&session=same")
   expect(response?.status()).toBe(200)
@@ -186,7 +186,10 @@ test("Settings is a route with two modules and icon-only account controls", asyn
   await expect(settings(page).getByRole("heading", { name: "Devices", exact: true })).toBeVisible()
   await expect(settings(page).getByRole("heading", { name: "Linked identities" })).toBeVisible()
   await expect(page.getByText("Browser sessions", { exact: true })).toHaveCount(0)
-  await expect(page.getByRole("button", { name: /Back to Session/ })).toHaveCount(0)
+  const settingsBack = page.getByRole("button", { name: "Back to Sessions", exact: true })
+  if (isMobile) await expect(settingsBack).toBeVisible()
+  else await expect(settingsBack).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Open Sessions", exact: true })).toHaveCount(0)
   await expect(settings(page).getByLabel("Device name")).toHaveCount(0)
   await expect(page.locator(".account-trigger")).not.toContainText("Reviewer")
   await page.getByRole("button", { name: "Account menu for Reviewer" }).click()
@@ -232,7 +235,7 @@ test("Session drafts are isolated by device and survive Settings and refresh", a
   await page.goto("/?connector=one&session=same")
   await input(page).fill("alpha")
   await openSettings(page)
-  await expect(page.locator(".session-item-select[aria-current='true']")).toHaveCount(0)
+  await expect(page.locator(".session-item-select[aria-current='page']")).toHaveCount(0)
   await select(page, "Second Session")
   await expect(input(page)).toHaveValue("")
   await input(page).fill("beta")
@@ -244,6 +247,46 @@ test("Session drafts are isolated by device and survive Settings and refresh", a
   await page.reload()
   await select(page, "Second Session")
   await expect(input(page)).toHaveValue("beta")
+})
+
+test("narrow Settings returns to the full Session list without losing workspace state", async ({ page, isMobile }, testInfo) => {
+  test.skip(!isMobile, "Narrow navigation only")
+  await fixture(page)
+  await page.goto("/?connector=one&session=same")
+  await input(page).fill("alpha")
+  await page.getByRole("button", { name: "Back to Sessions", exact: true }).click()
+  const search = page.getByRole("textbox", { name: "Search Sessions, Agents, and Devices" })
+  await search.fill("First")
+  await openSettings(page)
+  await expect(page).toHaveURL(/\/settings\?connector=one&session=same$/)
+
+  const back = page.getByRole("button", { name: "Back to Sessions", exact: true })
+  await expect(back).toBeVisible()
+  await expect(page.getByRole("button", { name: "Open Sessions", exact: true })).toHaveCount(0)
+  await expect(page.getByRole("dialog", { name: "Sessions", exact: true })).toHaveCount(0)
+  await page.setViewportSize({ width: 761, height: 640 })
+  await expect(back).toBeHidden()
+  await expect(page.getByRole("complementary", { name: "Sessions", exact: true })).toBeVisible()
+  await page.setViewportSize({ width: 760, height: 640 })
+  await expect(back).toBeVisible()
+  await expect(page.getByRole("complementary", { name: "Sessions", exact: true })).toBeHidden()
+
+  await back.focus()
+  await expect(back).toBeFocused()
+  await back.press("Enter")
+  await expect(page).toHaveURL(/\/$/)
+  await expect(settings(page)).toHaveCount(0)
+  await expect(page.getByRole("complementary", { name: "Sessions", exact: true })).toBeVisible()
+  await expect(search).toHaveValue("First")
+  await expect(page.locator(".session-item-select[aria-current='page']")).toContainText("First Session")
+  await expect(page.locator(".session-list").getByText("Second Session", { exact: true })).toHaveCount(0)
+  await expect(page.locator(".mobile-topbar-context h1")).toHaveText("Sessions")
+  await expect(page.locator(".mobile-topbar-context h1")).toBeFocused()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath("settings-session-list.png") })
+
+  await page.locator(".session-item-select").filter({ hasText: "First Session" }).click()
+  await expect(input(page)).toHaveValue("alpha")
 })
 
 test("Device rename cancels without IO, retains failed input and updates attribution", async ({ page }) => {
@@ -309,7 +352,9 @@ test("Device deletion retains read-only history and exposes persistent disconnec
   await expect(dialog).toHaveCount(0)
   await expect(settings(page).getByRole("button", { name: "Retry disconnect" })).toHaveCount(0)
   await expect(settings(page).getByRole("button", { name: "Add device", exact: true })).toBeFocused()
-  if (isMobile) await page.getByRole("button", { name: "Open Sessions" }).click()
+  const dismissNotification = page.getByRole("button", { name: "Dismiss notification" })
+  if (await dismissNotification.isVisible()) await dismissNotification.click()
+  if (isMobile) await page.getByRole("button", { name: "Back to Sessions" }).click()
   await page.getByRole("button", { name: "New Session", exact: true }).click()
   const createDialog = page.getByRole("dialog", { name: "Start a new Session" })
   await expect(createDialog.getByRole("combobox").getByRole("option", { name: "Development Mac" })).toHaveCount(0)
@@ -387,26 +432,10 @@ test("back and forward resolve the right-side destination, and Devices opens its
   await expect(input(page)).toBeVisible()
   await page.goForward()
   await expect(settings(page)).toBeVisible()
-  if (isMobile) await page.getByRole("button", { name: "Open Sessions" }).click()
+  if (isMobile) await page.getByRole("button", { name: "Back to Sessions" }).click()
   await page.locator(".session-rail-footer").getByRole("button", { name: "2 Devices" }).click()
   await expect(page).toHaveURL(/\/settings.*#devices$/)
   await expect(page.locator("#settings-devices")).toBeFocused()
-})
-
-test("mobile navigation drawer closes on Escape and selects without losing Settings drafts", async ({ page, isMobile }) => {
-  test.skip(!isMobile, "Mobile drawer only")
-  await fixture(page)
-  await page.goto("/settings")
-  const opener = page.getByRole("button", { name: "Open Sessions" })
-  await opener.click()
-  await expect(page.getByRole("dialog", { name: "Sessions" })).toBeVisible()
-  await page.keyboard.press("Escape")
-  await expect(page.getByRole("dialog", { name: "Sessions" })).toHaveCount(0)
-  await expect(opener).toBeFocused()
-  await expect(settings(page)).toBeVisible()
-  await select(page, "First Session")
-  await expect(page.getByRole("dialog")).toHaveCount(0)
-  await expect(page).toHaveURL(/\/\?connector=one&session=same$/)
 })
 
 test("temporary Settings navigation preserves history position and follow intent", async ({ page }) => {
@@ -571,18 +600,9 @@ test("layout stays single-column with aligned creation rows at every tested widt
   expect(layout).toEqual({ overflow: false, columns: 1, sameParent: true, sameLeft: true, sameWidth: true, stacked: true, noPanel: true, createGrid: true, deviceGrid: true })
   await page.screenshot({ path: testInfo.outputPath("settings-create.png") })
   if (isMobile) {
-    await page.getByRole("button", { name: "Open Sessions", exact: true }).click()
-    await expect(page.getByRole("dialog", { name: "Sessions", exact: true })).toBeVisible()
-    const drawerLayout = await page.getByRole("dialog", { name: "Sessions", exact: true }).evaluate((drawer) => {
-      const container = drawer.getBoundingClientRect()
-      const rail = drawer.querySelector(".session-rail")!.getBoundingClientRect()
-      return { topGap: rail.top - container.top, leftGap: rail.left - container.left }
-    })
-    expect(drawerLayout.topGap).toBeLessThanOrEqual(2)
-    expect(drawerLayout.leftGap).toBeLessThanOrEqual(2)
-    await page.screenshot({ path: testInfo.outputPath("settings-drawer.png") })
-    await page.keyboard.press("Escape")
-    await expect(page.getByRole("button", { name: "Open Sessions", exact: true })).toBeFocused()
+    await expect(page.getByRole("button", { name: "Back to Sessions", exact: true })).toBeVisible()
+    await expect(page.getByRole("dialog", { name: "Sessions", exact: true })).toHaveCount(0)
+    await page.screenshot({ path: testInfo.outputPath("settings-back.png") })
   }
 })
 
