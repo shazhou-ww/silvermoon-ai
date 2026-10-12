@@ -1,5 +1,39 @@
 # Deployment Evidence
 
+## 当前：原生 Done / Restore 交付
+
+接受的 Inner 为 `2866ccd9e1568300dab101b5047fe74033ec9666`，包含本机真实验证及准确 0.2.1 公开发布候选。以下当前结果不使用旧版独立标记的部署作为原生联动证据。
+
+### Connector 正式发布
+
+- 用户明确授权 **@silvermoon-ai/connector@0.2.1 / latest / npm/connector/v0.2.1**，并确认当前 npm Trusted Publisher 为 shazhou-ww / silvermoon-ai / publish-npm.yml / environment npm、允许直接发布；没有新增 token、账号设置或放宽保护。
+- 当前 GitHub 仓库 public、Actions 和 publish workflow active；npm 环境只允许 `npm/*/*` tag。两个 active npm tag ruleset 分别限制创建者与禁止 update/delete；main 禁止 non-fast-forward/delete。当前操作者匹配授权维护者。
+- 不可变 tag source：`5ec1eb40cb48db378d0be43cc8b879eab5bf9f75`，已在 refreshed main，含准确 Inner acceptance。没有移动既有 tag，没有本地 npm publish。
+- [Publish npm #38247215391](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38247215391) 的全部步骤 success，实际完成 OIDC publication、候选 tarball 消费 smoke、registry bytes 和 dist-tag 校验。
+- 正式 workflow tarball SHA-256：`af2d5e6278cec0d6f100c824a87da783ba1178d7ae41323121c52829d86eb482`；integrity：`sha512-Wfdho9XQHwb2kvy/5PJcuR1LMMRPxGPqULqLwnX84C2UfC6rUzF5J/qS96aNw+VO+316ak0A7bLFLto+5cQg5A==`。公网 registry integrity 完全匹配 workflow 候选，并提供 SLSA provenance；不与本地 pack 的不同构建 bytes 混为一谈。
+- 当前正式 latest=0.2.1，canary 仍为 0.2.1-canary.1。在另一个仓库外空 consumer 从官方 registry 安装精确 0.2.1（无脚本），检查实际 manifest 并运行既有 CLI / runtime exports / declarations smoke 全通过。
+
+### 公开 Connector 的真实本机验证
+
+2026-10-12 20:12 +08 使用上面的公网安装，而不是 checkout build，再次对唯一已授权测试项 `ed54b852-3854-4aaa-9013-f515b9ea5a86` 操作。实际 VS Code 1.141.0 / AHP 0.10.0：
+
+- 公开 provider 发 Done / Restore，独立原生连接分别读 flag 65 / 1；独立原生客户端发同样动作，公开 provider 原生结果分别为 true / false。
+- 四次操作保持相同 Session ID、创建时间与只有一轮 Ready 初始化的历史，没有追加消息；最终状态为 Restore。没有更改既有工作 Session，也没有检查或删除用户其他历史。
+- 这是公开 Connector → 实际 Agent Host 的操作证据；没有声称已点击 VS Code 原生 UI、已用生产 Relay 登录账户写入，或验证有附加 worktree 的副作用。
+
+### 线上验收路径
+
+1. 保留现有 secure profile；在设备上 Ctrl+C 停止旧 Connector，然后从既有项目目录运行 `npx --yes @silvermoon-ai/connector@0.2.1 --working-directory .`。不要同 token 双开，不需要重新创建 device/token。
+2. 生产 Relay 刷新到新 inventory 确认后，找到标题 `Silvermoon native Done Restore smoke 2026-10-12T11:21:12.793Z` 的专用测试项。手机列表与详情顶部均可执行 glyph 动作；旧 Connector、离线、未确认及不支持来源应禁用并在详情说明原因。
+3. 手机 Mark completed 后等待 native confirmation，核对本机 VS Code Done；开启 Show completed 即可访问该历史及 Restore，不必同时开启 Show ended。
+4. 详情顶部 Reactivate，等待原生确认并核对本机 Restore；历史一轮仍保留，不自动追加消息，发送仍需确认能力。再用 VS Code 本机 Done / Restore，刷新 Relay 核对双向状态。
+
+本轮 Web/Worker 正式流水线与生产入口检查尚待完成；生产登录凭据或设备 profile 未读取，生产账户写入尚未执行，不将只读检查视为生产写入 smoke。最终 acceptOuter 仍待用户在线上决定。
+
+## 旧版历史说明
+
+以下均为已验收的独立 Relay 标记、手机/详情入口旧轮记录，其“不解除归档”“离线可改标记”等旧范围不适用于当前原生联动。
+
 ## 本轮手机与详情操作发布
 
 - 生产入口：[Silvermoon Relay](https://silvermoon.work)。
