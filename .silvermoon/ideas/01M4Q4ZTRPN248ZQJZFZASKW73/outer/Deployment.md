@@ -22,11 +22,19 @@
 获得具体 Connector canary 版本和发布 tag 的明确授权，确认新版本未发布且匹配
 主线 manifest，记录发布前 latest 指向，再按发布指南触发工作流；
 未确认具体版本/tag 和外部配置前保持等待。不得发布稳定版本用于此次验收。
+用户现已明确授权真实发布 `@silvermoon-ai/connector@0.2.1-canary.1`，
+tag 为 `npm/connector/v0.2.1-canary.1`，源提交固定为已同步主线且包含实施验收的
+`9d96370f60e1fd8804a58b3c3c32a1accae40560`。同步本契约后重新确认该 commit
+可达主线、manifest 匹配、tag 和 npm 版本不存在，再仅创建并推送这一 tag。
 
 ### D-S03: 验证公开发布结果
 
 记录 Actions run、canary tag 与 commit 及公开 npm 元数据，验证 registry 包字节、
 canary 频道和公开安装；对照发布前基线确认 latest 未变化。明确失败或未完成的外部结果。
+发布前 latest 基线为 `0.2.0`。等待准确 tag 的 Actions run，检查 pack/smoke、
+OIDC publish 和 registry byte verification 步骤；再在 monorepo 外从官方 registry
+安装准确版本，验证 CLI、公开运行时入口及消费者类型，复核 `canary=0.2.1-canary.1`、
+`latest=0.2.0`。不直接本地 publish，不移 tag；失败时保存失败证据并按指南处理。
 
 ## Acceptance criteria
 

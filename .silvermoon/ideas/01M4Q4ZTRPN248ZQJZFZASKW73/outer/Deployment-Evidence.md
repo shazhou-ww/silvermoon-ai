@@ -66,3 +66,15 @@ D-S01 / D-AC01 的配置前提已满足。随后 registry 查询仍为
 `latest=0.2.0`，无 canary。Connector 当前 manifest 为 `0.1.0`，不能作为新发布版本。
 下一步等待具体未发布 canary 版本/tag 与版本准备的明确授权；在此之前不创建 tag，
 不执行发布，也不勾选真实发布及公开包验证条目。
+
+## 准确 canary 发布授权
+
+2026-10-12，用户接受 `implementationRevision=fece879ca6dc`；
+对应 acceptInner 已同步到 commit `9d96370f60e1fd8804a58b3c3c32a1accae40560`。
+随后用户通过聚焦确认明确授权创建并推送
+`npm/connector/v0.2.1-canary.1`，经 GitHub Actions 真实发布并验证
+`@silvermoon-ai/connector@0.2.1-canary.1` 的 canary，不发布 latest。
+
+授权前只读预检：准确版本规划输出 `dist_tag=canary`，registry 尚无该版本，
+remote 无该 tag；latest 为 `0.2.0`，npm environment 与三项 active ruleset 仍有效。
+本节记录授权与基线，不表示发布已执行或成功。
