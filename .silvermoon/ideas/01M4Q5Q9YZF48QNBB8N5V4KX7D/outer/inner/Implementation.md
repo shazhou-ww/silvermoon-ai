@@ -1,31 +1,31 @@
 # Implementation
 
-下列内容是构想验收前的可调整轻量种子，不授权实现。
+实现仅改变授权请求参数；具体检查结果见 [实现证据](Evidence.md)。
 
 ## Steps
 
 ### I-S01: 确认授权流程与账号选择方案
 
-依据三家官方资料与当前 OAuth 构造，分别确认 Google、Microsoft、GitHub 登录请求的账号选择参数及提供商托管交互；保留 Relay、提供商和身份绑定三类边界，不引入账号合并或绑定变化。
+依据三家官方资料确认 Google、Microsoft、GitHub 的 OAuth 授权端点均支持 `prompt=select_account`；Relay 继续只管理自身 session，账号选择、密码和 MFA 仍由提供商托管。
 
 ### I-S02: 实现提供商特定的授权请求
 
-仅在构想获准后修改必要的授权 URL 构造，让三种提供商各自明确进入账号选择；不改变 callback、Relay sign-out 或身份解析语义。
+在三种 provider 共用且类型受限的授权 URL 构造中加入 `prompt=select_account`。未改变 callback、Relay sign-out、token exchange、profile 解析或 external identity 解析。
 
 ### I-S03: 覆盖正常、取消与失败回归
 
-为三种提供商分别补充授权参数测试，并验证正常登录、选择原账号、取消、失败、浏览器不匹配和重复 callback 等既有保护。
+扩展 Worker 测试，逐一断言三种 provider 的账号选择参数与取消返回，并验证已消费事务拒绝重复 callback；运行既有 state、PKCE、nonce、tenant、浏览器绑定及 Web 登录页回归。
 
 ## Acceptance criteria
 
 ### I-AC01: 选择流程可用且不改变身份语义
 
-通过定向测试证明三种提供商的授权 URL 各自请求账号选择，且 Relay session、provider session 与 external identity 的职责没有改变。
+Worker 参数化测试证明三种授权 URL 都请求 `select_account`。代码 diff 仅涉及授权参数，未改变 Relay session、provider profile 或 external identity 逻辑。
 
 ### I-AC02: 既有授权校验保持有效
 
-通过现有和新增定向测试证明各提供商适用的 state、PKCE、OIDC 校验及账号权限边界未被放宽；不保存身份、cookie 或凭据到仓库。
+Worker 30 个测试与 TypeScript 编译通过，证明 state、PKCE、OIDC nonce、Microsoft consumer tenant、发起浏览器绑定及重复 callback 保护保持有效；仓库未保存身份或凭据。
 
 ### I-AC03: Web 入口与错误路径保持可用
 
-通过 Web 与 Worker 定向测试证明三种入口、选择原账号、取消、失败和重复 callback 路径保持可用且返回既有安全结果。
+三种取消路径均清理 OAuth cookie 并返回既有登录错误；Web 登录页 9 个桌面、窄屏和移动端浏览器测试通过。选择原账号及真实提供商交互保留到 Deployment 逐家验证。

@@ -232,6 +232,7 @@ describe("relay identity and token service", () => {
       expect(redirect.searchParams.get("state")).toHaveLength(43);
       expect(redirect.searchParams.get("code_challenge")).toHaveLength(43);
       expect(redirect.searchParams.get("code_challenge_method")).toBe("S256");
+      expect(redirect.searchParams.get("prompt")).toBe("select_account");
       expect(redirect.searchParams.get("redirect_uri")).toBe(
         `https://relay.silvermoon.work/auth/${provider}/callback`,
       );
@@ -337,6 +338,61 @@ describe("relay identity and token service", () => {
     expect(callback.status).toBe(302);
     expect(callback.headers.get("location")).toContain(
       "authError=oauth-browser-mismatch",
+    );
+  });
+
+  it.each(["google", "microsoft", "github"] as const)(
+    "returns safely when %s account selection is cancelled",
+    async (provider) => {
+      const started = await beginOAuth(
+        new Request(`https://relay.silvermoon.work/auth/${provider}/start`),
+        appEnv,
+        provider,
+      );
+      const state = new URL(started.headers.get("location")!).searchParams.get("state")!;
+      const callback = await SELF.fetch(
+        `https://relay.silvermoon.work/auth/${provider}/callback?error=access_denied&state=${state}`,
+        {
+          headers: { cookie: `sm_oauth=${state}` },
+          redirect: "manual",
+        },
+      );
+
+      expect(callback.status).toBe(302);
+      expect(callback.headers.get("location")).toContain(
+        "authError=incomplete-callback",
+      );
+      expect(callback.headers.getSetCookie()[0]).toContain("sm_oauth=;");
+      expect(callback.headers.getSetCookie()[0]).toContain("Max-Age=0");
+    },
+  );
+
+  it("rejects a repeated OAuth callback before token exchange", async () => {
+    const started = await beginOAuth(
+      new Request("https://relay.silvermoon.work/auth/github/start"),
+      appEnv,
+      "github",
+    );
+    const state = new URL(started.headers.get("location")!).searchParams.get("state")!;
+    const stateHash = await signSecret(state, appEnv.SESSION_SECRET);
+    await env.DB.prepare(
+      `UPDATE oauth_transactions SET consumed_at = CURRENT_TIMESTAMP
+       WHERE state_hash = ?1`,
+    )
+      .bind(stateHash)
+      .run();
+
+    const callback = await SELF.fetch(
+      `https://relay.silvermoon.work/auth/github/callback?state=${state}&code=replayed`,
+      {
+        headers: { cookie: `sm_oauth=${state}` },
+        redirect: "manual",
+      },
+    );
+
+    expect(callback.status).toBe(302);
+    expect(callback.headers.get("location")).toContain(
+      "authError=invalid-transaction",
     );
   });
 
