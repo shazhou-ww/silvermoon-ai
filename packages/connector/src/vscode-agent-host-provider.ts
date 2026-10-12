@@ -1334,7 +1334,7 @@ class AgentHostConnection {
     title?: string;
     workingDirectoryUri?: string;
   }): Promise<string> {
-    const resource = `ahp-session:/${randomUUID()}`;
+    const resource = `${COPILOT_PROVIDER}:/${randomUUID()}`;
     await this.client.request("createSession", {
       channel: resource,
       provider: COPILOT_PROVIDER,

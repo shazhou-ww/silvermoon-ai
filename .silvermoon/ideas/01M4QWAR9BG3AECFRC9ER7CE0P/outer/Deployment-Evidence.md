@@ -50,6 +50,13 @@ Chat created; its backing stays deferred until the first send
 - wire fixture 按生产顺序发送 `root/sessionAdded` → `session/ready`，防止旧快照覆盖 authoritative notification。
 - 精确候选：`@silvermoon-ai/connector@0.3.0-canary.3`；`.1` 与 `.2` 均保持不可变。
 
+## canary.3 结果与 canary.4 候选
+
+- `.3` Actions run：[38258367993](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/38258367993)，成功；registry/public smoke 通过，`latest=0.2.1`。
+- Home PC create command `6732fe00-7217-4c1b-8bf3-b18cb9ce95e3` 在约 2 秒内成功，证明 deferred lifecycle 与 authoritative notification 竞态已修复。
+- generic `ahp-session:/0039aaa4-3309-4535-99b2-8bda02328327` 随后被 Agent Host 的 external catalog 策略从周期 `listSessions` 隐藏，Relay 因而收到 `gone`。这是资源 namespace 兼容性问题，不是 SDK fallback。
+- `.4` 仍通过 AHP `createSession`，但选择 Host provider 已用于持久 Session 的 `copilotcli:/<uuid>` resource namespace；wire test 锁定该 URI。
+
 ## Device 边界
 
 - 本机可控 Connector 是 Home PC `device-0q6jdqArkbQMgAHR`。

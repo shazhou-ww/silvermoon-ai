@@ -236,7 +236,7 @@ describe("AHP-only Agent adapter", () => {
       );
       expect(create).toMatchObject({
         provider: "copilotcli",
-        channel: expect.stringMatching(/^ahp-session:\/[0-9a-f-]+$/u),
+        channel: expect.stringMatching(/^copilotcli:\/[0-9a-f-]+$/u),
         workingDirectories: [expect.stringMatching(/^file:/u)],
       });
       expect(test.requests).toContainEqual(expect.objectContaining({

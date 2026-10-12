@@ -8,11 +8,11 @@
 
 ### D-S02: 发布 AHP-only Connector
 
-通过 tag `npm/connector/v0.3.0-canary.3` 和既有 Trusted Publishing workflow 发布修复后的 `@silvermoon-ai/connector@0.3.0-canary.3` 到 `canary`；不得移动 `latest=0.2.1`。Relay/Worker 无 schema 迁移时不部署无关服务。
+通过 tag `npm/connector/v0.3.0-canary.4` 和既有 Trusted Publishing workflow 发布修复后的 `@silvermoon-ai/connector@0.3.0-canary.4` 到 `canary`；不得移动 `latest=0.2.1`。Relay/Worker 无 schema 迁移时不部署无关服务。
 
 ### D-S03: 验证单一来源并观察回退
 
-从官方 registry clean-install 精确 `.3` canary，升级并重连可控 Device 后验证新 inventory、create、send、history、status 与 archive 均来自 AHP；观察 Host 断开时只出现 offline/error，并保留回滚到 `0.2.1` 的应用版本路径。Office PC 的 `copilot-sdk-test` 属于另一运行实例，若无法管理其进程则作为明确外部阻塞记录，不伪造升级。
+从官方 registry clean-install 精确 `.4` canary，升级并重连可控 Device 后验证新 inventory、create、send、history、status 与 archive 均来自 AHP；观察 Host 断开时只出现 offline/error，并保留回滚到 `0.2.1` 的应用版本路径。Office PC 的 `copilot-sdk-test` 属于另一运行实例，若无法管理其进程则作为明确外部阻塞记录，不伪造升级。
 
 ## Acceptance criteria
 

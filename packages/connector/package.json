@@ -1,6 +1,6 @@
 {
   "name": "@silvermoon-ai/connector",
-  "version": "0.3.0-canary.3",
+  "version": "0.3.0-canary.4",
   "description": "Local agent connector for Silvermoon Relay",
   "repository": {
     "type": "git",
