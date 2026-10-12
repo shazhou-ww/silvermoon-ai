@@ -10,7 +10,7 @@
   <header class="scenario-heading">
     <h1>完成后查看与恢复</h1>
     <p>同一段已保存历史、相同 Available 执行状态；After 是已标记完成且开启 Show completed 的状态。</p>
-    <ul class="callouts"><li>Completed 与 Available 分开显示</li><li>Reactivate 后恢复日常列表及原有能力检查</li></ul>
+    <ul class="callouts"><li>行尾回转 glyph：Reactivate</li><li>Completed 与 Available 分开显示</li><li>不自动发送消息或解除原生只读</li></ul>
   </header>
   <main class="comparison">
     <section class="state" aria-labelledby="before-title">
@@ -19,7 +19,7 @@
         <div class="brand">Silvermoon Relay / Sessions</div>
         <div class="filters"><span>All</span><span>Session view options</span></div>
         <div class="options"><div>Show ended: off</div><div>Show unavailable: off</div><div>Show offline Sessions: off</div><div>Group by Device: off</div></div>
-        <div class="session"><strong>检查发布结果</strong><small>copilot-sdk-test</small><span class="badge">Available</span></div>
+        <div class="session"><div class="session-content"><strong>检查发布结果</strong><small>copilot-sdk-test</small><span class="badge">Available</span></div></div>
         <div class="history">
           <h2>检查发布结果</h2><p class="muted">Session opened on copilot-sdk-test</p>
           <div class="message">发布检查已结束。</div>
@@ -33,9 +33,9 @@
         <div class="brand">Silvermoon Relay / Sessions</div>
         <div class="filters"><span>All</span><span>Session view options</span></div>
         <div class="options"><div>Show completed: on</div><div>Show ended: off</div><div>Show unavailable: off</div><div>Show offline Sessions: off</div><div>Group by Device: off</div></div>
-        <div class="session"><strong>检查发布结果</strong><small>copilot-sdk-test</small><span class="badge">Completed</span> <span class="badge">Available</span></div>
+        <div class="session is-selected"><div class="session-content"><strong>检查发布结果</strong><small>copilot-sdk-test</small><span class="badge">Completed</span> <span class="badge">Available</span></div><div class="session-action"><button type="button" class="glyph" aria-label="Reactivate: 检查发布结果" aria-describedby="reactivate-tip" title="Reactivate — 恢复未完成，不自动发消息"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 2 6l4 3M2 6h7a4 4 0 0 1 0 8"/></svg></button><span class="glyph-tip" id="reactivate-tip" role="tooltip">Reactivate · 不自动发消息</span></div></div>
         <div class="history">
-          <div class="product-toolbar"><h2>检查发布结果</h2><button type="button" class="primary" aria-disabled="true">Reactivate</button></div>
+          <div class="product-toolbar"><h2>检查发布结果</h2></div>
           <p class="muted">Session opened on copilot-sdk-test</p>
           <div class="message">发布检查已结束。</div>
           <div class="composer">已完成。请先 Reactivate，再继续对话。</div>

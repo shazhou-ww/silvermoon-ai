@@ -6,7 +6,7 @@ Relay 可以显示 Agent 的执行状态和原生归档状态，但用户不能�
 
 ## 结果
 
-用户可在 Relay 标记 Session 为 Completed，并通过显示已完成项查看历史、执行 Reactivate，让它重新回到日常列表。该标记属于账户下的 Relay 工作状态，与 Agent 执行状态独立，跨浏览器和设备保持一致。支持材料：[UI 对比](./ui-review/index.html)、[业务模型评审](./Business-Data-Model-Review.md)。
+用户可通过 Session 列表项右侧的小 glyph 按钮标记 Completed，或在显示已完成项时 Reactivate，让它重新回到日常列表；不在会话正文增加完成或恢复大按钮。该标记属于账户下的 Relay 工作状态，与 Agent 执行状态独立，跨浏览器和设备保持一致。支持材料：[UI 对比](./ui-review/index.html)、[业务模型评审](./Business-Data-Model-Review.md)。
 
 ## 边界
 
@@ -18,4 +18,4 @@ Relay 可以显示 Agent 的执行状态和原生归档状态，但用户不能�
 
 - 标记完成后默认日常列表隐藏该 Session；显示已完成项时可读取历史，并区分 Completed 与实际执行状态。
 - Reactivate 后恢复为未完成；列表仍遵守已结束、不可用、离线等筛选，继续对话仍遵守现有能力和原生只读限制。
-- 状态变更明确显示成功或失败，刷新、重连与跨浏览器读取不会被 Connector 的执行状态更新覆盖。
+- 列表项右侧按工作状态提供完成或恢复图标，具备操作提示、键盘访问和触屏可用性；状态变更明确显示成功或失败，刷新、重连与跨浏览器读取不会被 Connector 的执行状态更新覆盖。

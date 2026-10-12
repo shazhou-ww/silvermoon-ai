@@ -15,7 +15,7 @@
   <main id="review">
     <section class="decision" aria-label="待批准的决定">
       <strong>Completed 是独立工作标记，不是 Agent 的 Ended 状态。</strong>
-      <ul><li>完成项默认隐藏，可通过 Show completed 查看。</li><li>Reactivate 恢复日常列表，不自动发消息或解除原生归档。</li></ul>
+      <ul><li>Session 列表项右侧仅放小 glyph：未完成为勾选，已完成为回转箭头；不在正文放大按钮。</li><li>完成项默认隐藏，可通过 Show completed 查看；Reactivate 不自动发消息或解除原生归档。</li></ul>
     </section>
     <nav class="tabs" role="tablist" aria-label="评审场景">
       <a class="tab" role="tab" aria-selected="true" href="scenarios/01-complete.html" target="scenario-frame">标记完成入口</a>
@@ -23,9 +23,11 @@
     </nav>
     <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-complete.html" title="标记完成入口对比"></iframe>
     <section class="review-end">
-      <p>说明性评审材料，不是生产 UI 或规范性行为契约。产品区域仅为受影响区域示意，操作控件是静态状态。</p>
+      <p>说明性评审材料，不是生产 UI 或规范性行为契约。产品区域仅为受影响区域示意；glyph 可聚焦以评审提示与焦点，点击不改变状态。</p>
       <p>依据当前 App.tsx 与 session-list.ts 的列表、状态、Show ended 和历史阅读流程；两侧使用相同设备、Session 与消息。</p>
       <p><a href="../Idea.md">构想契约</a> · <a href="../Business-Data-Model-Review.md">业务模型与范围</a></p>
+      <p>参考 <a href="https://code.visualstudio.com/docs/agents/run/sessions/manage-sessions">VS Code Session 管理</a>的行内动作，以及 <a href="https://github.com/microsoft/vscode/blob/ff00e788322523ee1e9e8ee2c9bb4b89af93a3c2/src/vs/workbench/contrib/chat/browser/agentSessions/agentSessionsActions.ts">Session item toolbar 源码</a>。仅借鉴交互，不联动原生归档。</p>
+      <p>桌面 hover、行内焦点或选中时显示；触屏／窄屏常显。图标有 tooltip 和可访问名称；执行中提示完成不会停止 Agent。已移除设备历史保持只读，不提供可执行动作。</p>
       <p>待确认：采用 Relay 独立标记，而非同步 VS Code/Copilot 原生归档。</p>
       <strong>是否接受此完成 / Reactivate 的交互方向？</strong>
     </section>

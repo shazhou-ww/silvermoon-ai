@@ -30,7 +30,15 @@ iframe { display: block; width: 100%; min-height: 320px; border: 0; box-shadow: 
 .filters span { background: #edf0f3; padding: 4px 8px; border-radius: 6px; }
 .options { margin: 8px 0 12px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); }
 .options div { padding: 3px 0; }
-.session { border-left: 3px solid var(--primary); padding: 12px; background: #e3e8fb; border-radius: 4px; }
+.session { display: flex; align-items: center; gap: 8px; border-left: 3px solid var(--primary); padding: 12px; background: #e3e8fb; border-radius: 4px; }
+.session-content { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.session-action { position: relative; flex: none; }
+.glyph { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 4px; background: transparent; opacity: 0; cursor: pointer; }
+.glyph svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.session:hover .glyph, .session:focus-within .glyph, .session.is-selected .glyph { opacity: 1; }
+.glyph:hover { background: #cdd6f3; }
+.glyph-tip { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 1; width: max-content; max-width: 220px; padding: 6px 8px; border-radius: 4px; background: var(--ink); color: #fff; font-size: 12px; }
+.glyph:hover + .glyph-tip, .glyph:focus-visible + .glyph-tip { display: block; }
 .session small { display: block; color: var(--muted); }
 .badge { display: inline-block; background: #edf0f3; border: 1px solid var(--border); padding: 2px 7px; border-radius: 6px; font-size: 12px; }
 .badge.running { background: #e1f2eb; color: #176149; }
@@ -45,4 +53,8 @@ iframe { display: block; width: 100%; min-height: 320px; border: 0; box-shadow: 
   .state-label { flex-wrap: wrap; }
   .product-surface { min-height: 420px; }
   h1 { font-size: 21px; }
+  .glyph { opacity: 1; width: 36px; height: 36px; }
+}
+@media (hover: none), (pointer: coarse) {
+  .glyph { opacity: 1; width: 36px; height: 36px; }
 }
