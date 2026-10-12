@@ -3,6 +3,8 @@
 实现基于提交 `74560a2`，构想验收后已重新复核和验证；本契约及
 [实施证据](Evidence.md)是本次实施验收候选，不代表真实发布完成。
 发布操作与安全边界见[发布指南](../../../../../docs/npm-package-releases.md)。
+外部配置完成后，用户授权准备 `@silvermoon-ai/connector@0.2.1-canary.1`。
+此版本准备改变实施候选，需重新验证及验收；不包含发布 tag 或 npm 发布授权。
 
 ## Steps
 
@@ -27,6 +29,8 @@ manifest。canary 仅使用 `canary` dist-tag；不自动派生版本或打 tag�
 使触发规则、一次性配置、失败恢复和验证边界与实现保持一致，并记录必要实施证据。
 说明 tag 和主线保护属于外部信任边界，PR 无发布入口；并发不取消运行中的发布，
 已发布版本的重跑不发布也不改频道。部署初版保留独立首发授权与外部验证门槛。
+准备用户指定的 `0.2.1-canary.1` manifest，验证准确 tag 的规划输出和实际
+tarball 版本；不修改面向用户的 latest `0.2.0` 安装示例。
 
 ## Acceptance criteria
 
@@ -43,3 +47,6 @@ manifest。canary 仅使用 `canary` dist-tag；不自动派生版本或打 tag�
 ### I-AC03: 操作说明完整
 
 以实现对照发布指南，确认 registry、权限、OIDC 配置、并发及重试行为均有说明，且不将本地验证描述为真实发布。
+准确 tag `npm/connector/v0.2.1-canary.1` 的 registry 预检须通过并输出
+`version=0.2.1-canary.1`、`dist_tag=canary`；实际 tarball manifest 版本一致，
+独立安装 smoke 通过。该候选验证不创建或推送 tag、不改变 registry 频道。
