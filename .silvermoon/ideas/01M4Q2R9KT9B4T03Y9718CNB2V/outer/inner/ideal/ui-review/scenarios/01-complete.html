@@ -3,34 +3,40 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>手机列表点击区</title>
+  <title>本机确认与恢复</title>
   <link rel="stylesheet" href="../review.css">
 </head>
 <body>
   <header class="scenario-heading">
-    <h1>手机列表点击区</h1>
-    <p>同一列表与工作状态。已有动作保留；手机点击区从 36px 扩大到至少 44px，glyph 仍为 16px。</p>
-    <ul class="callouts"><li>手机／触屏常显</li><li>更大的点击区，不是更大的图标</li><li>动作与打开 Session 分离</li></ul>
+    <h1>本机确认与恢复</h1>
+    <p>同一在线 VS Code Session：完成操作后的详情，以及下一步恢复。本机结果为说明性示意。</p>
+    <ul class="callouts"><li>本机确认才成功</li><li>Done / Restore 双向同步</li><li>Show completed 直接找到恢复入口</li></ul>
   </header>
   <main class="comparison">
     <section class="state before" aria-labelledby="before-title">
-      <header class="state-label"><strong id="before-title">Before</strong><span>已上线列表动作</span></header>
-      <div class="product-surface">
-        <div class="brand">Silvermoon Relay / Sessions</div>
-        <div class="filters"><span>All</span><span>Show completed: on</span></div>
-        <div class="session is-selected"><div class="session-content"><strong>检查发布结果与保存验证记录</strong><small>copilot-sdk-test</small><span class="badge running">Running</span></div><div class="session-action"><button type="button" class="glyph" aria-label="Mark completed: 检查发布结果与保存验证记录" aria-describedby="before-complete-tip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg></button><span class="glyph-tip" id="before-complete-tip" role="tooltip">Mark completed · 不会停止 Agent</span></div></div>
-        <div class="session is-selected"><div class="session-content"><strong>检查上一轮发布</strong><small>copilot-sdk-test</small><span class="badge">Completed</span> <span class="badge">Available</span></div><div class="session-action"><button type="button" class="glyph" aria-label="Reactivate: 检查上一轮发布" aria-describedby="before-reactivate-tip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 2 6l4 3M2 6h7a4 4 0 0 1 0 8"/></svg></button><span class="glyph-tip" id="before-reactivate-tip" role="tooltip">Reactivate · 不自动发消息</span></div></div>
-        <p class="measure">手机／触屏点击区：36 × 36 CSS px。</p>
+      <header class="state-label"><strong id="before-title">Before</strong><span>独立 Relay 标记</span></header>
+      <div class="product-surface detail-only">
+        <div class="detail-header"><div class="detail-title"><h2>检查发布结果</h2><small>copilot-sdk-test</small></div><span class="badge">Available</span><div class="session-action"><button type="button" class="glyph detail-glyph" aria-label="Reactivate: 检查发布结果" aria-describedby="before-restore"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 2 6l4 3M2 6h7a4 4 0 0 1 0 8"/></svg></button><span class="glyph-tip" id="before-restore" role="tooltip">仅恢复 Relay 标记，不解除原生归档。</span></div></div>
+        <div class="history">
+          <div class="notice"><strong>This Session is completed in Relay.</strong><p>Use Reactivate at the top of this Session to continue; native read-only limits still apply.</p></div>
+          <div class="message">发布检查已结束。</div>
+          <div class="composer">Completed · Reactivate this Session to continue.</div>
+        </div>
+        <div class="native-result"><strong>本机 VS Code（外部状态示意）</strong>仍未 Done：Relay 操作只写工作标记。</div>
+        <p class="measure">Reactivate 也只恢复 Relay 标记；本机操作不会同步修改这个标记。</p>
       </div>
     </section>
     <section class="state after" aria-labelledby="after-title">
-      <header class="state-label"><strong id="after-title">After</strong><span>同一列表与状态</span></header>
-      <div class="product-surface">
-        <div class="brand">Silvermoon Relay / Sessions</div>
-        <div class="filters"><span>All</span><span>Show completed: on</span></div>
-        <div class="session is-selected"><div class="session-content"><strong>检查发布结果与保存验证记录</strong><small>copilot-sdk-test</small><span class="badge running">Running</span></div><div class="session-action"><button type="button" class="glyph" aria-label="Mark completed: 检查发布结果与保存验证记录" aria-describedby="after-complete-tip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg></button><span class="glyph-tip" id="after-complete-tip" role="tooltip">Mark completed · 不会停止 Agent</span></div></div>
-        <div class="session is-selected"><div class="session-content"><strong>检查上一轮发布</strong><small>copilot-sdk-test</small><span class="badge">Completed</span> <span class="badge">Available</span></div><div class="session-action"><button type="button" class="glyph" aria-label="Reactivate: 检查上一轮发布" aria-describedby="after-reactivate-tip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 2 6l4 3M2 6h7a4 4 0 0 1 0 8"/></svg></button><span class="glyph-tip" id="after-reactivate-tip" role="tooltip">Reactivate · 不自动发消息</span></div></div>
-        <p class="measure">手机／触屏点击区：至少 44 × 44 CSS px；桌面列表保持紧凑。</p>
+      <header class="state-label"><strong id="after-title">After</strong><span>原生确认后的结果</span></header>
+      <div class="product-surface detail-only">
+        <div class="detail-header"><div class="detail-title"><h2>检查发布结果</h2><small>copilot-sdk-test</small></div><span class="badge">Done</span><div class="session-action"><button type="button" class="glyph detail-glyph" aria-label="Reactivate: 检查发布结果" aria-describedby="after-restore"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 2 6l4 3M2 6h7a4 4 0 0 1 0 8"/></svg></button><span class="glyph-tip" id="after-restore" role="tooltip">Restore in VS Code. 不自动发送消息。</span></div></div>
+        <div class="history">
+          <div class="notice"><strong>VS Code confirmed Done.</strong><p>原生归档已确认。顶部 Reactivate 将请求 VS Code Restore，确认后才显示恢复成功。</p></div>
+          <div class="message">发布检查已结束。</div>
+          <div class="composer">Done in VS Code · Reactivate before sending.</div>
+        </div>
+        <div class="native-result"><strong>本机 VS Code（外部状态示意）</strong>Done：与 Relay 相同，Agent 执行状态另行显示。</div>
+        <p class="measure">点击 Reactivate → 请求进行中，两入口禁用 → 本机确认 Restore → Relay 恢复未完成。发送另需确认能力；本机手动 Done / Restore 也同步到这里。</p>
       </div>
     </section>
   </main>

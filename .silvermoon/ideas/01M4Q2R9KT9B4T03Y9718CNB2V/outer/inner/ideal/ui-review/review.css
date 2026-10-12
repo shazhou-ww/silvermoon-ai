@@ -47,6 +47,9 @@ iframe { display: block; width: 100%; min-height: 320px; border: 0; box-shadow: 
 .detail-header .session-action { align-self: center; }
 .detail-only .history { border-top: 0; margin-top: 0; }
 .measure { margin-top: 12px; color: var(--muted); font-size: 12px; }
+.native-result { margin: 14px 0; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: #edf0f3; }
+.native-result strong { display: block; }
+.glyph:disabled { opacity: 1; cursor: not-allowed; color: var(--muted); }
 .session + .session { margin-top: 10px; }
 .session small { display: block; color: var(--muted); }
 .badge { display: inline-block; background: #edf0f3; border: 1px solid var(--border); padding: 2px 7px; border-radius: 6px; font-size: 12px; }
@@ -62,13 +65,13 @@ iframe { display: block; width: 100%; min-height: 320px; border: 0; box-shadow: 
   .state-label { flex-wrap: wrap; }
   .product-surface { min-height: 420px; }
   h1 { font-size: 21px; }
-  .glyph { opacity: 1; width: 36px; height: 36px; }
+  .glyph { opacity: 1; width: 44px; height: 44px; }
   .after .glyph { width: 44px; height: 44px; }
   .detail-header { flex-wrap: wrap; }
   .detail-title { flex-basis: calc(100% - 76px); }
   .detail-header > .badge { order: 3; }
 }
 @media (hover: none), (pointer: coarse) {
-  .glyph { opacity: 1; width: 36px; height: 36px; }
+  .glyph { opacity: 1; width: 44px; height: 44px; }
   .after .glyph { width: 44px; height: 44px; }
 }

@@ -1,18 +1,19 @@
-# Session 完成与 Reactivate：业务模型评审
+# Session Done / Restore 联动：业务模型评审
 
 ## 待批准的决定
 
-在 Relay 的账户所属 Session 上引入可逆的工作状态 `open / completed`，不将其混入 Agent 的执行或原生归档状态。Reactivate 只把工作状态恢复为 `open`，不会停止、启动或解除 Agent 的原生归档。
+- 对确认支持能力的 VS Code Session，从 Relay 发起原生 Done / Restore，并以本机确认的原生归档状态双向同步。
+- 离线或未确认能力时禁用；只有确认本机结果才显示成功，超时显示结果未确认，不自动重放。
+- 不将既有 Relay 独立标记批量转换为原生归档；保留账户、Session 身份和历史，明确原生副作用。
 
 ## Current / Proposed / Why
 
 | Current | Proposed | Why |
 |---|---|---|
-| `status` 为 queued/running/waiting/idle/failed/closed/gone/unknown，来自 Connector | 独立的 Relay 工作状态，由所属账户在 Relay 修改 | 用户完成工作不等于 Agent 停止或原生归档 |
-| 列表支持 Show ended、Show unavailable 和离线筛选 | 独立的 Show completed；既有筛选仍适用 | 保留执行状态的真实含义 |
-| Connector upsert 更新 Session 执行与能力字段 | upsert 保留 Relay 工作状态，只有明确用户操作可修改 | 重连和历史同步不应撤销用户整理结果 |
-
-事实依据：现有 [Session schema](../../../../../../packages/protocol/src/index.ts)、[Session 存储](../../../../../../apps/worker/migrations/0004_connectors_and_agent_sessions.sql)、[Connector upsert](../../../../../../apps/worker/src/connector-session.ts) 和 [列表筛选](../../../../../../apps/web/src/session-list.ts)。路径均指向本仓库；它们是当前事实来源，而非实施承诺。
+| Relay `work_state` 与原生 `nativeStatus` 独立，账户 API 仅更新 Relay 标记 | 支持联动的 Session 以本机确认的原生归档状态决定完成/恢复；旧标记只作为旧模式历史 | 手机完成应与本机 VS Code Done 一致 |
+| Connector 只有库存、创建、消息及历史命令 | 增加能力声明及目标 Done / Restore 操作的可追踪结果 | 不把接收请求或本地 DB 写入当作本机成功 |
+| 普通离线设备也可修改 Relay 标记 | 联动要求在线及能力确认；断线不伪成功或自动重放 | 避免本机没有执行但手机声称完成 |
+| Connector 同步不覆盖独立标记 | 本机手动 Done / Restore 同步为原生权威状态 | 双向操作不应再次造成矛盾 |
 
 ## 目标业务模型
 
@@ -21,60 +22,75 @@ erDiagram
   ACCOUNT {
     string user_id PK
   }
-  CONNECTOR {
-    string user_id PK,FK
-    string connector_id PK
+  DEVICE {
+    string device_id PK
+    string user_id FK
+    string access_state "active or removed"
   }
   AGENT_SESSION {
     string user_id PK,FK
-    string connector_id PK,FK
+    string device_id PK,FK
     string session_id PK
     string execution_status
-    string native_status
-    string relay_work_state "open or completed"
+    string confirmed_native_archive "archived or open or unconfirmed"
+    string legacy_relay_work_state "not native authority"
+  }
+  STATE_OPERATION {
+    string operation_id PK
+    string target_session FK
+    string requested_archive "archive or restore"
+    string result "pending confirmed failed or unknown"
   }
   SESSION_EVENT {
-    string user_id PK,FK
-    string connector_id PK,FK
-    string session_id PK,FK
     string event_id PK
+    string target_session FK
   }
-  ACCOUNT ||--o{ CONNECTOR : owns
-  CONNECTOR ||--o{ AGENT_SESSION : hosts
+  ACCOUNT ||--o{ DEVICE : owns
+  DEVICE ||--o{ AGENT_SESSION : exposes
+  AGENT_SESSION ||--o{ STATE_OPERATION : targets
   AGENT_SESSION ||--o{ SESSION_EVENT : retains
 ```
 
-Connector 在本图代表当前持久化的连接身份，不是正在讨论的独立 Device 模型的替代。Session 的父子关系保持现有语义，本次不增加子会话级联生命周期。
+此图是业务视图，不指定新表。Device 对应当前账户拥有的设备身份，传输仍使用 `connector_id`；Session 完整身份仍为 `(user_id, connector_id, session_id)`。`target_session` 是对完整复合身份的引用，不是仅凭 session_id 的外键。请求目标及归属不变，结果可随确认更新，因此操作记录不标记 AO；Session 事件沿用既有内容快照/保留语义，也不标记 AO。
 
 ## 生命周期与关键不变量
 
-| 对象 | 可变内容 | 有效性与保留规则 |
+| 对象 | 权威及可变内容 | 有效性与保留规则 |
 |---|---|---|
-| Session | Connector 管理执行状态；账户管理 Relay 工作状态 | completed 不终止身份、不删除历史；Reactivate 恢复同一身份 |
-| Session event | 现有事件或内容快照可更新 | 维持现有保留策略，不因为完成而删除；因此本图不标记为 AO |
+| Device | 账户控制访问；Connector 当前连接提供能力 | 已移除设备不可借 Restore 恢复访问；旧连接结果不能改变新连接的确认 |
+| Session | VS Code 管理原生归档；Agent 管理执行状态；Relay 保存确认投影与旧标记 | 完成不替换 Session 身份；取消归档不等于具备发送能力 |
+| State operation | 账户请求目标状态，本机确认决定结果 | 目标及账户固定；pending 可成为 confirmed、failed 或 unknown，不因传输重连自动重放 |
+| Session event | 现有历史与内容快照 | 不因 Relay 完成而删除；原生平台副作用不由 Relay 伪造保证 |
 
-1. Session 唯一身份仍为 `(user_id, connector_id, session_id)`，不能仅按 session_id 操作，避免跨账户或跨 Connector 修改。
-2. 工作状态为账户共享的持久状态，不是浏览器偏好；设备仅离线时可操作，但同样需要服务器确认。已移除设备的历史保持只读，不允许借 Reactivate 恢复访问。
-3. 单次变更原子且幂等；重复完成或 Reactivate 不产生命令、复制 Session 或改变消息。
-4. Connector 的库存、历史、执行状态和新事件不会覆盖工作状态，也不会自动 Reactivate；并发用户操作以服务器已提交结果为准。
-5. Completed 默认不在日常列表；显示已完成项时继续展示真实执行状态。从 Completed 发送新指令前需主动 Reactivate，之后仍执行全部原有发送权限检查。
-6. 完成与 Reactivate 只影响目标 Session。父子关系、所有权和已保存内容不变；隐藏父节点时不能丢失仍符合筛选的子节点。
+1. 凭当前账户、设备和 Session 的完整身份授权，且在当前连接核对目标能力；“可以发消息”不等于“可以 Done/Restore”，归档 Session 即使不能发送也可具有恢复能力。
+2. 操作下发、原生动作确认和 Relay 状态投影不是跨网络原子事务。接收请求不算成功；只有匹配目标和期望状态的本机确认才显示成功。拒绝不更新为期望状态，超时保持未确认。
+3. 本机手动改变归档状态同步到 Relay，执行状态和普通新消息不能伪造完成/恢复；状态较旧、来源连接过期的结果不得覆盖新确认。
+4. VS Code Session/default chat 使用 Session 级归档，独立子 chat 需使用 chat 级动作；不向整个父 Session 错误发送子 chat 的操作。原生父归档可能影响子项只读，这不是 Relay 额外批量操作。
+5. 列表与详情使用同一动作和结果。Show completed 应直接提供已完成历史与 Restore 入口，不能要求再启用 Show ended 才能找到原生归档项；其他搜索、设备、离线筛选及发送权限保持有效。
+6. 既有 Relay completed 不代表原生归档。升级不遍历旧标记下发命令；支持联动的 Session 接到新鲜本机状态后采用原生结果。未确认/不支持项明确提示旧标记不代表 Done，禁用新联动。
+
+## 可行性证据及原生副作用
+
+已安装的 `@microsoft/agent-host-protocol` 提供 client-dispatchable `SessionIsArchivedChanged` 和 `ChatIsArchivedChanged`，后者说明默认 chat 应用 Session 级动作。当前 [VS Code provider](../../../../../../packages/connector/src/vscode-agent-host-provider.ts) 已有 Agent Host 连接、Session/chat 绑定和消息动作确认，但没有归档写入方法；[provider 接口](../../../../../../packages/connector/src/agent-host-provider.ts) 和 [Relay 协议](../../../../../../packages/protocol/src/index.ts) 也没有对应能力/命令。当前 [API](../../../../../../apps/worker/src/api.ts) 只写 Relay work_state。因此当前线上不联动是实际实现边界，不是手机请求遗漏。
+
+官方源码固定于 `c480e9e49e2a116c458518ecbdec56d50e4af3d2`：
+
+- [Done / Restore 动作](https://github.com/microsoft/vscode/blob/c480e9e49e2a116c458518ecbdec56d50e4af3d2/src/vs/workbench/contrib/chat/browser/agentSessions/agentSessionsActions.ts)：Done/Restore 共享 archive/unarchive 行为，调用 setArchived(true/false)。
+- [Agent Host 列表写入](https://github.com/microsoft/vscode/blob/c480e9e49e2a116c458518ecbdec56d50e4af3d2/src/vs/workbench/contrib/chat/browser/agentSessions/agentHost/agentHostSessionListStore.ts)：Session 归档使用 `SessionIsArchivedChanged`。
+- [Session flags 持久化](https://github.com/microsoft/vscode/blob/c480e9e49e2a116c458518ecbdec56d50e4af3d2/src/vs/platform/agentHost/node/chatContributions/sessionFlags/sessionFlagsContribution.ts)：未拒绝的动作写入原生归档标记，恢复清除自动归档时间。
+- [附加 worktree 生命周期](https://github.com/microsoft/vscode/blob/c480e9e49e2a116c458518ecbdec56d50e4af3d2/src/vs/platform/agentHost/node/chatContributions/additionalWorktreeLifecycle/additionalWorktreeLifecycleContribution.ts)：Session 归档变化调用原生 cleanup/recreate 逻辑；不是所有安装版本都一定具备同样副作用。
+
+协议层可行不等于已完成本机集成验证。必须在实施时核对实际连接版本、能力、Session/chat 映射、确认与外部操作结果；本次调查没有读取账户凭据或修改任何真实 Session。
 
 ## 迁移与兼容性
 
-- 既有 Session 默认为 `open`，不把 `idle`、`closed` 或未知执行状态自动转换为 Completed。
-- 兼容新增 Relay 字段，Connector 不新增完成/Reactivate 命令，旧客户端的 upsert 必须不覆盖该字段。
-- 新状态不是数据删除；旧 Web 回滚可以暂时不展示标记，但不能清空已保存状态。
-- 主线同期合入 [设备删除规则](../../../../../../apps/worker/migrations/0011_device_management.sql)：设备逻辑移除保留 Session 身份及历史，但禁止更新其 Session。本次保留此边界，不把已移除设备当作普通离线设备，不让完成与 Reactivate 绕过只读限制。
-
-## 待确认的范围
-
-用户尚未明确选择 Relay 独立标记或原生归档联动。本候选选择前者；若希望同步 VS Code/Copilot 归档，需要重新准备能力支持、离线命令和执行中处理的不同契约。
+- 旧 Connector 不声明能力，新联动禁用并提示升级；SDK-only 或不支持的 Session 不伪装具备原生 Done/Restore。
+- 保留旧 Relay 工作标记与历史，不批量调用原生 API；新鲜本机确认可能使以前 Relay-only completed 而本机仍 open 的项重新显示，应解释这是采用原生权威，不是自动 Restore。
+- 需要更新 Connector/协议和能力协商。确切 schema 与兼容策略在实现阶段确定，不在此猜测新迁移；部署需记录最低支持版本与升级步骤，npm 发布另走已有授权流程。
+- 原生归档可能标记已读、清理/重建附加 worktree或影响子 chat；Relay 不另外清理文件、不主动停止 Agent，不承诺取消归档能撤销全部原生副作用。回滚不能自动取消已经确认的 Done。
 
 ## 准备核对
 
-2026-10-12 使用本地 Mermaid 与 Edge 渲染并查看目标图，复合身份、所有权、基数和历史关系与上述源码一致。UI 对比已从本地入口打开，检查 1440px 桌面、390px 窄屏、两个场景、直接打开场景、键盘切换和 iframe 高度收缩，无横向溢出或浏览器错误。此检查仅验证评审材料，不代表产品功能已实施或上线。
+2026-10-12 本地 Edge / Playwright 已渲染 Mermaid 并视觉核对实体、复合 Session 身份、账户/设备关系、操作与历史的基数和关系动词；它是目标业务视图，不声称新字段或新命令已实现。当前代码与固定 revision 的官方源码核对支持上述可行性结论。两个 UI 场景已验证 1440px、390px、320px、直接打开、键盘场景切换、启用/禁用状态、44px 点击区、tooltip、静态点击、iframe 高度和无横向溢出，并视觉核对桌面与手机。此为评审材料验证，不是产品或本机联动验证。
 
-同日按用户反馈将完成与 Reactivate 改为列表项右侧的小 glyph，移除正文大按钮，业务模型及归档边界不变。使用本地 Edge + Playwright 重新检查两个场景的 1440px / 390px 渲染、行尾位置、tooltip、可访问名称、键盘焦点和场景切换、直接打开、静态点击、iframe 高度及无横向溢出，并视觉核对桌面与窄屏截图。集成浏览器请求未及时响应，因此采用本地浏览器验证；这仍然只是评审材料检查。
-
-是否接受“Relay 工作状态独立于 Agent 执行和归档状态”的模型决定？
+是否接受“VS Code 原生 Done / Restore 双向权威、在线能力门控和确认后成功”的模型决定？

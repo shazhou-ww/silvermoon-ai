@@ -3,39 +3,35 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>详情页操作入口</title>
+  <title>离线与未确认</title>
   <link rel="stylesheet" href="../review.css">
 </head>
 <body>
   <header class="scenario-heading">
-    <h1>详情页操作入口</h1>
-    <p>同一已完成 Session 的已保存历史；截取桌面／手机详情标题区与正文，不改变 Agent 的 Available 状态。</p>
-    <ul class="callouts"><li>详情顶部常显 glyph</li><li>不必返回列表</li><li>未完成时同位置显示勾选动作</li></ul>
+    <h1>离线与未确认</h1>
+    <p>同一普通离线设备和未完成 Session。旧版可以修改 Relay 标记，新候选不能声称本机已 Done。</p>
+    <ul class="callouts"><li>离线禁用联动</li><li>旧 Connector 提示升级</li><li>超时不伪成功、不自动重放</li></ul>
   </header>
   <main class="comparison">
     <section class="state before" aria-labelledby="before-title">
-      <header class="state-label"><strong id="before-title">Before</strong><span>已完成 Session 详情</span></header>
+      <header class="state-label"><strong id="before-title">Before</strong><span>离线仍可整理 Relay</span></header>
       <div class="product-surface detail-only">
-        <div class="detail-header"><div class="detail-title"><h2>检查发布结果与保存验证记录</h2><small>copilot-sdk-test</small></div><span class="badge">Available</span></div>
-        <div class="history">
-          <p class="muted">Session opened on copilot-sdk-test</p>
-          <div class="notice"><strong>This Session is completed in Relay.</strong><p>Read its saved history. Use Show completed and the Reactivate icon in the Session list to continue; native read-only limits still apply.</p></div>
-          <div class="message">发布检查已结束。</div>
-          <div class="composer">Completed · Reactivate from the Session list to continue.</div>
-        </div>
+        <div class="detail-header"><div class="detail-title"><h2>检查发布结果</h2><small>copilot-sdk-test</small></div><span class="badge">Offline</span><div class="session-action"><button type="button" class="glyph detail-glyph" aria-label="Mark completed: 检查发布结果" aria-describedby="before-complete"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg></button><span class="glyph-tip" id="before-complete" role="tooltip">Mark completed in Relay. Does not stop the Agent.</span></div></div>
+        <div class="notice"><strong>Device offline</strong><p>可读历史和编辑草稿，无法发送消息。</p></div>
+        <div class="message">发布检查已结束。</div>
+        <div class="composer">本地草稿保留。</div>
+        <p class="measure">完成按钮仍可用，但不会改变本机 VS Code。</p>
       </div>
     </section>
     <section class="state after" aria-labelledby="after-title">
-      <header class="state-label"><strong id="after-title">After</strong><span>同一 Session 详情</span></header>
+      <header class="state-label"><strong id="after-title">After</strong><span>等待在线能力确认</span></header>
       <div class="product-surface detail-only">
-        <div class="detail-header"><div class="detail-title"><h2>检查发布结果与保存验证记录</h2><small>copilot-sdk-test</small></div><span class="badge">Available</span><div class="session-action"><button type="button" class="glyph detail-glyph" aria-label="Reactivate: 检查发布结果与保存验证记录" aria-describedby="detail-reactivate-tip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 2 6l4 3M2 6h7a4 4 0 0 1 0 8"/></svg></button><span class="glyph-tip" id="detail-reactivate-tip" role="tooltip">Reactivate · 不自动发消息</span></div></div>
-        <div class="history">
-          <p class="muted">Session opened on copilot-sdk-test</p>
-          <div class="notice"><strong>This Session is completed in Relay.</strong><p>Read its saved history. Use Reactivate at the top of this Session to continue; native read-only limits still apply.</p></div>
-          <div class="message">发布检查已结束。</div>
-          <div class="composer">Completed · Reactivate this Session before sending.</div>
-        </div>
-        <p class="measure">未完成时同位置显示 Mark completed 勾选 glyph；详情内完成后保留历史与草稿，可原地 Reactivate。手机点击区至少 44px。</p>
+        <div class="detail-header"><div class="detail-title"><h2>检查发布结果</h2><small>copilot-sdk-test</small></div><span class="badge">Offline</span><div class="session-action"><button type="button" class="glyph detail-glyph" disabled aria-label="Mark completed unavailable: Device offline" title="Reconnect the Device to confirm native Done / Restore support."><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg></button></div></div>
+        <div class="notice"><strong>Done / Restore unavailable</strong><p>设备离线，无法确认本机原生状态。重连后确认能力再操作；不排队自动执行。</p></div>
+        <div class="message">发布检查已结束。</div>
+        <div class="composer">本地草稿保留。</div>
+        <p class="measure">旧 Connector / 不支持来源：禁用并提示升级或在本机操作。旧 Relay 标记：明确不代表原生 Done，确认本机状态前不批量归档。</p>
+        <div class="native-result"><strong>若在线操作后断线或超时</strong>显示“本机结果未确认”，重新读取本机状态后判断；不显示成功，不自动重放。明确拒绝则显示失败并保留此前确认结果。</div>
       </div>
     </section>
   </main>

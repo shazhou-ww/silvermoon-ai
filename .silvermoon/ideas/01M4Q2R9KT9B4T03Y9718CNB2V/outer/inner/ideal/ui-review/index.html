@@ -3,32 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Relay Session 手机与详情操作评审</title>
+  <title>Relay 与 VS Code Done / Restore 联动评审</title>
   <link rel="stylesheet" href="review.css">
 </head>
 <body class="review-index">
   <a class="skip-link" href="#review">跳到对比</a>
   <header>
     <h1>从 Relay 完成并重新激活 Session</h1>
-    <p>本轮调整：手机更容易点击，当前 Session 可在详情页直接完成或 Reactivate。</p>
+    <p>本轮调整：手机完成 / 恢复应真正联动本机 VS Code，而不是只保存 Relay 标记。</p>
   </header>
   <main id="review">
     <section class="decision" aria-label="待批准的决定">
-      <strong>保留列表 glyph，在详情页顶部也提供同样的动作。</strong>
-      <ul><li>手机和触屏的列表与详情点击区至少 44 × 44 CSS px；图标本身保持小巧。</li><li>未完成用勾选，已完成用回转箭头；详情内直接操作，不必返回列表，不在正文放大按钮。</li><li>工作状态、其他筛选、原生只读与已移除设备边界均不改变。</li></ul>
+      <strong>以 VS Code 原生 Done / Restore 的确认结果为准，双向同步。</strong>
+      <ul><li>列表和详情保留小 glyph 与至少 44px 手机点击区；成功意味着本机已确认，而不是请求已收到。</li><li>本机手动 Done / Restore 也反映到 Relay；已完成历史从 Show completed 直接读取和恢复。</li><li>离线、旧 Connector 和不支持来源禁用；超时显示未确认，不自动重放。</li><li>原生 Done 即归档，可能影响原生 worktree生命周期、已读或子项只读；旧 Relay 标记不会批量下发归档。</li></ul>
     </section>
     <nav class="tabs" role="tablist" aria-label="评审场景">
-      <a class="tab" role="tab" aria-selected="true" href="scenarios/01-complete.html" target="scenario-frame">手机列表点击区</a>
-      <a class="tab" role="tab" aria-selected="false" href="scenarios/02-reactivate.html" target="scenario-frame">详情页操作入口</a>
+      <a class="tab" role="tab" aria-selected="true" href="scenarios/01-complete.html" target="scenario-frame">本机确认与恢复</a>
+      <a class="tab" role="tab" aria-selected="false" href="scenarios/02-reactivate.html" target="scenario-frame">离线与未确认</a>
     </nav>
-    <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-complete.html" title="手机列表点击区对比"></iframe>
+    <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-complete.html" title="本机确认与恢复对比"></iframe>
     <section class="review-end">
-      <p>说明性评审材料，不是生产 UI 或规范性行为契约。仅展示受影响的列表或详情区域，不将手机的两个独立页面拼成同屏；glyph 可聚焦以评审提示与焦点，点击不改变状态。</p>
-      <p>Before 依据已上线版本的 App.tsx 与 index.css：手机列表动作点击区为 36px，详情仅提示返回列表恢复。两侧使用相同设备、Session、工作标记与消息；详情标题区按桌面和窄屏分别示意。</p>
+      <p>说明性评审材料，不是生产 UI 或规范性行为契约；展示同一 Session、设备、消息的静态状态。glyph 可聚焦查看提示，点击不执行命令。VS Code 状态卡是外部结果示意，不冒充真实本机截图。</p>
+      <p>Before 依据当前已上线的独立 Relay 标记、44px 触控区和详情动作；本机原生状态未被旧 API 修改。After 的本机确认状态是新提案，不声称已经实现。</p>
       <p><a href="../Idea.md">构想契约</a> · <a href="../Business-Data-Model-Review.md">业务模型与范围</a></p>
-      <p>参考 <a href="https://code.visualstudio.com/docs/agents/run/sessions/manage-sessions">VS Code Session 管理</a>的行内动作，以及 <a href="https://github.com/microsoft/vscode/blob/ff00e788322523ee1e9e8ee2c9bb4b89af93a3c2/src/vs/workbench/contrib/chat/browser/agentSessions/agentSessionsActions.ts">Session item toolbar 源码</a>。仅借鉴交互，不联动原生归档。</p>
-      <p>桌面列表沿用 hover／焦点／选中显示；详情动作常显。手机／触屏两处常显且至少 44px。进行中两入口一致禁用，失败明确显示，已移除设备历史仍只读。</p>
-      <strong>是否接受手机点击区扩大，并在 Session 详情顶部提供完成 / Reactivate glyph？</strong>
+      <p>参考 <a href="https://code.visualstudio.com/docs/agents/run/sessions/manage-sessions">VS Code Session 管理</a>和 <a href="https://github.com/microsoft/vscode/blob/c480e9e49e2a116c458518ecbdec56d50e4af3d2/src/vs/workbench/contrib/chat/browser/agentSessions/agentSessionsActions.ts">原生 Done / Restore 源码</a>；协议可行性及原生副作用见业务模型评审。</p>
+      <p>待实施核实实际本机版本及能力；旧独立标记不证明 Done。原生恢复不自动发消息，已移除设备访问和其他发送限制不可绕过。</p>
+      <strong>是否接受原生 Done / Restore 双向联动、在线能力门控和本机确认后成功？</strong>
     </section>
   </main>
   <script>
