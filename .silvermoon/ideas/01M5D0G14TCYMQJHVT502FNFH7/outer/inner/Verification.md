@@ -1,5 +1,42 @@
 # Devices 工作区实施证据
 
+## 生产必需 CI 的账户切换阻塞 — 本地 FIXED，待新候选 CI
+
+修正 Settings 后的 release `39473467729` 没有通过必需浏览器检查：276 通过、2 原有 skip，desktop 的“账户切换清除旧 pending 并停止旧订阅”用例在切换后等待新账户发送 opt-in 控件失败。deploy job 为 skipped，未上传本候选。该用例属于新增的账户边界验证，不能作为既有并行 fixture 风险忽略，也不能靠反复重跑或放宽断言批准上线。
+
+主 Agent 已将 I-S03、I-AC02、I-AC03 重新打开。本次基于 `0a8da0d0b72a88e77339eb651ea1ba3e867c4924` 定位并修正根因，没有重试生产 CI、放宽超时或弱化原断言；原 CI 仍是失败记录，部署未执行，必须对新的精确 Inner 修订重新提交/验收，再让新候选通过必需 CI。
+
+### 已确定的竞态与修正
+
+旧账户 A 的 v2 请求在 cookie 已切到 B 时返回 `account_changed`（或旧会话返回 401），原 `useAccountApi` / `api` 将错误变成无身份归属的全局事件。Devices 根处理器把任何这类事件都当作当前会话失效，调用 `accountCheck.current.abort()`；这个 ref 此时可能已经是正在确认 B 的 `/api/me`。因此 A 的私有 pending 被隐藏，CI 的第一个断言通过，但 B 的确认也被取消，新的 opt-in 控件一直没有出现。等待旧组件 passive cleanup 才 abort 原请求也不能可靠封住“B 已确认但 A 的旧异步结果尚在队列中”的窗口。
+
+先只加受控 Promise 屏障测试、不改应用源码，强制“旧请求已在途 → B 的 `/api/me` 已开始但暂不交付 → 交付 A 的 account_changed → 隐私消失 → 交付 B 确认”，原源码稳定失败在新账户控件缺失；日志 `.wrangler\device-workspace-auth-red.log`，不是靠重复原随机失败用例推测原因。
+
+修正范围为共享 `api` 的可选认证回调（旧调用者默认全局通知不变）、Devices 的账户确认/请求生命周期，以及独立小型 `device-auth.ts`：
+
+- 每个已确认 Account＋session 对应一个本地 generation 和取消 signal；新身份采用时，在 React 提交/旧组件清理前同步取消旧范围请求。失效回调只归属于捕获的 scope 对象，旧身份/旧 session/返回同一身份的旧 generation 均不能清除当前身份。
+- Devices 的 401 与 account_changed 直接通知其身份所有者，不再发布/消费无归属全局失效事件。旧范围失败立即隐藏旧数据，但不取消正在发现新身份的 `/api/me`。若重叠确认竟返回刚被失效的同一身份，必须再做一次新确认，不能复活其私有 pending。
+- `/api/me` 的每次 attempt 单独 fencing；旧成功/401 不能覆盖更新的确认。确认处理与清除在途引用在同一个 async try/finally continuation 完成，不留“已处理的确认仍被当成在途”的 Promise 链交接窗口；刚完成 A 确认后再收到旧拒绝也会立即开始新发现。当前 scope 的真实撤销仍清空页面、取消全部 scoped 读取；手动退出同样按当前所有者处理。session 轮换重新挂载只读 Composer，原账户 pending 可恢复但不自动 opt-in/resend；另一账户不能看到它。
+
+### 本次确定性证据
+
+新增 4 条纯状态测试覆盖立即取消、旧回调、同账户换 session、A→B→A 同值身份下的旧 generation 及真实当前撤销。新增 9 个浏览器用例各运行三宽度：旧 400/401 在 B 确认前交付、已完成确认后的拒绝主动触发新发现、旧 `/api/me` 成功/401 乱序交付、无效 A 确认不得短暂复活隐私（MutationObserver）、B/新 session 已确认后的迟到旧 401、当前撤销后用虚拟时钟推进确认全部订阅停止。通过显式屏障控制交付顺序，没有增加等待睡眠/超时或 skip。原 CI 失败用例原断言保持，另固定重复五次。
+
+| 本次命令 | 结果 |
+| --- | --- |
+| `pnpm --filter @silvermoon-ai/web typecheck`；`pnpm --filter @silvermoon-ai/web test`；`pnpm --filter @silvermoon-ai/web build` | 通过；8 个测试文件、87/87 单元测试通过；构建仍只有既有 chunk 提示 |
+| `pnpm check` | 退出 0，全部 lint/types/unit/build 通过；新增 auth 文件无新 lint warning |
+| `$env:PLAYWRIGHT_BUILT_APP='1'; pnpm --filter @silvermoon-ai/web test:browser -- devices.browser.ts --grep 'old scoped\|completed account verification\|reordered account verification\|overlapping invalidated\|late scoped\|current-session revocation\|sign-out and account switching' --repeat-each=5 --workers=2` | **150/150 通过，58.8 秒**，1440×900 / 390×664 / 320×640，原 CI 用例与九种确定性顺序固定重复五次，而非失败重试 |
+| `pnpm --filter @silvermoon-ai/web test:browser -- devices.browser.ts settings.browser.ts login-page.browser.ts --workers=2`（沿用构建页面设置） | **128 通过、1 原有 skip，55.9 秒**，包含全部 60 条 Devices 测试；认证、现代/legacy Settings 与导航均保留 |
+| `pnpm test:devices:smoke`；`pnpm test:streams:smoke` | 均退出 0；真实本地 UI/backend/lib 的会话撤销与双向闭环、真实 v1 兼容通过；生产 dist 逐文件哈希前后不变 |
+| `pnpm --filter @silvermoon-ai/web test:browser -- --workers=1` | 最终源码完整回归 **304 通过、2 原有 skip，10.4 分钟**；无自动 retries，原 CI 账户切换及全部 legacy/auth/Settings/Streams 断言保留 |
+
+一次双 worker 中间候选全量运行有 300 通过、2 原有 skip，另一个旧 narrow Stream 用例在初始等待 `.session-state-dot` 时失败，未进入 keyboard 断言；这不是本次新增账户边界用例，也不抵消原真实 CI 失败。未修改该测试或旧页面，其原断言单独串行重复五次通过。随后补充“确认已完成后再拒绝”的确定性用例并收紧同一 async continuation 内的确认交接；最终完整串行回归 304 通过、2 原有 skip，不使用自动 retries。
+
+本次最终日志为 `.wrangler\device-workspace-auth-final-{check,repeat,compat,smoke,stream-smoke,full}.log`，红测日志为 `.wrangler\device-workspace-auth-red.log`。I-S03 / I-AC02 / I-AC03 在上述新证据后重新勾选，全部 D 项保持未勾选。源码与本地新证据不宣称 Linux 必需 CI 已通过；以下旧 Settings/完整套件/Outer 验证仍仅为历史候选证据，所有 Outer 文件及 Ideal/Deployment/events 未改，生产操作和生命周期门禁仍由主 Agent 处理。
+
+主 Agent 已直接审查身份 generation、同步取消、限定失效回调、`/api/me` attempt fencing 与同一 continuation 的交接分支，并独立运行 auth/持久状态 11/11 单元测试、Web typecheck 及定向 lint。构建页的两次三宽度受控顺序回归有 59/60 通过，唯一未运行到应用的用例在 `page.goto` 即遇到 Windows `ERR_NO_BUFFER_SPACE`；没有将其算作通过，另以单 worker 将原 CI desktop 账户切换用例固定重复三次，3/3 通过。原 CI 的应用内 opt-in 缺失与本地 OS 导航失败区分记录；仍须让新源码实际通过必需 Linux CI 才能部署。
+
 ## 最终导航复核退修 — FIXED
 
 生产 release 检查期间，主 Agent 继续核对共享外壳，发现 `App.tsx` 的现代 Settings 仍以 Streams 为侧栏标题及 “Back to Streams” 返回标签，而实际根路径已经切换为 Devices。该问题由本次根路由改变直接引起，不是设置功能重做范围。主 Agent 已取消本次 release `39471185944`，确认 check/deploy 均为 cancelled、没有进行生产部署；要求修正现代 Settings 的导航语义并补桌面/窄屏回归，旧 `/legacy/settings` 的 Sessions 语义必须保留。

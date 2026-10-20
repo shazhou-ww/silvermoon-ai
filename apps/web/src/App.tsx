@@ -222,6 +222,7 @@ function csrfToken(): string {
 export async function api<T>(
   path: string,
   init: RequestInit = {},
+  onAuthenticationRequired?: () => void,
 ): Promise<T> {
   const method = init.method ?? "GET"
   const headers = new Headers(init.headers)
@@ -235,7 +236,8 @@ export async function api<T>(
   const value = await response.json() as T & { error?: string }
   if (!response.ok) {
     if (!init.signal?.aborted && response.status === 401 && (value.error === "authentication-required" || value.error === "unauthorized")) {
-      window.dispatchEvent(new Event("relay:authentication-required"))
+      if (onAuthenticationRequired) onAuthenticationRequired()
+      else window.dispatchEvent(new Event("relay:authentication-required"))
     }
     throw new Error(value.error ?? `Request failed: ${response.status}`)
   }

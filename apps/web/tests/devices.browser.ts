@@ -64,6 +64,207 @@ async function back(page: Page, isMobile: boolean) {
   if (isMobile) await page.getByRole("button", { name: "Back to Devices" }).click()
 }
 
+function barrier() {
+  let open!: () => void
+  const ready = new Promise<void>(resolve => { open = resolve })
+  return { ready, open }
+}
+
+async function pendingAccount(page: Page, state: { failSend: boolean }) {
+  state.failSend = true
+  await page.goto("/")
+  await choose(page, "Workstation")
+  await page.getByRole("button", { name: "Enable sending for this session", exact: true }).click()
+  await page.getByLabel("JSON payload (maximum 16 KiB)", { exact: true }).fill('{"private":"deterministic-account-one"}')
+  await page.getByRole("button", { name: "Send to Workstation", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Retry SAME request", exact: true })).toBeEnabled()
+}
+
+for (const failure of ["account_changed", "unauthorized"] as const) {
+  test(`old scoped ${failure} hides old data without canceling the pending new-account verification`, async ({ page }) => {
+    const state = await fixture(page)
+    await pendingAccount(page, state)
+    const oldStarted = barrier(), oldReply = barrier(), checking = barrier(), verified = barrier()
+    let captured = false, holdCheck = true
+    const next = { ...account, user: { ...account.user, id: "second-account", displayName: "Second" }, sessionId: "second-session" }
+    await page.route(`${origin}/api/v2/**`, async route => {
+      if (route.request().headers()["x-account-id"] !== account.user.id) { await route.fallback(); return }
+      if (!captured) { captured = true; oldStarted.open() }
+      await oldReply.ready
+      await route.fulfill({ status: failure === "unauthorized" ? 401 : 400, json: { error: failure } })
+    })
+    await page.route(`${origin}/api/me`, async route => {
+      if (!holdCheck) { await route.fallback(); return }
+      holdCheck = false; checking.open()
+      await verified.ready
+      await route.fulfill({ json: next })
+    })
+    try {
+      await oldStarted.ready
+      state.account = next; state.records = []
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")))
+      await checking.ready
+      oldReply.open()
+      await expect(page.getByText("deterministic-account-one", { exact: false })).toHaveCount(0)
+      verified.open()
+      await expect(page.getByRole("button", { name: "Account menu for Second", exact: true })).toBeVisible()
+      await expect(page.getByRole("button", { name: "Enable sending for this session", exact: true })).toBeVisible()
+      await expect(page.getByRole("button", { name: "Retry SAME request", exact: true })).toHaveCount(0)
+      expect(state.writes).toHaveLength(1)
+      expect(state.grants).toEqual([true])
+    } finally { oldReply.open(); verified.open() }
+  })
+}
+
+test("a completed account verification does not block fresh discovery after an old scoped rejection", async ({ page }) => {
+  const state = await fixture(page)
+  await pendingAccount(page, state)
+  const started = barrier(), release = barrier()
+  let captured = false
+  await page.route(`${origin}/api/v2/**`, async route => {
+    if (route.request().headers()["x-account-id"] !== account.user.id) { await route.fallback(); return }
+    if (!captured) { captured = true; started.open() }
+    await release.ready
+    await route.fulfill({ status: 400, json: { error: "account_changed" } })
+  })
+  try {
+    await started.ready
+    state.account = { ...account, user: { ...account.user, displayName: "Refreshed first" } }
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")))
+    await expect(page.getByRole("button", { name: "Account menu for Refreshed first", exact: true })).toBeVisible()
+    state.account = { ...account, user: { ...account.user, id: "second-account", displayName: "Second" }, sessionId: "second-session" }
+    state.records = []
+    release.open()
+    await expect(page.getByText("deterministic-account-one", { exact: false })).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Account menu for Second", exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Enable sending for this session", exact: true })).toBeVisible()
+    expect(state.writes).toHaveLength(1)
+  } finally { release.open() }
+})
+
+for (const response of ["old-identity", "unauthorized"] as const) {
+  test(`reordered account verification ignores a superseded ${response} response`, async ({ page }) => {
+    const state = await fixture(page)
+    await pendingAccount(page, state)
+    const checking = barrier(), obsolete = barrier(), finished = barrier()
+    let hold = true
+    await page.route(`${origin}/api/me`, async route => {
+      if (!hold) { await route.fallback(); return }
+      hold = false; checking.open()
+      await obsolete.ready
+      await route.fulfill(response === "unauthorized" ? { status: 401, json: { error: "authentication-required" } } : { json: account })
+      finished.open()
+    })
+    try {
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")))
+      await checking.ready
+      state.account = { ...account, user: { ...account.user, id: "second-account", displayName: "Second" }, sessionId: "second-session" }
+      state.records = []
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")))
+      await expect(page.getByRole("button", { name: "Account menu for Second", exact: true })).toBeVisible()
+      obsolete.open(); await finished.ready
+      await expect(page.getByRole("button", { name: "Enable sending for this session", exact: true })).toBeVisible()
+      await expect(page.getByRole("heading", { name: "Sign in or get started", exact: true })).toHaveCount(0)
+      await expect(page.getByText("deterministic-account-one", { exact: false })).toHaveCount(0)
+      expect(state.writes).toHaveLength(1)
+    } finally { obsolete.open() }
+  })
+}
+
+test("an overlapping invalidated account verification cannot resurrect its old private pending", async ({ page }) => {
+  const state = await fixture(page)
+  await pendingAccount(page, state)
+  const oldStarted = barrier(), oldReply = barrier(), checking = barrier(), verified = barrier()
+  let checks = 0, captured = false
+  await page.route(`${origin}/api/v2/**`, async route => {
+    if (route.request().headers()["x-account-id"] !== account.user.id) { await route.fallback(); return }
+    if (!captured) { captured = true; oldStarted.open() }
+    await oldReply.ready
+    await route.fulfill({ status: 400, json: { error: "account_changed" } })
+  })
+  await page.route(`${origin}/api/me`, async route => {
+    checks++
+    if (checks !== 1) { await route.fallback(); return }
+    checking.open(); await verified.ready
+    await route.fulfill({ json: account })
+  })
+  try {
+    await oldStarted.ready
+    state.account = { ...account, user: { ...account.user, id: "second-account", displayName: "Second" }, sessionId: "second-session" }
+    state.records = []
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")))
+    await checking.ready
+    oldReply.open()
+    await expect(page.getByText("deterministic-account-one", { exact: false })).toHaveCount(0)
+    await page.evaluate(() => {
+      const state = globalThis as typeof globalThis & { fixturePrivateResurrected?: boolean }
+      state.fixturePrivateResurrected = false
+      new MutationObserver(() => {
+        if (document.body.textContent?.includes("deterministic-account-one")) state.fixturePrivateResurrected = true
+      }).observe(document.body, { childList: true, characterData: true, subtree: true })
+    })
+    verified.open()
+    await expect(page.getByRole("button", { name: "Account menu for Second", exact: true })).toBeVisible()
+    expect(checks).toBe(2)
+    expect(await page.evaluate(() => (globalThis as typeof globalThis & { fixturePrivateResurrected?: boolean }).fixturePrivateResurrected)).toBe(false)
+    await expect(page.getByRole("button", { name: "Enable sending for this session", exact: true })).toBeVisible()
+    expect(state.writes).toHaveLength(1)
+  } finally { oldReply.open(); verified.open() }
+})
+
+for (const transition of ["other-account", "same-account-new-session"] as const) {
+  test(`late scoped unauthorized cannot expire the verified ${transition} identity`, async ({ page }) => {
+    const state = await fixture(page)
+    await pendingAccount(page, state)
+    const started = barrier(), release = barrier(), finished = barrier()
+    let captured = false
+    await page.route(`${origin}/api/v2/**`, async route => {
+      if (captured || route.request().headers()["x-account-id"] !== account.user.id) { await route.fallback(); return }
+      captured = true; started.open()
+      await release.ready
+      await route.fulfill({ status: 401, json: { error: "unauthorized" } })
+      finished.open()
+    })
+    try {
+      await started.ready
+      const cancelled = page.waitForEvent("requestfailed", request => request.url().startsWith(`${origin}/api/v2/`) && request.headers()["x-account-id"] === account.user.id)
+      state.account = { ...account, user: { ...account.user, id: transition === "other-account" ? "second-account" : account.user.id, displayName: "Second" }, sessionId: "second-session" }
+      state.records = []
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")))
+      await expect(page.getByRole("button", { name: "Account menu for Second", exact: true })).toBeVisible()
+      await cancelled
+      release.open(); await finished.ready
+      await expect(page.getByRole("button", { name: "Enable sending for this session", exact: true })).toBeVisible()
+      await expect(page.getByRole("heading", { name: "Sign in or get started", exact: true })).toHaveCount(0)
+      if (transition === "other-account") await expect(page.getByText("deterministic-account-one", { exact: false })).toHaveCount(0)
+      else {
+        await expect(page.locator(".pending-send pre")).toContainText("deterministic-account-one")
+        await expect(page.getByRole("button", { name: "Retry SAME request", exact: true })).toBeDisabled()
+      }
+      expect(state.writes).toHaveLength(1)
+      expect(state.grants).toEqual([true])
+    } finally { release.open() }
+  })
+}
+
+test("current-session revocation hides all private pending and stops every scoped subscription", async ({ page }) => {
+  const state = await fixture(page)
+  await page.clock.install()
+  const scopedRequests: string[] = []
+  page.on("request", request => { if (request.url().startsWith(`${origin}/api/v2/`)) scopedRequests.push(request.url()) })
+  await pendingAccount(page, state)
+  state.authorized = false
+  await page.clock.runFor(1000)
+  await expect(page.getByRole("heading", { name: "Sign in or get started", exact: true })).toBeVisible()
+  await expect(page.getByText("deterministic-account-one", { exact: false })).toHaveCount(0)
+  await expect(page.getByLabel("Device workspace", { exact: true })).toHaveCount(0)
+  const stopped = scopedRequests.length
+  await page.clock.runFor(5000)
+  expect(scopedRequests).toHaveLength(stopped)
+  expect(state.writes).toHaveLength(1)
+  expect(state.grants).toEqual([true])
+})
+
 test("account, Device and empty-device scenarios retain all-account reception, keyboard detail and mobile Back", async ({ page, isMobile }, info) => {
   const state = await fixture(page)
   await page.goto("/")

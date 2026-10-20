@@ -6,57 +6,97 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { acceptPage, emptyFeed, messagesEndpoint, parsePayload, prepareSend, readSaved, savePending, saveScope, scopeKey, type Feed, type Message, type PendingSend } from "./device-messages"
+import { DeviceAuthBoundary, sameAuthIdentity, type DeviceAuthScope } from "./device-auth"
 import "./streams.css"
 import "./devices.css"
 
 interface Device { id: string; displayName: string }
+interface AccountCheck { controller: AbortController; invalidated?: DeviceAuthScope }
 const errorText = (error: unknown) => error instanceof Error ? error.message : "Request failed"
 
 export default function DevicesApp() {
-  const [account, setAccount] = useState<Account | null>(null)
+  const [workspace, setWorkspace] = useState<{ account: Account; scope: DeviceAuthScope } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(() => new URLSearchParams(location.search).has("authError") ? "We couldn’t verify that sign-in. Try again or choose another provider." : null)
-  const signedIn = useRef(false)
-  const accountCheck = useRef<AbortController | null>(null)
+  const boundary = useRef(new DeviceAuthBoundary())
+  const accountCheck = useRef<AccountCheck | null>(null)
+  const verify = useRef<(() => void) | null>(null)
+  const invalidate = useCallback((scope: DeviceAuthScope) => {
+    if (!boundary.current.invalidate(scope)) return
+    setWorkspace(null); setError("Your browser session expired or changed. Sign in again.")
+    // A scoped failure must hide the old payload without cancelling discovery of the new identity.
+    if (accountCheck.current && !accountCheck.current.controller.signal.aborted) accountCheck.current.invalidated = scope
+    else verify.current?.()
+  }, [])
   useEffect(() => {
+    const owner = boundary.current
     const check = () => {
-      accountCheck.current?.abort()
+      accountCheck.current?.controller.abort()
       const controller = new AbortController()
-      accountCheck.current = controller
-      void api<Account>("/api/me", { signal: controller.signal }).then(next => {
-        if (!controller.signal.aborted) { signedIn.current = true; setAccount(next); setError(null) }
-      }).catch(e => {
-        if (!controller.signal.aborted && errorText(e) !== "authentication-required") setError(errorText(e))
-      }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
+      const attempt: AccountCheck = { controller }
+      accountCheck.current = attempt
+      const current = () => accountCheck.current === attempt && !controller.signal.aborted
+      const authenticationRequired = () => {
+        if (!current()) return
+        const hadIdentity = owner.clear()
+        setWorkspace(null)
+        if (hadIdentity) setError("Your browser session expired or changed. Sign in again.")
+      }
+      const confirm = async () => {
+        try {
+          const next = await api<Account>("/api/me", { signal: controller.signal }, authenticationRequired)
+          if (!current()) return
+          const identity = { accountId: next.user.id, sessionId: next.sessionId }
+          if (attempt.invalidated && sameAuthIdentity(attempt.invalidated, identity)) {
+            // This check overlapped invalidation and returned the invalidated identity; verify afresh.
+            check()
+            return
+          }
+          const scope = owner.adopt(identity)
+          setWorkspace({ account: next, scope }); setError(null)
+        } catch (e) {
+          if (current() && !["authentication-required", "unauthorized"].includes(errorText(e))) setError(errorText(e))
+        } finally {
+          if (accountCheck.current === attempt) {
+            accountCheck.current = null
+            if (!controller.signal.aborted) setLoading(false)
+          }
+        }
+      }
+      void confirm()
     }
-    const expired = () => {
-      if (!signedIn.current) return
-      accountCheck.current?.abort(); signedIn.current = false; setAccount(null); setError("Your browser session expired or changed. Sign in again.")
-    }
+    verify.current = check
     check()
     window.addEventListener("focus", check)
-    window.addEventListener("relay:authentication-required", expired)
-    window.addEventListener("relay:account-changed", expired)
     const timer = setInterval(check, 30_000)
     return () => {
-      accountCheck.current?.abort(); clearInterval(timer); window.removeEventListener("focus", check)
-      window.removeEventListener("relay:authentication-required", expired); window.removeEventListener("relay:account-changed", expired)
+      verify.current = null; accountCheck.current?.controller.abort(); accountCheck.current = null
+      owner.clear(); clearInterval(timer); window.removeEventListener("focus", check)
     }
   }, [])
-  if (!account) return <LoginPage loading={loading} error={error} />
-  return <DeviceWorkspace key={`${account.user.id}:${account.sessionId}`} account={account} signOut={() => { accountCheck.current?.abort(); signedIn.current = false; setAccount(null) }} />
+  if (!workspace) return <LoginPage loading={loading} error={error} />
+  return <DeviceWorkspace key={workspace.scope.generation} account={workspace.account} scope={workspace.scope} invalidate={invalidate} signOut={() => {
+    if (!boundary.current.invalidate(workspace.scope)) return
+    accountCheck.current?.controller.abort(); accountCheck.current = null
+    setWorkspace(null); setError(null)
+  }} />
 }
 
-function useAccountApi(account: string) {
+function useAccountApi(scope: DeviceAuthScope, invalidate: (scope: DeviceAuthScope) => void) {
   return useCallback(async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
     const headers = new Headers(init.headers)
-    headers.set("x-account-id", account)
-    try { return await api<T>(path, { ...init, headers }) }
+    if (path.startsWith("/api/v2/")) headers.set("x-account-id", scope.accountId)
+    const signal = init.signal ? AbortSignal.any([scope.signal, init.signal]) : scope.signal
+    try {
+      const value = await api<T>(path, { ...init, headers, signal }, () => invalidate(scope))
+      signal.throwIfAborted()
+      return value
+    }
     catch (error) {
-      if (!init.signal?.aborted && errorText(error) === "account_changed") window.dispatchEvent(new Event("relay:account-changed"))
+      if (!signal.aborted && errorText(error) === "account_changed") invalidate(scope)
       throw error
     }
-  }, [account])
+  }, [scope, invalidate])
 }
 type AccountApi = ReturnType<typeof useAccountApi>
 
@@ -104,8 +144,8 @@ function useMessageFeed(account: string, request: AccountApi, device?: string, e
   return { feed: loadedScope === scope ? feed : emptyFeed(), error: loadedScope === scope ? error : null, connected: loadedScope === scope && connected, retry: () => setAttempt(n => n + 1) }
 }
 
-function DeviceWorkspace({ account, signOut }: { account: Account; signOut: () => void }) {
-  const request = useAccountApi(account.user.id)
+function DeviceWorkspace({ account, scope, invalidate, signOut }: { account: Account; scope: DeviceAuthScope; invalidate: (scope: DeviceAuthScope) => void; signOut: () => void }) {
+  const request = useAccountApi(scope, invalidate)
   const [devices, setDevices] = useState<Device[]>([])
   const devicesRef = useRef<Device[]>([])
   const [nextDevice, setNextDevice] = useState<string | null>(null)
@@ -181,7 +221,7 @@ function DeviceWorkspace({ account, signOut }: { account: Account; signOut: () =
       <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="account-trigger" aria-label={`Account menu for ${name}`}><span className="account-avatar">{name.slice(0, 2).toUpperCase()}</span></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="account-menu"><DropdownMenuLabel>{name}</DropdownMenuLabel><DropdownMenuSeparator />
           <DropdownMenuItem asChild><a href="/settings"><Settings />Settings</a></DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => void api("/api/logout", { method: "POST" }).then(signOut).catch(e => setLogoutError(errorText(e)))}><LogOut />Sign out</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void request("/api/logout", { method: "POST" }).then(signOut).catch(e => setLogoutError(errorText(e)))}><LogOut />Sign out</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </header>

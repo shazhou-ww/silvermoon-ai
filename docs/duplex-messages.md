@@ -185,6 +185,15 @@ Credentialed preflight allows this header. Existing v2 Clients can omit it.
   old workspace, cancel its requests and hide its payloads. They can be restored
   only when the same Account signs in again. Storage is browser-local, not
   shared durable host receipt.
+- Authentication invalidation belongs to a verified Account **and session
+  generation**, not a global notification delivered to whichever workspace is
+  mounted later. Old requests are synchronously cancelled on identity changes;
+  their delayed failures cannot sign out a newly verified Account/session.
+  An old scoped rejection hides old data without aborting an in-flight account
+  check; a check overlapping invalidation that returns the invalidated identity
+  must verify afresh before restoring anything. Genuine current-session
+  revocation still hides all loaded/pending data and stops scoped reception.
+  Session rotation resets the UI's write opt-in; it never automatically resends.
 - Each Account keeps up to eight read scopes (Account uplink plus seven recent
   Devices), with at most 128 records/512KiB serialized record bytes per scope.
   Device-scope eviction removes its cursor and cache together; revisiting
