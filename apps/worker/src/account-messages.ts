@@ -173,7 +173,7 @@ export class AccountMessages extends DurableObject<Env> {
     });
   }
 
-  private page(p: MessagePrincipal, after: string, generation: string, owner: string): MessagePage {
+  private page(p: MessagePrincipal, after: string, generation: string, owner: string, target?: string): MessagePage {
     if (!messageIdSchema.safeParse(after).success) throw new DuplexError("invalid_cursor");
     if (p.role === "device") this.lease(p, generation, owner);
     const floor = this.ctx.storage.sql.exec<{ retained_after: string }>("SELECT retained_after FROM metadata").one().retained_after;
@@ -182,7 +182,10 @@ export class AccountMessages extends DurableObject<Env> {
       "SELECT COALESCE((SELECT CAST(seq AS TEXT) FROM sqlite_sequence WHERE name='messages'),'0') AS head",
     ).one().head;
     if (BigInt(after) > BigInt(head) && BigInt(after) > BigInt(floor)) throw new DuplexError("cursor_ahead");
-    const rows = p.role === "client"
+    const rows = target
+      ? this.ctx.storage.sql.exec<Row>(`SELECT CAST(id AS TEXT) AS id,account_id,device_id,is_upstream,payload FROM messages
+          WHERE device_id=? AND id>CAST(? AS INTEGER) ORDER BY messages.id LIMIT ?`, target, after, LIMITS.page).toArray()
+      : p.role === "client"
       ? this.ctx.storage.sql.exec<Row>(`SELECT CAST(id AS TEXT) AS id,account_id,device_id,is_upstream,payload FROM messages
           WHERE is_upstream=1 AND id>CAST(? AS INTEGER) ORDER BY messages.id LIMIT ?`, after, LIMITS.page).toArray()
       : this.ctx.storage.sql.exec<Row>(`SELECT CAST(id AS TEXT) AS id,account_id,device_id,is_upstream,payload FROM messages
@@ -191,10 +194,11 @@ export class AccountMessages extends DurableObject<Env> {
     return { messages, next: messages.at(-1)?.id ?? after, retained_after: floor };
   }
 
-  async read(p: MessagePrincipal, after: string, generation = "0", owner = "", wait = 0): Promise<Result<string>> {
+  async read(p: MessagePrincipal, after: string, generation = "0", owner = "", wait = 0, target?: string): Promise<Result<string>> {
     return this.result("read", async () => {
+      if (target !== undefined && (p.role !== "client" || !target)) throw new DuplexError("forbidden");
       if (!Number.isInteger(wait) || wait < 0 || wait > LIMITS.waitMs) throw new DuplexError("invalid_request");
-      await this.authorized(p);
+      await this.authorized(p, target);
       this.rate(p);
       const key = this.principalKey(p);
       if ((this.subscriptions.get(key) ?? 0) >= LIMITS.subscriptions) throw new DuplexError("backpressure", true);
@@ -202,11 +206,11 @@ export class AccountMessages extends DurableObject<Env> {
       try {
         const deadline = Date.now() + wait;
         for (;;) {
-          const page = this.page(p, after, generation, owner);
+          const page = this.page(p, after, generation, owner, target);
           if (page.messages.length || Date.now() >= deadline) return JSON.stringify(page);
           await new Promise(resolve => setTimeout(resolve, Math.min(250, deadline - Date.now())));
           // Long-poll authorization is never a handshake-only decision.
-          await this.authorized(p);
+          await this.authorized(p, target);
         }
       } finally {
         const count = (this.subscriptions.get(key) ?? 1) - 1;

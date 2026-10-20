@@ -41,7 +41,7 @@ async function choose(page: Page) {
 
 test("retains the shell, offline history, literal raw detail, mobile list/detail and settings navigation", async ({ page, isMobile }) => {
   const { reads } = await fixture(page)
-  await page.goto("/")
+  await page.goto("/history")
   await expect(page.getByRole("complementary", { name: "Streams" })).toBeVisible()
   await expect(page.getByText("Offline · history available")).toBeVisible()
   if (!isMobile) expect(await page.locator(".session-rail").evaluate(e => e.getBoundingClientRect().width)).toBe(304)
@@ -67,7 +67,7 @@ test("retains the shell, offline history, literal raw detail, mobile list/detail
 
 test("100000 historical events are paged, truly virtualized, bounded and reread after eviction without losing focus or anchor", async ({ page }) => {
   const { reads } = await fixture(page)
-  await page.goto("/")
+  await page.goto("/history")
   await choose(page)
   expect(reads).toHaveLength(1)
   for (let i = 0; i < 18; i++) {
@@ -110,7 +110,7 @@ test("100000 historical events are paged, truly virtualized, bounded and reread 
 test("long payloads cannot expand virtual rows or the byte cache, copy failures remain explicit", async ({ page }) => {
   await fixture(page, { long: true })
   await page.addInitScript(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => { throw new Error("denied") } } }))
-  await page.goto("/")
+  await page.goto("/history")
   await choose(page)
   await expect(page.locator(".stream-events")).toHaveAttribute("data-cache-bytes", String(8 * 1024 * 1024))
   await page.getByRole("button", { name: "Next page", exact: true }).click()
@@ -126,7 +126,7 @@ test("long payloads cannot expand virtual rows or the byte cache, copy failures 
 
 test("empty, failed fetch, retry, legacy link retirement and unknown link are distinct", async ({ page }) => {
   const { state } = await fixture(page, { failed: true })
-  await page.goto("/?connector=one&session=old")
+  await page.goto("/history?connector=one&session=old")
   await expect(page.getByText("Legacy Session links are not Stream identities.", { exact: false })).toBeVisible()
   await expect(page.getByRole("link", { name: "Open retained Session history" })).toHaveAttribute("href", "/legacy?connector=one&session=old")
   await page.getByRole("complementary", { name: "Streams" }).getByRole("button", { name: /observations/ }).first().click()
@@ -141,7 +141,7 @@ test("empty, failed fetch, retry, legacy link retirement and unknown link are di
 
 test("decimal locate never rounds sequence identities beyond 2^53", async ({ page }) => {
   const { reads } = await fixture(page, { huge: true })
-  await page.goto("/")
+  await page.goto("/history")
   await choose(page)
   await page.getByRole("textbox", { name: "Locate sequence" }).fill("9007199254740993")
   await page.getByRole("button", { name: "Locate", exact: true }).click()
@@ -170,7 +170,7 @@ test("follow, pause, resume and subscription authorization expiry preserve proce
     })
 
   })
-  await page.goto("/")
+  await page.goto("/history")
   await choose(page)
   await page.getByRole("button", { name: "Follow from position" }).click()
   await expect(page.locator(".stream-window-status")).toContainText("129 cached")
@@ -207,7 +207,7 @@ test("continuous catchup coalesces ACKs below the request quota and reconnects w
       }
     })
   })
-  await page.goto("/")
+  await page.goto("/history")
   await choose(page)
   await page.getByRole("button", { name: "Follow from position" }).click()
   await expect.poll(() => acks[0]).toBe("256")
@@ -220,14 +220,14 @@ test("continuous catchup coalesces ACKs below the request quota and reconnects w
 
 test("no-producer empty state is not an API failure", async ({ page }) => {
   await fixture(page, { empty: true })
-  await page.goto("/")
+  await page.goto("/history")
   await expect(page.getByText("No Streams produced yet.")).toHaveCount(2)
   await expect(page.getByRole("alert")).toHaveCount(0)
 })
 
 test("an existing empty Stream is an empty log, not a failed read", async ({ page }) => {
   const { reads } = await fixture(page, { zero: true })
-  await page.goto("/")
+  await page.goto("/history")
   await page.getByRole("complementary", { name: "Streams" }).getByRole("button", { name: /observations/ }).first().click()
   await expect(page.getByText("No events yet.", { exact: true })).toBeVisible()
   await expect(page.getByRole("alert")).toHaveCount(0)
@@ -236,7 +236,7 @@ test("an existing empty Stream is an empty log, not a failed read", async ({ pag
 
 test("unavailable historical sequences produce an explicit gap rather than a normal empty log", async ({ page }) => {
   await fixture(page, { gap: true })
-  await page.goto("/")
+  await page.goto("/history")
   await page.getByRole("complementary", { name: "Streams" }).getByRole("button", { name: /observations/ }).first().click()
   await expect(page.getByRole("alert")).toContainText("History gap: expected sequence 1, received 2")
   await expect(page.getByText("No events yet.", { exact: true })).toHaveCount(0)
@@ -245,7 +245,7 @@ test("unavailable historical sequences produce an explicit gap rather than a nor
 
 test("Stream rows reuse the Session visual grammar and keyboard selection", async ({ page, isMobile }, testInfo) => {
   await fixture(page)
-  await page.goto("/")
+  await page.goto("/history")
   const row = page.locator(".session-list-item").first()
   const select = row.locator(".session-item-select")
   await expect(row.locator(".session-tree-control .session-state-dot")).toHaveCount(1)
@@ -291,7 +291,7 @@ test("automatic inventory refresh retains loaded prefixes, active detail, cursor
       await route.fulfill({ json: { streams: all.slice(start, start + 32), next: start + 32 < all.length ? all[start + 31]!.streamId : null } })
     }
   })
-  await page.goto("/")
+  await page.goto("/history")
   await page.getByRole("button", { name: "More Connectors", exact: true }).click()
   await page.getByRole("button", { name: "More Streams", exact: true }).click()
   await page.getByRole("button", { name: /stream-35 application/ }).click()
@@ -342,7 +342,7 @@ test("64KiB one-event pages read exact predecessors, retain contiguous cursors a
       }
     })
   })
-  await page.goto("/")
+  await page.goto("/history")
   await page.getByRole("complementary", { name: "Streams" }).getByRole("button", { name: /observations/ }).first().click()
   await expect(page.locator(".stream-window-status")).toContainText("1 cached")
   // Locate near the cache boundary, then fill only 128 actual byte-limited pages.

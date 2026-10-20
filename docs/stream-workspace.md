@@ -1,6 +1,11 @@
 # Read-only Stream workspace
 
-The main `/` workspace lists device-owned Streams, grouped by Connector.
+The explicit **v1 Stream history** workspace at `/history` lists device-owned
+Streams, grouped by Connector. The default `/` is now the checkout's
+[Devices message workspace](duplex-messages.md#devices-workspace-checkout).
+Existing `/?device=…&stream=…` links still open the exact retained v1 history;
+an optional canonical decimal `seq` starts reading at that original sequence.
+Neither v1 source records nor their sequence numbers are migrated into v2.
 The Silvermoon brand, topbar, avatar, 19rem desktop rail and narrow-screen
 list/detail navigation are retained. `/settings` keeps the existing account,
 identity, device and token operations. The browser never receives a device
@@ -121,7 +126,7 @@ each run appends one observation and keeps synchronizing until Ctrl+C. Preserve
 the database and WAL; missing local history is an error, not permission to
 reinitialize the same device identity. `SILVERMOON_EVENT_SOURCE` can select a
 protected persistent path. Do not run two writers for this device at once.
-Select `checkout-observations` in the main workspace and read/follow it.
+Select `checkout-observations` in `/history` and read/follow it.
 This example uses the checkout-built existing Connector sync export; no npm
 release is necessary.
 
@@ -139,8 +144,9 @@ WebSocket into local workerd/SQLite DO, and opens a locally served production
 web build with a signed cookie. It checks history, raw detail, continuous
 append, pause, offline reload, session revocation and resource counters.
 No API is mocked, no production resources or credentials are used, and its
-isolated state is removed on exit. It rebuilds the web bundle for its local
-relay address; run the normal build afterward before any deployment.
+isolated state is removed on exit. It opens `/history` and builds its local
+Relay web bundle only inside that operation-owned directory; it never
+overwrites `apps/web/dist` with a localhost Relay URL.
 
 Runtime tests include a 100,000-event actual SQLite history plus reads beyond
 `2^53`. Browser tests use a 100,000-event paged fixture to exercise real virtual

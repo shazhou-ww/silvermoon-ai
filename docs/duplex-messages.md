@@ -4,7 +4,9 @@ The Relay v2 endpoints were deployed to production on **2026-10-20**.
 The library/CLI remain a checkout capability, **not a new npm release**.
 This adds an independent `@silvermoon-ai/connector/duplex` entrypoint and
 `silvermoon-duplex` validation executable. Existing AHP/tRPC entrypoints,
-`/v1/sync`, multi-stream archives and browser pages are unchanged.
+`/v1/sync` and multi-stream archives remain unchanged. The newer checkout
+Devices workspace and its additional read routes below are **not claimed
+deployed** by this historical rollout.
 
 ## Production rollout and trying it
 
@@ -36,7 +38,7 @@ access, then submit a harmless test payload to that Device. Observe it with
 CLI `receive`; printing must leave it pending until explicit `ack`. Enqueue
 and flush an upstream event, then read it through the account Client endpoint.
 
-The existing web workspace still displays v1 Streams: this rollout did not add
+At that rollout the web workspace still displayed v1 Streams: it did not add
 v2 send/receive controls. Actual authenticated end-to-end production testing
 requires the user's sign-in and test-Device setup; it is not claimed by the
 unauthenticated probes above. Existing test devices/history must not be reused
@@ -108,6 +110,8 @@ Device Bearer credentials are never accepted as browser credentials.
 | Explicitly enable/disable this session's v2 write capability | `POST /api/v2/account/write-access` `{enabled:true\|false}` |
 | Submit to exactly one owned, active Device | `POST /api/v2/devices/{deviceId}/regulations` `{key,payload}` |
 | Read/long-poll **all** Account Device events | `GET /api/v2/account/events?after=0&wait=20000` |
+| List active owned Device metadata, including Devices without messages (checkout addition) | `GET /api/v2/devices?after=…` |
+| Read/long-poll one owned Device's **both** directions (checkout addition) | `GET /api/v2/devices/{deviceId}/messages?after=0&wait=20000` |
 
 An existing login/legacy read subscription does not automatically opt into
 v2 writes. The account owner explicitly grants the current authenticated
@@ -124,7 +128,121 @@ Persist each Client's own `next` only after its own durable handling; use it
 with the same Account/direction on reconnect. There is no shared server-side
 Client cursor.
 
-### Device (connection-token Bearer only)
+The Device history route requires only the same valid Account owner session,
+not a write grant, Device token, writer lease, or Device consumption ACK.
+Ownership, Account existence, session revocation/expiry and Device removal are
+rechecked during long polls. Its `after`/`next` is a separate read scope from
+the Account uplink cursor, even though both refer to the same Account message
+IDs. A higher uplink ID must never be reused to skip unread Device downlinks.
+Both read routes use the existing 32-message page and explicit cursor errors.
+The metadata inventory returns at most 32 `{id,displayName}` entries and a
+`next` Device ID, in stable ID order. It never queries v1 writer presence or
+returns credentials.
+
+The workspace also supplies `x-account-id` as an optional expected-account
+guard on v2 requests. A mismatch with the authenticated cookie is rejected
+(`account_changed`) before reading or writing. This is a race/isolation check,
+**not authority**: omitting/forging the header never grants another Account.
+Credentialed preflight allows this header. Existing v2 Clients can omit it.
+
+### Devices workspace (checkout)
+
+- `/` opens **All devices** (all Account uplink). Select an empty or active
+  Device directly in the rail; Device pages show both directions, opaque JSON,
+  Account-scoped string Message IDs and raw detail. Search is display-only.
+  The independent Account subscription stays active under a selected Device.
+- No v2 presence projection exists: labels say **v2 status: Unknown**. This
+  says nothing about whether the Relay can durably accept a regulation.
+- Device sending requires that exact loaded target, valid JSON (16KiB
+  canonical UTF-8 limit), and **Enable sending for this session**. Nothing
+  automatically enables write access on load/reload. Server cookie,
+  Origin/CSRF, Account ownership and explicit write grants remain authoritative;
+  the UI does not register Clients or infer delegated owner permissions.
+- Before POST, Account-scoped local storage saves the request key, immutable
+  target and payload. Pending submissions disable duplicate sends. Lost or
+  rejected responses retain the original request, including across reload:
+  check the Device history or explicitly **Retry SAME request** with that
+  Device selected. Switching Devices cannot retarget it. There is no automatic
+  resend or key replacement. Once accepted, **New request** explicitly clears
+  that completed local request. The response says **Relay accepted #ID ·
+  Device receipt and execution unconfirmed**; payload events are never
+  interpreted as execution status.
+- All shared workspace mutations run inside one exclusive **Web Lock per
+  Account**, including feed/cursor writes, pending intent persistence and
+  acceptance/clear transitions. Reads are refreshed inside the lock before
+  writing: another tab's feed cannot overwrite an unresolved request, older
+  feed cursors cannot regress newer ones, and stale tabs cannot clear/replace
+  a different pending key. The send guard is set before waiting for the lock;
+  repeated clicks while queued do not POST twice. A same-key retry that finds
+  a durably accepted record shows that acceptance without another POST.
+  Web Locks (secure context, including localhost) and localStorage are required;
+  no unsupported-browser fallback or storage-event-based pseudo-transaction is
+  used. Lock acquisition is bounded to ten seconds and failures are explicit.
+- Local storage is required for durable cursors and requests. Read/write,
+  corruption and quota failures are visible, never replaced with a silent
+  fresh cursor or unsaved submission. Pending payloads remain only under their
+  Account storage key; sign-out, session expiry and Account changes unmount the
+  old workspace, cancel its requests and hide its payloads. They can be restored
+  only when the same Account signs in again. Storage is browser-local, not
+  shared durable host receipt.
+- Each Account keeps up to eight read scopes (Account uplink plus seven recent
+  Devices), with at most 128 records/512KiB serialized record bytes per scope.
+  Device-scope eviction removes its cursor and cache together; revisiting
+  starts at zero, never at another scope's higher cursor. Live DOM renders at
+  most 32 cards; previews are height-bounded and raw detail is separate.
+  **History from start**, **Next history page** and **Locate Message ID** use
+  a separate bounded history page without moving the durable live cursor.
+  Cursor expiration/future errors preserve loaded content and require an
+  explicit retry/recovery choice, never an implicit jump to latest.
+- Reads use one cancellable Account chain and one selected-Device chain.
+  Catchup pages are spaced by 350ms. Account long polls wait up to 20 seconds
+  after the initial immediate page, then at least one second. Selected-Device
+  reads use `wait=0` and the same one-second empty-page delay: switching targets
+  cancels the browser request without leaving 20-second DO RPC polls occupying
+  session subscription slots. The API still supports Device-history long polls
+  for Clients that choose them. Read failures stop that chain until Retry.
+  Inventory loads explicitly in 32-entry pages (1024 displayed Device cap);
+  Refresh rereads the loaded prefix with a bounded insertion-drift budget and
+  retains loaded metadata on failure.
+- Narrow screens retain list/detail navigation and **Back to Devices**.
+  Direct `/?device=…` links and Back/Forward to Device URLs open that Device's
+  detail panel rather than hiding it behind the list.
+  Message-list Home/End and raw-detail close preserve keyboard access.
+  `/history` retains the v1 Stream workspace; old Device/Stream/sequence deep
+  links still open their original records. `/legacy` and Settings are separate,
+  unchanged compatibility/management workflows. No data migration, Device
+  ACK, task schema, Supervisor integration or production UI rollout is implied.
+
+#### Local built-UI integration smoke
+
+```powershell
+pnpm test:devices:smoke
+```
+
+This builds the existing Device lib and Worker (dry-run only), starts private
+local Miniflare/workerd with real D1 migrations and SQLite Durable Objects,
+seeds random local Accounts/Devices/sessions, and serves the actual built app.
+Two independently authenticated browser Clients send to two Devices using the
+real lib; another Account is denied access. The smoke covers real cookie,
+Origin/CSRF and opt-in, both-direction history, all-account reception under a
+Device filter, lib receipt without implicit ACK, narrow-screen detail/back/
+keyboard, original v1 seq=18 history, Settings/legacy, and session revocation.
+Lost-response injection forwards the POST to the real Worker, consumes its
+actual accepted response, then drops only browser delivery; reload/manual
+same-key retry must return the original ID without a second regulation.
+No HTTP responses are mocked, and Device credentials never enter page code.
+
+The local-Relay web build goes into its operation-owned `.wrangler` directory,
+**not** `apps/web/dist`; production build output is not rewritten to localhost.
+The smoke bounds its run to 120 seconds, each browser/HTTP/build operation and
+cleanup, closes clients/browser/runtime/static server, and removes its entire
+random fixture directory. Only noncredential local screenshots remain in the
+ignored `.wrangler/device-workspace-evidence/local-smoke-{desktop,mobile}.png`
+(1440×900 and 390×664). It is implementation evidence, not deployment/Outer
+acceptance or a production host integration. The v1 browser smoke likewise
+uses a private web build and opens `/history`.
+
+### Device (connection-token bearer only)
 
 The credential must match the path Device and have `daemon:connect` scope.
 Browser cookies confer no Device authority. Writes are single-message short

@@ -122,7 +122,7 @@ export default function StreamsApp() {
         </section>)}
         {nextDevice && <Button disabled={listLoading} onClick={() => void inventory.moreDevices()}>More Connectors</Button>}
       </div>
-      <div className="session-rail-footer"><span>{devices.filter(d => d.status === "online").length} sync online</span><a href="/settings#devices">Devices</a></div>
+      <div className="session-rail-footer"><a href="/">Devices workspace</a><a href="/settings#devices">Settings</a></div>
     </aside>
     <section className="session-workspace stream-workspace" aria-label="Stream workspace">
       {error && <p role="alert">{error}</p>}
@@ -203,7 +203,13 @@ export function StreamEvents({ selection, registry = builtinStreamViews }: { sel
   useEffect(() => {
     heading.current?.focus()
     let active = true
-    queueMicrotask(() => { if (active) void readAfter("0", true) })
+    queueMicrotask(() => {
+      if (!active) return
+      const seq = new URLSearchParams(window.location.search).get("seq")
+      if (seq !== null && !seqSchema.safeParse(seq).success) { setError("Invalid decimal sequence in Stream link"); return }
+      if (seq !== null) setLocate(seq)
+      void readAfter(seq === null || seq === "0" ? "0" : before(seq), true)
+    })
     return () => { active = false; generation.current++; request.current++ }
   }, [readAfter])
   useLayoutEffect(() => {

@@ -4,15 +4,15 @@
 
 ### Implementation steps
 
-- [ ] **I-S01:** 补齐 Client 工作区读取契约
-- [ ] **I-S02:** 实现 Devices 与消息交互
-- [ ] **I-S03:** 验证权限恢复与兼容
+- [x] **I-S01:** 补齐 Client 工作区读取契约
+- [x] **I-S02:** 实现 Devices 与消息交互
+- [x] **I-S03:** 验证权限恢复与兼容
 
 ### Implementation acceptance criteria
 
-- [ ] **I-AC01:** 路由与读取权限一致
-- [ ] **I-AC02:** 消息交互状态可信
-- [ ] **I-AC03:** 视觉与旧历史兼容
+- [x] **I-AC01:** 路由与读取权限一致
+- [x] **I-AC02:** 消息交互状态可信
+- [x] **I-AC03:** 视觉与旧历史兼容
 
 ## Deployment
 

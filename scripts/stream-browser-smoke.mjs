@@ -14,6 +14,7 @@ const { Miniflare, convertV4MiniflareOptions } = tooling("miniflare");
 const webTools = createRequire(new URL("../apps/web/package.json", import.meta.url));
 const { chromium } = webTools("@playwright/test");
 const state = resolve(".wrangler", `stream-browser-smoke-${randomUUID()}`);
+const webBuild = join(state, "web");
 const pepper = randomBytes(32).toString("base64url");
 const sessionSecret = randomBytes(32).toString("base64url");
 const account = `browser-${randomUUID()}`;
@@ -28,7 +29,7 @@ const server = createServer(async (request, response) => {
   try {
     const path = new URL(request.url, "http://localhost").pathname;
     const relative = path.startsWith("/assets/") ? path.slice(1) : path === "/" || !extname(path) ? "index.html" : path.slice(1);
-    const root = resolve("apps", "web", "dist");
+    const root = webBuild;
     const file = resolve(root, relative);
     if (!file.startsWith(`${root}\\`) && !file.startsWith(`${root}/`)) { response.writeHead(403).end(); return; }
     const data = await readFile(file);
@@ -79,7 +80,7 @@ try {
   await writer.connect();
   await writer.synchronize(source);
   const vite = join(dirname(webTools.resolve("vite/package.json")), "bin", "vite.js");
-  await promisify(execFile)(process.execPath, [vite, "build"], {
+  await promisify(execFile)(process.execPath, [vite, "build", "--outDir", webBuild], {
     cwd: resolve("apps", "web"), env: { ...process.env, VITE_RELAY_ORIGIN: address.origin },
   });
   browser = await chromium.launch();
@@ -95,7 +96,7 @@ try {
       requests.push(new URL(request.url()).pathname);
     }
   });
-  await page.goto(webOrigin);
+  await page.goto(new URL("/history", webOrigin).href);
   await page.getByRole("button", { name: /real-node-events application/ }).click();
   await page.getByRole("button", { name: "View event 1", exact: true }).waitFor();
   assert.match(await page.locator(".stream-window-status").textContent(), /2 cached/);

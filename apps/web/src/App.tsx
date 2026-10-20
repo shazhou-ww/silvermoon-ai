@@ -234,7 +234,7 @@ export async function api<T>(
   })
   const value = await response.json() as T & { error?: string }
   if (!response.ok) {
-    if (response.status === 401 && value.error === "authentication-required") {
+    if (!init.signal?.aborted && response.status === 401 && (value.error === "authentication-required" || value.error === "unauthorized")) {
       window.dispatchEvent(new Event("relay:authentication-required"))
     }
     throw new Error(value.error ?? `Request failed: ${response.status}`)

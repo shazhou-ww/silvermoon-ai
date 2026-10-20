@@ -51,15 +51,17 @@ export async function handleMessageApi(request: Request, env: AppEnv): Promise<R
   try {
     const url = new URL(request.url);
     const deviceRoute = /^\/v2\/devices\/([^/]+)\/(lease|events|regulations|ack)$/u.exec(url.pathname);
+    const inventory = url.pathname === "/api/v2/devices";
     const clientRoute = /^\/api\/v2\/account\/(events|write-access)$/u.exec(url.pathname)
-      ?? /^\/api\/v2\/devices\/([^/]+)\/(regulations)$/u.exec(url.pathname);
+      ?? /^\/api\/v2\/devices\/([^/]+)\/(regulations|messages)$/u.exec(url.pathname)
+      ?? (inventory ? ["", "devices"] : null);
     if (!deviceRoute && !clientRoute) return reply({ error: "not_found", retryable: false }, 404);
     operation = deviceRoute?.[2] ?? clientRoute![2] ?? clientRoute![1];
     role = deviceRoute ? "device" : "client";
     if (request.method === "OPTIONS" && clientRoute && isAllowedOrigin(request, env)) {
       const response = reply(null);
       response.headers.set("access-control-allow-methods", "GET, POST");
-      response.headers.set("access-control-allow-headers", "content-type, x-csrf-token");
+      response.headers.set("access-control-allow-headers", "content-type, x-csrf-token, x-account-id");
       return response;
     }
     let principal: MessagePrincipal;
@@ -72,6 +74,7 @@ export async function handleMessageApi(request: Request, env: AppEnv): Promise<R
       if (!isAllowedOrigin(request, env) || request.headers.has("authorization")) throw new DuplexError("forbidden");
       const session = await readSession(request, env);
       if (!session) throw new DuplexError("unauthorized");
+      if (request.headers.has("x-account-id") && request.headers.get("x-account-id") !== session.userId) throw new DuplexError("account_changed");
       if (request.method !== "GET" && !await verifyCsrf(request, session, env)) throw new DuplexError("forbidden");
       principal = { account: session.userId, role: "client", session: session.id };
     }
@@ -79,8 +82,17 @@ export async function handleMessageApi(request: Request, env: AppEnv): Promise<R
     const generation = request.headers.get("x-device-generation") ?? "0";
     const owner = request.headers.get("x-device-owner") ?? "";
     if (request.method === "GET") {
-      if (deviceRoute?.[2] !== "regulations" && url.pathname !== "/api/v2/account/events") return reply({ error: "method_not_allowed", retryable: false }, 405);
-      const result = await stub.read(principal, url.searchParams.get("after") ?? "0", generation, owner, Number(url.searchParams.get("wait") ?? "0"));
+      if (inventory) {
+        if (!await env.DB.prepare("SELECT id FROM users WHERE id=?").bind(principal.account).first()) throw new DuplexError("unauthorized");
+        const rows = await env.DB.prepare(`SELECT id,display_name AS displayName FROM devices
+          WHERE user_id=? AND removed_at IS NULL AND id>? ORDER BY id LIMIT 33`)
+          .bind(principal.account, url.searchParams.get("after") ?? "").all<{ id: string; displayName: string }>();
+        const devices = rows.results.slice(0, 32);
+        return reply({ devices, next: rows.results.length > 32 ? devices.at(-1)!.id : null });
+      }
+      const target = clientRoute?.[2] === "messages" ? decodeURIComponent(clientRoute[1]) : undefined;
+      if (!target && deviceRoute?.[2] !== "regulations" && url.pathname !== "/api/v2/account/events") return reply({ error: "method_not_allowed", retryable: false }, 405);
+      const result = await stub.read(principal, url.searchParams.get("after") ?? "0", generation, owner, Number(url.searchParams.get("wait") ?? "0"), target);
       return "error" in result ? finish(result) : reply(JSON.parse(result.value));
     }
     if (request.method !== "POST") return reply({ error: "method_not_allowed", retryable: false }, 405);

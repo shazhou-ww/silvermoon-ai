@@ -1,14 +1,16 @@
 # Silvermoon Relay
 
-Browse your devices' immutable event Streams from a read-only browser workspace.
+Browse Account uplink messages and each Device's bidirectional message history.
 [Open Silvermoon Relay](https://silvermoon.work).
 
-The main workspace keeps the Silvermoon shell and device-grouped left rail,
-with a virtualized raw event table on the right. Select a Connector's Stream,
-read offline history, locate a decimal sequence, or follow new events.
-Full raw payloads live in a separate detail panel. Empty Streams are not
-connection failures. Account, identity, device and token management remain
-in **Settings**.
+In this checkout the default **Devices** workspace selects Devices directly,
+including Devices with no messages. **All devices** receives every Account
+uplink; selecting/searching a Device changes only the display. Device pages
+read both directions and send bounded JSON to exactly that Device after an
+explicit session write opt-in. Acceptance means **Relay accepted #ID**, not
+Device delivery or execution. Device status is **Unknown**, not the v1 writer
+online signal. Account, identity, device and token management remain in
+**Settings**. See [v2 messages and workspace usage](docs/duplex-messages.md).
 
 For application-owned immutable event logs, the separate
 [`@silvermoon-ai/connector/sync` API](docs/event-stream-sync.md) provides generic
@@ -17,7 +19,10 @@ not a device token or writer role. Versioned content types may select trusted,
 bundled views; unknown types always retain raw events. No Supervisor producer,
 Supervisor view, remote plugin, or new remote command is included.
 
-See [Stream workspace, checkout producer and real local browser smoke](docs/stream-workspace.md).
+The explicit **v1 Stream history** entry at **`/history`** retains the existing
+read-only browsing, follow, pagination, locate and raw detail. Old
+`/?device=…&stream=…&seq=…` links open that original v1 namespace, never v2
+Message records. See [Stream history, checkout producer and real local browser smoke](docs/stream-workspace.md).
 Code in a checkout is not evidence of an npm release or production deployment.
 
 ## Legacy Session compatibility

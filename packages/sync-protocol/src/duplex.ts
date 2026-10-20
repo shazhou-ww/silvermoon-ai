@@ -30,8 +30,14 @@ export type DuplexFailure = {
   error: string; retryable: boolean; retained_after?: string;
 };
 export class DuplexError extends Error {
-  constructor(readonly code: string, readonly retryable = false, readonly retainedAfter?: string) {
+  readonly code: string;
+  readonly retryable: boolean;
+  readonly retainedAfter?: string;
+  constructor(code: string, retryable = false, retainedAfter?: string) {
     super(code);
+    this.code = code;
+    this.retryable = retryable;
+    this.retainedAfter = retainedAfter;
     this.name = "DuplexError";
   }
 }

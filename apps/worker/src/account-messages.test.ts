@@ -65,6 +65,91 @@ beforeAll(async () => {
 });
 
 describe("v2 account message coordination in real Workers SQLite", () => {
+  it("reads session-owned Device history in both directions without grants, leases, tokens or consumption ACK", async () => {
+    const d1 = await device(), d2 = await device(d1.account), foreign = await device();
+    const [c1, c2, other] = await Promise.all([client(d1.account), client(d1.account, false), client(foreign.account, false)]);
+    await Promise.all([d1.start(), d2.start()]);
+    const down = await json<{ id: string }>(c1.call(`devices/${d1.id}/regulations`, { key: key(), payload: "target one" }));
+    await json(c1.call(`devices/${d2.id}/regulations`, { key: key(), payload: "target two" }));
+    const up1 = await json<{ id: string }>(d1.call("events", { key: key(), payload: "source one" }));
+    const up2 = await json<{ id: string }>(d2.call("events", { key: key(), payload: "source two" }));
+    await env.DB.prepare("UPDATE connection_tokens SET revoked_at=CURRENT_TIMESTAMP WHERE id=?").bind(d1.tokenId).run();
+    for (const c of [c1, c2]) {
+      const both = await page(c.call(`devices/${d1.id}/messages`));
+      expect(both.messages.map(m => [m.id, m.is_upstream])).toEqual([[down.id, false], [up1.id, true]]);
+      expect((await page(c.call("account/events"))).messages.map(m => m.id)).toEqual([up1.id, up2.id]);
+      // An independent Device cursor still sees its older downlink after the account advanced.
+      expect((await page(c.call(`devices/${d1.id}/messages?after=0`))).messages[0].id).toBe(down.id);
+      expect((await c.call(`devices/${d1.id}/messages`, { id: down.id })).status).toBe(405);
+      expect((await c.call(`devices/${d1.id}/ack`, { id: down.id })).status).toBe(404);
+    }
+    const ack = await runInDurableObject(env.ACCOUNT_MESSAGES.getByName(d1.account), (_instance, state) =>
+      state.storage.sql.exec<{ ack: string }>("SELECT ack FROM leases WHERE device=?", d1.id).one().ack);
+    expect(ack).toBe("0");
+    expect((await other.call(`devices/${d1.id}/messages`)).status).toBe(404);
+    expect((await c1.call(`devices/${foreign.id}/messages`)).status).toBe(404);
+    expect((await c1.call("devices/missing/messages")).status).toBe(404);
+    expect((await SELF.fetch(`${origin}/api/v2/devices/${d1.id}/messages`, { headers: d1.headers() })).status).toBe(403);
+    expect((await SELF.fetch(`${origin}/api/v2/devices/${d1.id}/messages`, { headers: { ...c1.headers, origin: "https://evil.example" } })).status).toBe(403);
+    expect((await SELF.fetch(`${origin}/api/v2/devices/${d1.id}/messages`, { headers: { ...c1.headers, "x-account-id": foreign.account } })).status).toBe(400);
+    expect((await SELF.fetch(`${origin}/api/v2/devices/${d1.id}/regulations`, {
+      method: "POST", headers: { ...c1.headers, "x-account-id": foreign.account }, body: JSON.stringify({ key: key(), payload: "wrong account" }),
+    })).status).toBe(400);
+    expect(await env.ACCOUNT_MESSAGES.getByName(d1.account).read(d2.principal, "0", "1", d2.owner, 0, d1.id)).toMatchObject({ error: "forbidden" });
+    const waiting = c2.call(`devices/${d1.id}/messages?after=${up1.id}&wait=2000`);
+    await new Promise(resolve => setTimeout(resolve, 40));
+    await env.DB.prepare("UPDATE devices SET removed_at=CURRENT_TIMESTAMP WHERE user_id=? AND id=?").bind(d1.account, d1.id).run();
+    expect((await waiting).status).toBe(404);
+    expect((await c1.call(`devices/${d1.id}/messages`)).status).toBe(404);
+    const revoked = c2.call(`devices/${d2.id}/messages?after=${up2.id}&wait=2000`);
+    await new Promise(resolve => setTimeout(resolve, 40));
+    await env.DB.prepare("UPDATE browser_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE id=?").bind(c2.sessionId).run();
+    expect((await revoked).status).toBe(401);
+    await env.DB.prepare("DELETE FROM users WHERE id=?").bind(d1.account).run();
+    expect((await c1.call(`devices/${d2.id}/messages`)).status).toBe(401);
+  });
+
+  it("paginates Device history with string precision and explicit cursor boundaries", async () => {
+    const d = await device(), empty = await device(d.account), c = await client(d.account);
+    await json(c.call(`devices/${d.id}/regulations`, { key: key(), payload: 0 }));
+    await runInDurableObject(env.ACCOUNT_MESSAGES.getByName(d.account), (_instance, state) => {
+      state.storage.sql.exec("UPDATE sqlite_sequence SET seq=9007199254740992 WHERE name='messages'");
+    });
+    for (let i = 0; i < 34; i++) await json(c.call(`devices/${d.id}/regulations`, { key: key(), payload: i }));
+    const first = await page(c.call(`devices/${d.id}/messages?after=1`));
+    expect(first.messages).toHaveLength(32);
+    expect(first.messages[0].id).toBe("9007199254740993");
+    expect(first.next).toBe("9007199254741024");
+    const second = await page(c.call(`devices/${d.id}/messages?after=${first.next}`));
+    expect(second.messages.map(m => m.id)).toEqual(["9007199254741025", "9007199254741026"]);
+    expect((await page(c.call(`devices/${empty.id}/messages`))).messages).toEqual([]);
+    expect((await c.call(`devices/${d.id}/messages?after=9007199254741027`)).status).toBe(409);
+    expect((await c.call(`devices/${d.id}/messages?after=01`)).status).toBe(400);
+    await runInDurableObject(env.ACCOUNT_MESSAGES.getByName(d.account), (_instance, state) => {
+      state.storage.sql.exec("UPDATE metadata SET retained_after='1'");
+    });
+    const expired = await c.call(`devices/${d.id}/messages`);
+    expect(expired.status).toBe(410);
+    expect(await expired.json()).toMatchObject({ error: "cursor_expired", retained_after: "1" });
+  });
+
+  it("inventories active owned Devices in bounded metadata-only pages, including empty Devices", async () => {
+    const d = await device(), c = await client(d.account, false), foreign = await device();
+    for (let i = 0; i < 33; i++) await device(d.account, `inventory-${String(i).padStart(2, "0")}`);
+    await env.DB.prepare("UPDATE devices SET removed_at=CURRENT_TIMESTAMP WHERE user_id=? AND id=?").bind(d.account, "inventory-01").run();
+    const first = await json<{ devices: { id: string; displayName: string }[]; next: string }>(c.call("devices"));
+    expect(first.devices).toHaveLength(32);
+    expect(first.devices.every(item => Object.keys(item).sort().join(",") === "displayName,id")).toBe(true);
+    expect(first.devices.some(item => item.id === foreign.id || item.id === "inventory-01")).toBe(false);
+    const second = await json<{ devices: { id: string }[]; next: null }>(c.call(`devices?after=${first.next}`));
+    expect(second.devices).toHaveLength(1);
+    expect(second.next).toBeNull();
+    expect(new Set([...first.devices, ...second.devices].map(item => item.id)).size).toBe(33);
+    expect((await SELF.fetch(`${origin}/api/v2/devices`, { headers: { origin: appEnv.WEB_ORIGIN } })).status).toBe(401);
+    await env.DB.prepare("DELETE FROM users WHERE id=?").bind(d.account).run();
+    expect((await c.call("devices")).status).toBe(401);
+  });
+
   it("routes all 2 Clients x 2 Devices combinations target-only and broadcasts every source to every Client", async () => {
     const d1 = await device(), d2 = await device(d1.account), outsider = await device();
     const [c1, c2, other] = await Promise.all([client(d1.account), client(d1.account), client(outsider.account)]);
