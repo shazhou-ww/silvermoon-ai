@@ -61,7 +61,7 @@ test("registry preflight distinguishes 404, duplicates and explicit errors", asy
   await assert.rejects(registryMetadata(async () => Response.json({ name: "wrong", versions: {} })), /identity/);
 });
 
-test("packed manifest keeps CLI and all three runtime/type exports", () => {
+test("packed manifest keeps both CLIs and all four runtime/type exports", () => {
   validatePackManifest(plan, candidate);
   assert.throws(() => validatePackManifest(plan, { ...candidate, exports: {} }));
   assert.throws(() => validatePackManifest(plan, { ...candidate, bin: {} }));
@@ -81,6 +81,9 @@ test("tarball checks validate actual bytes, entrypoints and inlined private depe
       "dist/adapter.d.ts": "export {};",
       "dist/sync.js": "export {};",
       "dist/sync.d.ts": "export {};",
+      "dist/duplex.js": "export {};",
+      "dist/duplex.d.ts": "export {};",
+      "dist/duplex-cli.js": "#!/usr/bin/env node\n",
     };
     await mkdir(join(directory, "package", "dist"), { recursive: true });
     for (const [name, content] of Object.entries(files)) {
@@ -105,9 +108,11 @@ test("tarball checks validate actual bytes, entrypoints and inlined private depe
     await assert.rejects(verifyPack(plan, [{ ...record, shasum: "wrong" }], directory));
     await assert.rejects(verifyPack(plan, [{ ...record, integrity: "wrong" }], directory));
     await assert.rejects(verifyPack(plan, [{ ...record, filename: "../candidate.tgz" }], directory), /escape/);
-    for (const file of ["dist/index.js", "dist/index.d.ts", "dist/sync.js", "dist/sync.d.ts"]) {
+    for (const file of ["dist/index.js", "dist/index.d.ts", "dist/sync.js", "dist/sync.d.ts",
+      "dist/duplex.js", "dist/duplex.d.ts", "dist/duplex-cli.js"]) {
       for (const name of ["protocol", "rpc", "sync-protocol"]) {
-        await writeFile(join(directory, "package", file), `import { x } from "@silvermoon-ai/${name}";`);
+        await writeFile(join(directory, "package", file),
+          `${file.endsWith("cli.js") ? "#!/usr/bin/env node\n" : ""}import { x } from "@silvermoon-ai/${name}";`);
         await assert.rejects(verifyPack(plan, await pack(), directory), /Private workspace import/);
         await writeFile(join(directory, "package", file), files[file]);
       }

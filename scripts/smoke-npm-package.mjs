@@ -15,6 +15,9 @@ const sync = await import(pathToFileURL(require.resolve("@silvermoon-ai/connecto
 assert.equal(typeof sync.SyncClient, "function");
 assert.equal(typeof sync.FileEventSource, "function");
 assert.equal(typeof sync.runSync, "function");
+const duplex = await import(pathToFileURL(require.resolve("@silvermoon-ai/connector/duplex")).href);
+assert.equal(typeof duplex.DeviceConnector, "function");
+assert.equal(typeof duplex.DuplexError, "function");
 const manifest = JSON.parse(await readFile(
   resolve(consumer, "node_modules", "@silvermoon-ai", "connector", "package.json"), "utf8"));
 const help = execFileSync(process.execPath, [
@@ -27,6 +30,7 @@ await writeFile(resolve(consumer, "smoke.mts"), `
 import { SilvermoonConnector, type SilvermoonConnectorOptions } from "@silvermoon-ai/connector";
 import type { AgentAdapter, AgentAdapterEvent } from "@silvermoon-ai/connector/adapter";
 import { SyncClient, FileEventSource, type ReliableEventSource, type ServerMessage } from "@silvermoon-ai/connector/sync";
+import { DeviceConnector, type DeviceConnectorOptions, type Message } from "@silvermoon-ai/connector/duplex";
 export const create = (options: SilvermoonConnectorOptions) => new SilvermoonConnector(options);
 export const adapter = (value: AgentAdapter): AgentAdapter => value;
 export const event = (value: AgentAdapterEvent): AgentAdapterEvent => value;
@@ -34,10 +38,14 @@ export const source = (value: ReliableEventSource): ReliableEventSource => value
 export const sync = new SyncClient({ url: "ws://127.0.0.1/v1/sync", token: "not-used" });
 export const file = FileEventSource.open;
 export const message = (value: ServerMessage): ServerMessage => value;
+export const duplex = (options: DeviceConnectorOptions) => new DeviceConnector(options);
+export const receipt = (value: Message): Message => value;
+export const queue = (connector: DeviceConnector) => connector.enqueue({ arbitrary: "JSON" }, "stable-host-request-key");
+export const flush = (connector: DeviceConnector) => connector.flush(1);
 `);
 execFileSync(process.execPath, [
   fileURLToPath(new URL("../node_modules/typescript/bin/tsc", import.meta.url)),
   "--noEmit", "--strict", "--skipLibCheck", "--module", "NodeNext", "--moduleResolution", "NodeNext",
   "--target", "ES2022", "--lib", "ES2022,ESNext.Disposable", "--types", "node", "smoke.mts",
 ], { cwd: consumer, stdio: "inherit" });
-console.log("Clean consumer smoke passed: CLI, AHP and generic sync runtime exports and public declarations.");
+console.log("Clean consumer smoke passed: CLI, AHP, generic sync and duplex runtime exports and public declarations.");

@@ -81,10 +81,12 @@ export function validatePackManifest(plan, manifest) {
   releasePlan(`npm/connector/v${plan.version}`, manifest);
   assert.equal(manifest.type, "module");
   assert.equal(manifest.bin?.["silvermoon-connector"], "./dist/cli.js");
+  assert.equal(manifest.bin?.["silvermoon-duplex"], "./dist/duplex-cli.js");
   assert.deepEqual(manifest.exports, {
     ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
     "./adapter": { types: "./dist/adapter.d.ts", default: "./dist/adapter.js" },
     "./sync": { types: "./dist/sync.d.ts", default: "./dist/sync.js" },
+    "./duplex": { types: "./dist/duplex.d.ts", default: "./dist/duplex.js" },
   }, "Public entrypoints changed; update the package smoke contract deliberately.");
 }
 
@@ -109,11 +111,13 @@ export async function verifyPack(plan, pack, directory) {
       !file.split("/").includes(".."), `Unexpected tarball file: ${file}`);
   }
   for (const file of ["package.json", "README.md", "dist/cli.js", "dist/index.js",
-    "dist/index.d.ts", "dist/adapter.js", "dist/adapter.d.ts", "dist/sync.js", "dist/sync.d.ts"]) {
+    "dist/index.d.ts", "dist/adapter.js", "dist/adapter.d.ts", "dist/sync.js", "dist/sync.d.ts",
+    "dist/duplex.js", "dist/duplex.d.ts", "dist/duplex-cli.js"]) {
     assert.ok(files.includes(`package/${file}`), `Missing public package file: ${file}`);
   }
   validatePackManifest(plan, JSON.parse(content("package.json")));
   assert.match(content("dist/cli.js"), /^#!\/usr\/bin\/env node\r?\n/, "CLI must retain its Node shebang.");
+  assert.match(content("dist/duplex-cli.js"), /^#!\/usr\/bin\/env node\r?\n/, "Duplex CLI must retain its Node shebang.");
   for (const file of files.filter((file) => /\.(?:js|ts)$/.test(file))) {
     assert.doesNotMatch(content(file.slice("package/".length)),
       /(?:from\s*|import\s*\(|require\s*\()\s*["']@silvermoon-ai\/(?:protocol|rpc|sync-protocol)(?:["'/])/,

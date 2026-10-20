@@ -4,7 +4,11 @@ export default defineConfig({
   clean: true,
   dts: {
     compilerOptions: {
-      rootDir: ".",
+      rootDir: "..",
+      baseUrl: ".",
+      paths: {
+        "@silvermoon-ai/sync-protocol/duplex": ["../sync-protocol/src/duplex.ts"],
+      },
     },
     resolve: true,
   },
@@ -13,10 +17,13 @@ export default defineConfig({
     cli: "src/cli.ts",
     index: "src/index.ts",
     sync: "src/sync.ts",
+    duplex: "src/duplex.ts",
+    "duplex-cli": "src/duplex-cli.ts",
   },
   format: ["esm"],
   noExternal: [
     "@silvermoon-ai/sync-protocol",
+    "@silvermoon-ai/sync-protocol/duplex",
     "@silvermoon-ai/protocol",
     "@silvermoon-ai/rpc",
   ],

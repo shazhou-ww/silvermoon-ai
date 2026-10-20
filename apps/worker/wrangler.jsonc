@@ -31,6 +31,10 @@
 	"durable_objects": {
 		"bindings": [
 			{
+				"name": "ACCOUNT_MESSAGES",
+				"class_name": "AccountMessages"
+			},
+			{
 				"name": "DEVICE_SYNC",
 				"class_name": "DeviceSync"
 			},
@@ -50,6 +54,10 @@
 		{
 			"tag": "v2-device-sync",
 			"new_sqlite_classes": ["DeviceSync"]
+		},
+		{
+			"tag": "v3-account-messages",
+			"new_sqlite_classes": ["AccountMessages"]
 		}
 	]
 }

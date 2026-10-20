@@ -15,6 +15,7 @@
     "test:release": "node --test scripts/npm-release.test.mjs",
     "test:sync:smoke": "pnpm --filter @silvermoon-ai/connector build && pnpm --filter @silvermoon-ai/worker build && node scripts/sync-smoke.mjs",
     "test:streams:smoke": "pnpm --filter @silvermoon-ai/connector build && pnpm --filter @silvermoon-ai/worker build && node scripts/stream-browser-smoke.mjs",
+    "test:duplex:smoke": "pnpm --filter @silvermoon-ai/connector build && pnpm --filter @silvermoon-ai/worker build && node scripts/duplex-smoke.mjs",
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {

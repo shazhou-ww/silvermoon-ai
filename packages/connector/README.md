@@ -55,6 +55,22 @@ See [the generic sync guide](../../docs/event-stream-sync.md) for producer and
 consumer examples, resource limits, failure semantics, and the local runtime
 smoke test.
 
+## Generic account duplex messages (v2, source tree)
+
+The independent `@silvermoon-ai/connector/duplex` export provides a generic
+`DeviceConnector`: explicit lifecycle, durable SQLite outbox/inbox, stable
+submission keys, lease fencing and **explicit host durable-receipt ACK**.
+It does not depend on AHP or any host domain model. Clients submit to one
+owned Device; every Device event is readable by all same-Account Clients.
+The thin `silvermoon-duplex` CLI uses that same public API; printing a
+regulation does not acknowledge or execute it.
+
+This is not an npm release, deployed service or external Supervisor integration.
+Existing entrypoints and v1 history/UI remain unchanged. See the
+[v2 contract and embedding guide](../../docs/duplex-messages.md), including
+write opt-in, account-scoped decimal IDs, bounds, recovery and
+`pnpm test:duplex:smoke`.
+
 Maintainers publish reviewed versions through immutable
 `npm/connector/v<version>` tags and npm Trusted Publishing. See the
 [release guide](https://github.com/shazhou-ww/silvermoon-ai/blob/main/docs/npm-package-releases.md) for setup, validation and

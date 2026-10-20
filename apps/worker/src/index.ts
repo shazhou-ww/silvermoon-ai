@@ -3,8 +3,10 @@ import { authenticate } from "./auth";
 import type { AppEnv } from "./env";
 import { completeOAuth, beginOAuth } from "./oauth";
 import { handleStreamApi } from "./stream-api";
+import { handleMessageApi } from "./message-api";
 export { ConnectorSession as DaemonSession } from "./connector-session";
 export { DeviceSync } from "./device-sync";
+export { AccountMessages } from "./account-messages";
 
 function jsonError(status: number, error: string): Response {
   return Response.json({ error }, { status });
@@ -50,6 +52,9 @@ async function connectConnector(
 export default {
   async fetch(request, env, context): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/api/v2/") || url.pathname.startsWith("/v2/")) {
+      return handleMessageApi(request, env);
+    }
     if (url.pathname === "/api/stream-connectors" || url.pathname.startsWith("/api/stream-connectors/")) {
       return handleStreamApi(request, env);
     }

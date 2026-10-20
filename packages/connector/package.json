@@ -17,7 +17,8 @@
   },
   "type": "module",
   "bin": {
-    "silvermoon-connector": "./dist/cli.js"
+    "silvermoon-connector": "./dist/cli.js",
+    "silvermoon-duplex": "./dist/duplex-cli.js"
   },
   "exports": {
     ".": {
@@ -31,6 +32,10 @@
     "./sync": {
       "types": "./dist/sync.d.ts",
       "default": "./dist/sync.js"
+    },
+    "./duplex": {
+      "types": "./dist/duplex.d.ts",
+      "default": "./dist/duplex.js"
     }
   },
   "files": [
