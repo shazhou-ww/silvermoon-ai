@@ -10,9 +10,9 @@
 
 ## 边界
 
-- 本轮仅实现 Connector、Stream、Event 同步域；复用账户与设备身份，不加入远程控制、全局排序或多写者合并。
+- 本轮仅实现 Connector、Stream、Event 同步域；复用账户与设备身份，不加入远程控制、全局排序或多写者合并。见[同步业务模型评审](Business-Data-Model-Review.md)。
 - 复用 Node.js、Cloudflare Durable Objects 和现有 Connector/Worker，隔离同步核心与业务适配，保持旧 Session 链路兼容。
-- 暂不实施新 UI、完整 Supervisor 投影或 potential-guide 生产端集成。早期[业务模型评审](Business-Data-Model-Review.md)和[界面对比](ui-review/index.html)仅保留为后续产品背景，不是本轮验收范围。
+- 暂不实施新 UI、完整 Supervisor 投影或 potential-guide 生产端集成。早期[Supervisor 模型](Supervisor-Model-Background.md)和[界面对比](ui-review/index.html)仅保留为后续产品背景，不是本轮验收范围。
 
 ## 验收标准
 

@@ -1,65 +1,67 @@
-# Supervisor 观测业务模型评审
+# 通用事件同步业务模型评审
 
 ## 待批准决定
 
-- 在现有账户与设备下增加独立的 Supervisor 观测对象，不伪装成 Agent Session。
-- 保存最后已知快照，区分稳定身份、运行实例与观察时间；中心持有观测副本，不拥有目标或执行权。
+- 同步域采用 Connector、Stream、Event 三层，复用现有账户和设备身份。
+- 事件正常操作仅追加，不覆盖历史；连接、凭证和订阅不决定历史身份。
+- 旧 Session 模型保留，Supervisor 业务模型与新 UI 留待后续。
 
 ## Current / Proposed / Why
 
 | Current | Proposed | Why |
-|---|---|---|
-| 账户拥有设备；连接凭据绑定设备，Session 按账户、Connector、Session ID 识别 | 复用既有账户/设备边界，设备拥有零到多个 Supervisor 观测身份 | 复用接入与部署，不改变 AHP Session 业务语义 |
-| Session 有独立清单、活动和命令流程 | Supervisor 独立保存最新快照；目标、需求、运行和资源作为其内部投影 | 当前状态不能由聊天记录或旧调度队列推断 |
-| 现有在线状态描述 Connector 连接 | 单独表达 Supervisor 上报新鲜度及目标观察时间 | Connector 在线不代表 Supervisor 正常，也不代表目标最近被观察 |
+| --- | --- | --- |
+| Connector 绑定设备，现有传输和模型主要描述 Session | Connector 是稳定逻辑接入身份，当前复用设备 ID，拥有多条通用流 | 无需为每种业务重做同步或增加重复设备实体 |
+| Session 事件冲突时可以更新内容 | Stream 中的 Event 以流内序号唯一标识，只能追加 | 补传可幂等，历史变化可追溯，不静默覆盖 |
+| DO 路由以 token ID 为依据 | 同步内容归属稳定账户/设备，token 仅授权访问 | 凭证轮换、连接和进程重启不改变日志身份 |
 
-当前依据：[设备及凭据迁移](../../../../../../apps/worker/migrations/0007_devices_and_token_bindings.sql)、[Session 模型](../../../../../../apps/worker/migrations/0004_connectors_and_agent_sessions.sql)、[设备移除行为](../../../../../../apps/worker/src/devices.ts)。现有设备移除为逻辑移除并尝试断开连接，不假定它自动物理删除全部历史。
+当前依据：[设备身份](../../../../../../apps/worker/migrations/0007_devices_and_token_bindings.sql)、[旧事件写入](../../../../../../apps/worker/src/connector-session.ts)、[连接路由](../../../../../../apps/worker/src/index.ts)。具体协议见主体世界的[技术方案](../Event-Stream-Sync-Design.md)。
 
 ## 目标 ER 视图
 
-本图表达业务归属与保留语义，不指定物理表或字段全集。设备被管理的目标对象不一定是运行 Supervisor 的设备。
+图中 Connector 是逻辑身份，当前与已有设备一一对应，不另建平行设备注册体系。键表示业务范围，不指定物理表。
 
 ```mermaid
 erDiagram
     ACCOUNT {
         string account_id PK
     }
-    DEVICE {
+    CONNECTOR {
         string account_id FK
-        string device_id PK
+        string connector_id PK
     }
-    SUPERVISOR {
-        string device_scoped_supervisor_id PK
+    STREAM {
+        string connector_id FK
+        string stream_id PK
     }
-    SNAPSHOT {
-        string instance_id
-        int sequence
-        datetime received_at
+    EVENT["EVENT &lt;&lt;AO&gt;&gt;"] {
+        string stream_id FK
+        string seq PK
     }
-    ACCOUNT ||--o{ DEVICE : owns
-    DEVICE ||--o{ SUPERVISOR : hosts
-    SUPERVISOR ||--o| SNAPSHOT : retains_latest
+    ACCOUNT ||--o{ CONNECTOR : owns
+    CONNECTOR ||--o{ STREAM : owns
+    STREAM ||--o{ EVENT : contains
 ```
 
 ## 生命周期与关键不变量
 
-| 对象 | 生命周期及保留语义 |
-|---|---|
-| Supervisor | 以账户、设备、设备内稳定 ID 共同识别；进程重启不创造新的业务身份。首次有效快照之前可展示未同步；设备移除后不可继续访问或上报 |
-| Snapshot | 可替换的最新观测，不是 Append Only 事件账本。进程实例变化后采用新顺序域，并拒绝旧连接覆盖；离线或中心重启不立即丢弃最后已知快照 |
-| 目标、需求、运行、资源 | 当前快照内的只读投影，使用来源关联 ID；不是中心管理的目标配置或新的执行资源 |
+| 对象 | 可变性与结束条件 |
+| --- | --- |
+| Connector | 名称、凭证与在线状态可变，稳定身份不随网络连接或凭证变化；沿用设备移除和账户访问规则 |
+| Stream | 归属和流身份固定，提交位置仅连续推进；进程重启不重置序号。无法延续原日志时显式使用新身份 |
+| Event `<<AO>>` | 正常操作仅追加；同位置同内容重试不新增，不同内容拒绝。保留策略可以单独清理旧历史，读取方必须获知缺口，不承诺永久保留 |
 
-1. 所有读取和接入均绑定账户与设备授权，不能仅凭 Supervisor ID 查询跨账户数据。
-2. Connector 在线、Supervisor 快照新鲜、目标观察有效是三个不同事实；保留本地观察时间与中心接收时间。
-3. 本地 Supervisor 是事实来源；中心不可用不阻塞本地调度，上报失败不得被报告为本地执行失败。
-4. 仅接受显式版本和允许字段；不默认复制完整 subject、Agent binding、凭据、提示词或对话。来源尚未暴露的等待原因显示未知。
-5. 不新增目标下发、priority 覆盖、执行或授权实体。只读接入不沿用 Session 命令权限。
-6. 逻辑移除设备、凭据撤销与数据保留分别处理；移除后不继续展示其投影。快照与有限事件的物理清理上限在实施时明确，不承诺永久历史。
+1. 完整事件身份为账户、Connector、Stream 和序号的组合；图中的局部键不能作为跨账户访问凭证。
+2. 一批事件与流头必须原子提交，持久保存之后才确认；原子性不包含业务投影。
+3. 每条流单写、流内有序，不提供跨流全局顺序或多写者合并。
+4. Connection 是临时会话；Subscription 是读取状态；Token 是访问凭证。三者不是同步内容层级，轮换或重连不重新归属历史。
+5. 设备移除与凭证撤销阻止后续未授权访问，不隐含物理清理所有历史；保留和访问规则分别处理。
+6. Session、Objective 和 Supervisor 由业务事件和投影表达，底座不新增远程目标下发、执行或授权语义。
 
-## 迁移、兼容与未决事项
+## 迁移与兼容
 
-- 新模型应增量加入，不转换 Session ID、迁移 Session 为 Supervisor 或更改现有账户归属。旧 Connector 不支持观测时不伪报已同步，也不影响其 Session 功能。
-- 具体传输 DTO、实例接管校验、过期阈值、载荷与历史保留上限在实施阶段核实；这里不预先批准数据库 DDL。
-- potential-guide 当前提供 Planner/Coordinator 的内部观察入口，但缺少完整、可直接远程展示的统一事实投影。真实接入依赖其适配器交付，不能以 UI 夹具宣称完成。
+- 增量加入新的同步协议与 DO 日志，保留旧 Session 数据和接口，不将可变 Session 记录直接冒充不可变原始历史。
+- 生产端没有可靠日志时，适配层先持久化；缺失历史必须报告，不从当前快照补造旧事件。
+- DO 是物理分片而非第四级领域实体，首版按稳定账户/设备划分；具体 DDL、租约和资源限制由实施细化。
+- 早期 Supervisor 专属模型保留在[背景文档](Supervisor-Model-Background.md)，不作为本轮验收。
 
-是否同意在上述身份、隔离、保留与只读边界下增加 Supervisor 观测模型？
+是否同意以稳定 Connector 拥有 Stream、Stream 包含不可变 Event，且保留旧 Session 兼容的模型作为本轮同步底座边界？
