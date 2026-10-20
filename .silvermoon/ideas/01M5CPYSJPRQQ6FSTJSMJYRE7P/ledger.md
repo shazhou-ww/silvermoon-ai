@@ -11,7 +11,7 @@
 ### Implementation acceptance criteria
 
 - [ ] **I-AC01:** 身份与历史保持可归属
-- [ ] **I-AC02:** 双向交付与执行语义可区分
+- [ ] **I-AC02:** 账户路由与群发可验证
 - [ ] **I-AC03:** 故障与权限边界显式可见
 
 ## Deployment
@@ -25,5 +25,5 @@
 ### Deployment acceptance criteria
 
 - [ ] **D-AC01:** 启用条件与数据边界可核验
-- [ ] **D-AC02:** 外部闭环与自治有实证
+- [ ] **D-AC02:** 外部路由群发与自治有实证
 - [ ] **D-AC03:** 历史与恢复无静默损失
