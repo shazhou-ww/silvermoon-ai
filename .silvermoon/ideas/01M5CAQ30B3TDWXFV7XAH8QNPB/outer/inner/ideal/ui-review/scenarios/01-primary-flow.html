@@ -3,68 +3,77 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>浏览与跟随：Before / After</title>
+  <title>原外壳内替换右侧默认视图</title>
   <link rel="stylesheet" href="../review.css">
 </head>
 <body class="scenario">
   <header>
-    <h1>相同账户与设备，主工作区改为读取通用流</h1>
-    <p>示例：设备 A 在线，B 离线；A 同时存在旧 Session 和测试事件流。两者不是自动迁移关系；Settings 管理入口保留。</p>
+    <h1>外壳和左侧列表沿用，右侧改为默认事件表格</h1>
+    <p>同一账户、同两台设备。Before 依据当前 App.tsx 和 index.css 的品牌/顶栏/19rem 左栏结构；After 保持该结构。窄屏均展示沿用清单/详情切换的详情态。数据均为虚构，不表示 Session 自动迁移。</p>
   </header>
   <main class="comparison">
     <section class="state" aria-labelledby="before-title">
-      <header class="state-label"><strong id="before-title">Before：当前 Session 结构示意</strong></header>
-      <div class="surface">
-        <div class="topbar"><span class="brand">Silvermoon · Relay</span><span class="account">账户菜单 · Settings · Sign out</span></div>
-        <div class="workspace">
-          <section aria-label="当前清单">
-            <h2>Sessions <span class="control">＋ New Session</span></h2>
-            <div class="search">Search Sessions, Agents, Devices</div>
-            <p class="muted">视图：Group by Device</p>
-            <h3>设备 A <span class="badge online">Online</span></h3>
-            <div class="row selected"><strong>检查测试</strong><p class="muted">Agent Session · Running</p></div>
-            <h3>设备 B <span class="badge">Offline</span></h3>
-            <div class="row">维护构建<p class="muted">最后活动 17:20</p></div>
-          </section>
-          <section aria-label="当前详情">
-            <h2>检查测试</h2><span class="badge online">Running</span>
-            <div class="event"><strong>Assistant</strong><p>正在检查测试结果。</p></div>
-            <div class="search">Follow-up message</div>
-            <span class="control">Send follow-up</span>
-            <p class="callout">现有视图显示 Session 消息与操作，不枚举通用 Stream。</p>
-          </section>
-        </div>
+      <header class="state-label"><strong id="before-title">Before：现有 Sessions 工作区结构示意</strong></header>
+      <div class="surface app-shell">
+        <header class="app-brand"><img src="../../../../../../../../apps/web/public/silvermoon-badge.svg" alt=""><span><strong>Silvermoon</strong><small>Relay</small></span></header>
+        <header class="app-topbar"><span class="mobile-back" aria-label="返回 Session 清单">←</span><div class="context"><strong>检查测试</strong><small>设备 A</small></div><span class="badge online">Running</span><span class="avatar" aria-label="账户菜单，包含 Settings 和 Sign out">W</span></header>
+        <aside class="app-rail" aria-label="当前 Sessions 清单">
+          <div class="rail-heading"><div><h2>Sessions</h2><p>3 matching Sessions</p></div><span class="control">＋</span></div>
+          <div class="rail-tools"><div class="search">⌕ Search Sessions, Agents, Devices</div><div class="filters"><span class="active">All</span><span>Active 2</span><span>Waiting 1</span><span>☷</span></div></div>
+          <div class="device-heading">⌄ <strong>设备 A</strong><span class="muted">online</span></div>
+          <div class="list-row selected"><span class="dot"></span><div><strong>检查测试</strong><small>正在检查测试结果。</small></div><time>17:20</time></div>
+          <div class="list-row"><span class="dot"></span><div><strong>修复构建</strong><small>等待后续输入</small></div><time>17:18</time></div>
+          <div class="device-heading">⌄ <strong>设备 B</strong><span class="muted">offline</span></div>
+          <div class="list-row"><span class="dot offline"></span><div><strong>维护环境</strong><small>最后已知活动</small></div><time>16:40</time></div>
+          <div class="rail-footer"><span>● 1 online</span><span>2 Devices</span></div>
+        </aside>
+        <section class="app-content" aria-label="当前 Session 详情">
+          <div class="conversation">
+            <div class="message user"><strong>You</strong><p>检查测试结果，告诉我当前进展。</p></div>
+            <div class="message"><strong>Assistant</strong><p>正在检查测试结果。</p><p class="muted">Session 消息、工具与活动在这里展示。</p></div>
+          </div>
+          <div class="composer"><p>Follow-up message</p><footer><span>检查测试 · 设备 A</span><span class="control">Send follow-up</span></footer></div>
+        </section>
       </div>
     </section>
     <section class="state" aria-labelledby="after-title">
-      <header class="state-label"><strong id="after-title">After：只读流与事件提案</strong></header>
-      <div class="surface">
-        <div class="topbar"><span class="brand">Silvermoon · Relay</span><span class="account">账户菜单 · Settings · Sign out</span></div>
-        <div class="workspace">
-          <section aria-label="提案清单">
-            <h2>Streams</h2>
-            <p class="muted">按 Connector 分组 · 仅当前账户</p>
-            <h3>设备 A <span class="badge online">同步连接在线</span></h3>
-            <div class="row selected"><strong>observations</strong><p class="muted">已提交 42 · application/json</p></div>
-            <div class="row">resource-events<p class="muted">已提交 18 · text/plain</p></div>
-            <h3>设备 B <span class="badge">同步连接离线</span></h3>
-            <div class="row">observations<p class="muted">历史仍可读 · 已提交 9</p></div>
-          </section>
-          <section aria-label="提案详情">
-            <h2>observations</h2>
-            <p class="muted">设备 A · 可读 1–42 · 连接在线不代表业务正常</p>
-            <div class="actions"><span class="badge online">实时跟随</span><span class="control">暂停跟随</span><span class="control">定位序号</span></div>
-            <div class="event"><strong>#41</strong><pre>{"kind":"observation","value":"sample"}</pre><span class="control">原始内容 / 格式化</span></div>
-            <div class="event"><strong>#42</strong><pre>opaque producer content</pre><span class="control">复制原始内容</span></div>
-            <span class="control">加载更早事件</span>
-            <p class="callout">原始事件始终可读；已注册的类型可另选内置视图，未知类型保持通用显示。无发送消息或编辑入口，不执行 HTML；此图不是可点击的生产工作区。</p>
-          </section>
-        </div>
+      <header class="state-label"><strong id="after-title">After：同一外壳与列表，右侧事件表格</strong></header>
+      <div class="surface app-shell">
+        <header class="app-brand"><img src="../../../../../../../../apps/web/public/silvermoon-badge.svg" alt=""><span><strong>Silvermoon</strong><small>Relay</small></span></header>
+        <header class="app-topbar"><span class="mobile-back" aria-label="返回 Streams 清单">←</span><div class="context"><strong>observations</strong><small>设备 A · 默认事件视图</small></div><span class="badge online">Online</span><span class="avatar" aria-label="账户菜单，包含 Settings 和 Sign out">W</span></header>
+        <aside class="app-rail" aria-label="提案 Streams 清单">
+          <div class="rail-heading"><div><h2>Streams</h2><p>3 matching Streams</p></div></div>
+          <div class="rail-tools"><div class="search">⌕ Search Streams, Connectors</div><div class="filters"><span class="active">All</span><span>Online 2</span><span>Offline 1</span><span>☷</span></div></div>
+          <div class="device-heading">⌄ <strong>设备 A</strong><span class="muted">online</span></div>
+          <div class="list-row selected"><span class="dot"></span><div><strong>observations</strong><small>application/json</small></div><span class="row-position">#100050</span></div>
+          <div class="list-row"><span class="dot"></span><div><strong>resource-events</strong><small>text/plain</small></div><span class="row-position">#18</span></div>
+          <div class="device-heading">⌄ <strong>设备 B</strong><span class="muted">offline</span></div>
+          <div class="list-row"><span class="dot offline"></span><div><strong>observations</strong><small>历史可读</small></div><span class="row-position">#9</span></div>
+          <div class="rail-footer"><span>● 1 online</span><span>2 Devices</span></div>
+        </aside>
+        <section class="app-content" aria-label="默认事件表格详情">
+          <div class="event-toolbar"><div class="actions"><span class="control">原始事件 ▾</span><span class="control">定位序号</span></div><div class="actions"><span class="badge online">跟随中</span><span class="control">暂停</span></div></div>
+          <p class="event-context">可读 1–100050 · application/json<br>连接在线不代表业务状态正常</p>
+          <table class="event-table">
+            <caption class="sr-only">原始事件的虚拟窗口示意</caption>
+            <thead><tr><th scope="col" class="seq">序号</th><th scope="col">内容预览</th><th scope="col" class="operation">操作</th></tr></thead>
+            <tbody>
+              <tr class="chosen"><td class="seq">100041</td><td><span class="preview">{"kind":"observation","value":"sample"}</span></td><td class="operation">查看</td></tr>
+              <tr><td class="seq">100042</td><td><span class="preview">{"value":"another observation"}</span></td><td class="operation">查看</td></tr>
+              <tr><td class="seq">100043</td><td><span class="preview">{"value":"long payload preview, original content remains unchanged"}</span></td><td class="operation">查看</td></tr>
+              <tr><td class="seq">100044</td><td><span class="preview">{"value":"sample 4"}</span></td><td class="operation">查看</td></tr>
+              <tr><td class="seq">100045</td><td><span class="preview">{"value":"sample 5"}</span></td><td class="operation">查看</td></tr>
+            </tbody>
+          </table>
+          <p class="window-note">虚拟窗口示意 · 长内容不撑高行<br>按位置分页回读，缓存与 DOM 分别受限。</p>
+          <details class="event-detail" open><summary>#100041 · 完整原始内容</summary><pre>{"kind":"observation","value":"sample"}</pre><span class="control">复制原始内容</span> <span class="control">格式化 JSON</span></details>
+          <p class="event-context">默认表格始终可用；类型匹配时可另选内置视图。此处只有静态样式与详情折叠，不实现实际虚拟化或证明性能。</p>
+        </section>
       </div>
     </section>
   </main>
   <script>
-    const report = () => window.parent.postMessage({ type: "ui-review:height", height: document.documentElement.scrollHeight }, "*");
+    const report = () => window.parent.postMessage({ type: "ui-review:height", height: Math.ceil(document.body.getBoundingClientRect().height) }, "*");
     new ResizeObserver(report).observe(document.body);
     window.addEventListener("load", report);
   </script>

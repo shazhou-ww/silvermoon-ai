@@ -3,39 +3,48 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>空状态与读取恢复：Before / After</title>
+  <title>同一外壳中的空状态与读取恢复</title>
   <link rel="stylesheet" href="../review.css">
 </head>
 <body class="scenario">
-  <header>
-    <h1>同一设备尚无生产者，另一次读取暂时失败</h1>
-    <p>并列静态状态用于比较，不模拟后台请求。失败不能显示为空；空流不能从旧 Session 补造；恢复不能跳过事件。</p>
-  </header>
+  <header><h1>保持原结构，让空、失败和缺口各有含义</h1><p>同一账户与已接入设备 A，尚无生产者数据。主要画面为空状态；下方色块单独说明另一时刻的错误提示，不模拟多个请求同时发生。窄屏均为详情态。</p></header>
   <main class="comparison">
     <section class="state" aria-labelledby="before-title">
-      <header class="state-label"><strong id="before-title">Before：Session 的空与刷新错误</strong></header>
-      <div class="surface">
-        <div class="topbar"><span class="brand">Silvermoon · Relay</span><span class="account">账户菜单 · Settings</span></div>
-        <h2>Sessions</h2>
-        <section class="empty"><h3>设备 A：没有 Session</h3><p>当前提供 New Session；不能据此创建业务无关事件流。</p><span class="control">New Session</span></section>
-        <section class="notice error"><h3>Unable to refresh Sessions</h3><p>已加载的 Session 列表与错误提示分开保留。</p></section>
-        <p class="muted">基于现有源码中的清单、加载与刷新错误分支制作，非完整页面截图。</p>
+      <header class="state-label"><strong id="before-title">Before：当前 Session 空状态结构</strong></header>
+      <div class="surface app-shell">
+        <header class="app-brand"><img src="../../../../../../../../apps/web/public/silvermoon-badge.svg" alt=""><span><strong>Silvermoon</strong><small>Relay</small></span></header>
+        <header class="app-topbar"><span class="mobile-back">←</span><div class="context"><strong>Select a Session</strong><small>Choose active work from the Session list</small></div><span class="avatar" aria-label="账户菜单，包含 Settings">W</span></header>
+        <aside class="app-rail" aria-label="当前空清单">
+          <div class="rail-heading"><div><h2>Sessions</h2><p>0 matching Sessions</p></div><span class="control">＋</span></div>
+          <div class="rail-tools"><div class="search">⌕ Search Sessions, Agents, Devices</div><div class="filters"><span class="active">All</span><span>☷</span></div></div>
+          <div class="empty"><strong>No Sessions yet</strong><p class="muted">Bring a Device online, then start the first Session.</p><span class="control">New Session</span></div>
+          <div class="rail-footer"><span>● 1 online</span><span>1 Device</span></div>
+        </aside>
+        <section class="app-content" aria-label="当前空详情"><div class="empty"><h3>Select a Session</h3><p class="muted">当前详情围绕 Session，不能浏览通用事件。</p></div></section>
       </div>
+      <div class="notice error"><strong>另一时刻：Unable to refresh Sessions</strong><p>当前清单刷新失败时保留已加载内容，并提供 Retry refresh。</p></div>
     </section>
     <section class="state" aria-labelledby="after-title">
-      <header class="state-label"><strong id="after-title">After：空、失败和缺口各有含义</strong></header>
-      <div class="surface">
-        <div class="topbar"><span class="brand">Silvermoon · Relay</span><span class="account">账户菜单 · Settings</span></div>
-        <h2>Streams</h2>
-        <section class="empty"><h3>设备 A：尚无事件流</h3><p>连接已建立，但尚无生产者发布。网页只读；旧 Session 不自动成为事件流。</p><p class="muted">设备与 token 仍在 Settings 管理，无需在网页粘贴设备 token。</p></section>
-        <section class="notice warning"><h3>读取失败，保留已加载内容</h3><p>observations 已显示至 #42；当前未跟随。重新连接后从确认位置恢复，不自动跳到最新。</p><span class="control">重试读取</span></section>
-        <section class="notice"><h3>历史缺口需明确处理</h3><p>如果服务器报告所需位置不可读，展示范围与原因，不把缺失内容当作已处理。</p></section>
-        <section class="notice"><h3>登录或权限失效</h3><p>停止持续交付并清理账户数据；返回登录或授权提示。不退回使用设备 token。</p></section>
+      <header class="state-label"><strong id="after-title">After：原清单结构与只读空详情</strong></header>
+      <div class="surface app-shell">
+        <header class="app-brand"><img src="../../../../../../../../apps/web/public/silvermoon-badge.svg" alt=""><span><strong>Silvermoon</strong><small>Relay</small></span></header>
+        <header class="app-topbar"><span class="mobile-back">←</span><div class="context"><strong>Select a Stream</strong><small>Choose a Stream from the list</small></div><span class="avatar" aria-label="账户菜单，包含 Settings">W</span></header>
+        <aside class="app-rail" aria-label="提案空清单">
+          <div class="rail-heading"><div><h2>Streams</h2><p>0 matching Streams</p></div></div>
+          <div class="rail-tools"><div class="search">⌕ Search Streams, Connectors</div><div class="filters"><span class="active">All</span><span>☷</span></div></div>
+          <div class="device-heading">⌄ <strong>设备 A</strong><span class="muted">online</span></div>
+          <div class="empty"><strong>No Streams yet</strong><p class="muted">等待生产者发布；网页不创建事件流。</p></div>
+          <div class="rail-footer"><span>● 1 online</span><span>1 Device</span></div>
+        </aside>
+        <section class="app-content" aria-label="提案空详情">
+          <div class="empty"><h3>尚无事件流</h3><p class="muted">设备已连接，但没有发布数据。旧 Session 不自动成为事件流。</p><p class="muted">Settings 管理账户、设备与 token；网页无需粘贴设备 token。</p></div>
+        </section>
       </div>
+      <div class="notice warning"><strong>另一时刻：读取失败，保留表格中已加载事件</strong><p>展示最后读取位置、暂停跟随和重试入口；不自动跳到最新。历史缺口明确显示范围，登录失效或权限撤销时停止交付并清理账户数据。</p></div>
     </section>
   </main>
   <script>
-    const report = () => window.parent.postMessage({ type: "ui-review:height", height: document.documentElement.scrollHeight }, "*");
+    const report = () => window.parent.postMessage({ type: "ui-review:height", height: Math.ceil(document.body.getBoundingClientRect().height) }, "*");
     new ResizeObserver(report).observe(document.body);
     window.addEventListener("load", report);
   </script>
