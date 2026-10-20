@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>事件流工作区：界面变更评审</title>
+  <link rel="stylesheet" href="review.css">
+</head>
+<body class="review-index">
+  <a class="skip" href="#review">跳到评审内容</a>
+  <header class="review-heading">
+    <h1>从 Session 到事件流工作区</h1>
+    <p>说明性评审材料，不是生产 UI 或规范性行为契约；示例账户、设备和数据均为虚构。</p>
+  </header>
+  <main id="review">
+    <section class="decision">
+      <h2>待决定：以只读 Connector / Stream / Event 视图替换 Session 主工作区，保留账户与凭证管理</h2>
+      <p>变化集中在浏览对象、实时跟随和账户读取权限；按流类型预留内置视图扩展，原始事件始终可读，不增加远程命令或远程插件。</p>
+    </section>
+    <nav class="tabs" aria-label="评审场景">
+      <a aria-current="page" href="scenarios/01-primary-flow.html" target="scenario-frame">浏览与跟随</a>
+      <a href="scenarios/02-empty-and-recovery.html" target="scenario-frame">空状态与读取恢复</a>
+    </nav>
+    <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-primary-flow.html" title="浏览与跟随对比"></iframe>
+    <section class="decision">
+      <p>规范依据：<a href="../Idea.md">Idea 契约</a>。Before 来自当前 App.tsx 与 index.css 的结构和视觉语言，不是运行截图；After 是提案，不表示旧 Session 会自动转换成流。</p>
+      <p>待实施收敛：浏览器只读订阅接入、显示窗口上限、旧深链接的明确退役或兼容提示。无持久领域实体变更，复用已有账户、设备与事件身份。</p>
+      <strong>是否同意保留管理功能，并以账户授权的只读事件流工作区替换 Session 主视图？</strong>
+    </section>
+  </main>
+  <footer>本次仅创建和准备 idea，没有修改生产应用、删除 Session 数据或接受构想。</footer>
+  <script>
+    const frame = document.querySelector("#scenario-frame");
+    const links = [...document.querySelectorAll(".tabs a")];
+    links.forEach((link) => link.addEventListener("click", () => {
+      links.forEach((candidate) => candidate.removeAttribute("aria-current"));
+      link.setAttribute("aria-current", "page");
+      frame.title = `${link.textContent.trim()}对比`;
+    }));
+    window.addEventListener("message", (event) => {
+      if (event.source !== frame.contentWindow || event.data?.type !== "ui-review:height") return;
+      if (Number.isFinite(event.data.height)) frame.style.height = `${Math.max(320, event.data.height) + 2}px`;
+    });
+  </script>
+</body>
+</html>

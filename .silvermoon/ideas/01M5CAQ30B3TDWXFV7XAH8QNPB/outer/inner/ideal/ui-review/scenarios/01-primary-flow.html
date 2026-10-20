@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>浏览与跟随：Before / After</title>
+  <link rel="stylesheet" href="../review.css">
+</head>
+<body class="scenario">
+  <header>
+    <h1>相同账户与设备，主工作区改为读取通用流</h1>
+    <p>示例：设备 A 在线，B 离线；A 同时存在旧 Session 和测试事件流。两者不是自动迁移关系；Settings 管理入口保留。</p>
+  </header>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before：当前 Session 结构示意</strong></header>
+      <div class="surface">
+        <div class="topbar"><span class="brand">Silvermoon · Relay</span><span class="account">账户菜单 · Settings · Sign out</span></div>
+        <div class="workspace">
+          <section aria-label="当前清单">
+            <h2>Sessions <span class="control">＋ New Session</span></h2>
+            <div class="search">Search Sessions, Agents, Devices</div>
+            <p class="muted">视图：Group by Device</p>
+            <h3>设备 A <span class="badge online">Online</span></h3>
+            <div class="row selected"><strong>检查测试</strong><p class="muted">Agent Session · Running</p></div>
+            <h3>设备 B <span class="badge">Offline</span></h3>
+            <div class="row">维护构建<p class="muted">最后活动 17:20</p></div>
+          </section>
+          <section aria-label="当前详情">
+            <h2>检查测试</h2><span class="badge online">Running</span>
+            <div class="event"><strong>Assistant</strong><p>正在检查测试结果。</p></div>
+            <div class="search">Follow-up message</div>
+            <span class="control">Send follow-up</span>
+            <p class="callout">现有视图显示 Session 消息与操作，不枚举通用 Stream。</p>
+          </section>
+        </div>
+      </div>
+    </section>
+    <section class="state" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After：只读流与事件提案</strong></header>
+      <div class="surface">
+        <div class="topbar"><span class="brand">Silvermoon · Relay</span><span class="account">账户菜单 · Settings · Sign out</span></div>
+        <div class="workspace">
+          <section aria-label="提案清单">
+            <h2>Streams</h2>
+            <p class="muted">按 Connector 分组 · 仅当前账户</p>
+            <h3>设备 A <span class="badge online">同步连接在线</span></h3>
+            <div class="row selected"><strong>observations</strong><p class="muted">已提交 42 · application/json</p></div>
+            <div class="row">resource-events<p class="muted">已提交 18 · text/plain</p></div>
+            <h3>设备 B <span class="badge">同步连接离线</span></h3>
+            <div class="row">observations<p class="muted">历史仍可读 · 已提交 9</p></div>
+          </section>
+          <section aria-label="提案详情">
+            <h2>observations</h2>
+            <p class="muted">设备 A · 可读 1–42 · 连接在线不代表业务正常</p>
+            <div class="actions"><span class="badge online">实时跟随</span><span class="control">暂停跟随</span><span class="control">定位序号</span></div>
+            <div class="event"><strong>#41</strong><pre>{"kind":"observation","value":"sample"}</pre><span class="control">原始内容 / 格式化</span></div>
+            <div class="event"><strong>#42</strong><pre>opaque producer content</pre><span class="control">复制原始内容</span></div>
+            <span class="control">加载更早事件</span>
+            <p class="callout">原始事件始终可读；已注册的类型可另选内置视图，未知类型保持通用显示。无发送消息或编辑入口，不执行 HTML；此图不是可点击的生产工作区。</p>
+          </section>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    const report = () => window.parent.postMessage({ type: "ui-review:height", height: document.documentElement.scrollHeight }, "*");
+    new ResizeObserver(report).observe(document.body);
+    window.addEventListener("load", report);
+  </script>
+</body>
+</html>

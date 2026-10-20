@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>空状态与读取恢复：Before / After</title>
+  <link rel="stylesheet" href="../review.css">
+</head>
+<body class="scenario">
+  <header>
+    <h1>同一设备尚无生产者，另一次读取暂时失败</h1>
+    <p>并列静态状态用于比较，不模拟后台请求。失败不能显示为空；空流不能从旧 Session 补造；恢复不能跳过事件。</p>
+  </header>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before：Session 的空与刷新错误</strong></header>
+      <div class="surface">
+        <div class="topbar"><span class="brand">Silvermoon · Relay</span><span class="account">账户菜单 · Settings</span></div>
+        <h2>Sessions</h2>
+        <section class="empty"><h3>设备 A：没有 Session</h3><p>当前提供 New Session；不能据此创建业务无关事件流。</p><span class="control">New Session</span></section>
+        <section class="notice error"><h3>Unable to refresh Sessions</h3><p>已加载的 Session 列表与错误提示分开保留。</p></section>
+        <p class="muted">基于现有源码中的清单、加载与刷新错误分支制作，非完整页面截图。</p>
+      </div>
+    </section>
+    <section class="state" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After：空、失败和缺口各有含义</strong></header>
+      <div class="surface">
+        <div class="topbar"><span class="brand">Silvermoon · Relay</span><span class="account">账户菜单 · Settings</span></div>
+        <h2>Streams</h2>
+        <section class="empty"><h3>设备 A：尚无事件流</h3><p>连接已建立，但尚无生产者发布。网页只读；旧 Session 不自动成为事件流。</p><p class="muted">设备与 token 仍在 Settings 管理，无需在网页粘贴设备 token。</p></section>
+        <section class="notice warning"><h3>读取失败，保留已加载内容</h3><p>observations 已显示至 #42；当前未跟随。重新连接后从确认位置恢复，不自动跳到最新。</p><span class="control">重试读取</span></section>
+        <section class="notice"><h3>历史缺口需明确处理</h3><p>如果服务器报告所需位置不可读，展示范围与原因，不把缺失内容当作已处理。</p></section>
+        <section class="notice"><h3>登录或权限失效</h3><p>停止持续交付并清理账户数据；返回登录或授权提示。不退回使用设备 token。</p></section>
+      </div>
+    </section>
+  </main>
+  <script>
+    const report = () => window.parent.postMessage({ type: "ui-review:height", height: document.documentElement.scrollHeight }, "*");
+    new ResizeObserver(report).observe(document.body);
+    window.addEventListener("load", report);
+  </script>
+</body>
+</html>
