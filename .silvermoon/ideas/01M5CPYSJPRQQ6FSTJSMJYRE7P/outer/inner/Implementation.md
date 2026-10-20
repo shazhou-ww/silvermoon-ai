@@ -1,26 +1,26 @@
 # Implementation
 
-这是准备阶段的可行性种子，不是本轮执行授权；构想验收不包含此契约。未来实施先收敛[设计待决项](ideal/Connection-and-Message-Design.md#待决事项)，再逐步细化，不预先指定物理 schema 或技术方案。
+这是构想阶段的轻量实施种子，进入 implementing 后逐步细化；构想验收不包含此契约。用户已授权按 Connector lib＋宿主嵌入＋薄验证 CLI 方向实施，并由主 Agent 评审门限；实现 Agent 不自行接受门限。先收敛[设计待决项](ideal/Connection-and-Message-Design.md#待决事项)，不据此授权生产操作或外部仓库改造。
 
 ## Steps
 
 ### I-S01: 收敛协议与身份兼容
 
-按 Account 推导 Client/Device 通信关系，Connector 仅是连接程序。细化统一 Message 表、自增 ID 兼作排序/补读、布尔方向和独立请求幂等键的契约；不另加 position 或强制 producer/task 字段。确定存储事务/Device fencing 一致性、权限和保留边界，核实原历史且优先保留既有 Account/Device ID。
+按 Account 推导 Client/Device 通信关系。明确通用 lib 的公开 API、宿主显式生命周期/持久接收确认与稳定状态恢复；统一 Message 表、自增 ID 兼作排序/补读、布尔方向和独立请求幂等键，不强制 producer/task 字段。收敛存储/Device fencing 一致性、鉴权和旧历史兼容，保持既有 Account/Device ID。
 
 ### I-S02: 接通双向持久链路
 
-实现 Client→Relay→指定 Device 的下行与 Device→Relay→同 Account 全部 Client 的群发；按授权过滤统一 Message 并按 ID 补读，不要求逐设备复合游标。接通各 Client 独立恢复、Device 本地 outbox/inbox、请求键到 Relay Message ID 的原子映射；根据统一存储和租约协调需要决定 DO 调整，不以 HTTP 自动移除。
+实现 Relay 双向路由与账户群发，并以独立于 Agent 框架的 Connector lib 接通 Device outbox/inbox、原子请求键映射、ID 补读、重连、错误和背压。提供使用同一公开 API 的薄验证 CLI 和普通宿主样例/测试，不实现独立本地服务，不把验证代码冒充外部目标宿主集成。
 
 ### I-S03: 验证故障与兼容边界
 
-覆盖多 Device/多 Client 并发、群发中断/新设备加入、错投与跨账户隔离、重试冲突、同一 Device 的双实例抢占、离线恢复、未知副作用、背压、游标过期和授权撤销。保持现有 UI 行为；若实施需要改变屏幕或交互，先提供 ui-change-review 材料并请求相应决定。
+覆盖库导入无副作用、显式启停、宿主确认/崩溃重放、CLI 同 API、离线持久恢复，以及多端路由、ID 可见顺序、幂等、fencing、背压和权限边界。更新使用/兼容文档并运行受影响检查；保留现有 UI，确需改变时先评审，不扩大为生产操作。
 
 ## Acceptance criteria
 
 ### I-AC01: 身份与历史保持可归属
 
-用迁移与本地状态重开夹具证明 Connector 程序升级/替换、凭证轮换、重连和重启不更换 Device 身份，不丢失其历史、方向日志、outbox/inbox 与游标；接口不要求独立 Connector 业务 ID。旧命名空间历史仍可定位且不被重新编号合并，冲突映射明确阻断。
+用普通宿主嵌入、包导出/CLI 和本地状态重开测试证明库不耦合目标 Supervisor 类型、不产生导入副作用、不接管宿主进程；重启/升级/轮换保持 Device、outbox/inbox、幂等映射及游标。下行显式确认前可重放，旧历史仍按原归属读取，不要求 Connector 业务 ID。
 
 ### I-AC02: 账户路由与群发可验证
 
@@ -28,4 +28,4 @@
 
 ### I-AC03: 故障与权限边界显式可见
 
-用故障注入与授权测试证明旧 generation 被拒绝、跨账户不可访问、慢订阅不无限缓存、游标过期不静默跳过、未知副作用不盲目重放；运行受影响包既有检查并保存结果。
+用故障注入与授权测试证明旧 generation 被拒绝、跨账户不可访问、慢订阅不无限缓存、游标过期不静默跳过、未知副作用不盲目重放；CLI 打印不自动确认且 stdout 不混日志，库错误显式暴露。运行受影响包既有检查并保存可复现结果。

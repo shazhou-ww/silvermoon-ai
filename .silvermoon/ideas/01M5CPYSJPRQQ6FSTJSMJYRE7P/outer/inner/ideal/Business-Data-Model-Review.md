@@ -3,7 +3,7 @@
 ## 请求决定
 
 1. 以 Account 为中心，统一称 Device（下游设备端）与 Client（上游用户客户端），两端为多对多关系；将 Device→Client 单向消息升级为双向：Client 每条 regulation 指定一个 Device，每个 Device 每条 event 群发给同 Account 所有 Client。
-2. Device 是唯一的下游业务身份，消息、历史和固定两个方向均归属 Device；Connector 仅是 Device 连接 Relay 的程序，不是额外业务实体，不拥有另一套业务 ID、流或历史。程序更换、重连、重启和凭证轮换不更换 Device。保留设备自治、消息追加不可改写与各方向独立确认，不再开放用户创建多 Stream。
+2. Device 是唯一的下游业务身份，消息、历史和固定两个方向均归属 Device；Connector 是供设备端宿主嵌入的通信 lib，不是额外业务实体，不拥有另一套业务 ID、流或历史。库升级、宿主重启、重连和凭证轮换不更换 Device。保留设备自治、消息追加不可改写与各方向独立确认，不再开放用户创建多 Stream。
 3. Message 自增 ID 兼作排序与补读依据，不额外引入 position。模型提案简化为一张双向 Message，方向用 `is_upstream` 布尔值，移出非核心的 producer/task 字段；保留版本隔离和原历史只读定位，精确存储与切换方案后续细化。
 
 ## Current / Proposed / Why
@@ -84,7 +84,7 @@ Message 的 `id` 由 Relay 的权威消息存储自增分配，不由多个 Clie
 - 不自动将任意旧 stream 转为新 event 流，更不能转成可执行 regulation。需要显式导入时保留来源引用与去重边界，另审导入/切换策略。
 - 新 Account 群发入口按账户过滤统一 Message 并用自增 ID 补读，覆盖所有既有/新增 Device；不再要求 Client 汇总各 Device position 或维护复合游标。旧 v1 seq 仍按原来源定位，不为迁就新自增 ID 重新编号合并。
 - 新版本接收后，回退旧客户端不能抹掉新消息；保留新历史读取/恢复路径。旧接口何时退出、账户删除/设备移除/凭证撤销对历史的精确影响、保留期限与补偿流程在实施前明确。
-- 本轮不改变现有 Streams UI、旧 `/legacy` 页面或账户/设备/token 设置。若目标落地需要 UI 改变，必须先做独立的适用 UI 评审，不以“协议调整”隐藏交互变化。
+- 本轮采用通用 lib＋宿主嵌入＋薄验证 CLI，目标宿主不是新的领域实体；不改变现有 Streams UI、旧 `/legacy` 页面或账户/设备/token 设置。若目标落地需要 UI 改变，必须先做独立的适用 UI 评审，不以“协议调整”隐藏交互变化。
 
 ## 评审材料检查
 
