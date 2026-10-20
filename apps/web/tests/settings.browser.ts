@@ -93,6 +93,8 @@ async function fixture(page: Page) {
         createdAt: "2026-10-11T00:00:00.000Z",
         sessionCount: 1,
       }))
+    } else if (path === "/api/stream-connectors") {
+      body = { devices: [{ id: "one", displayName: state.deviceName, status: "offline" }, { id: "two", displayName: "Work desktop", status: "online" }], next: null }
     } else if (path.endsWith("/events/sync")) {
       body = { synced: true, command: null }
     } else if (path.endsWith("/events")) {
@@ -157,6 +159,29 @@ async function fixture(page: Page) {
 const settings = (page: Page) => page.getByRole("region", { name: "Settings", exact: true })
 const input = (page: Page) => page.getByRole("textbox", { name: "Follow-up message" })
 
+test("Stream Settings retains device/token/identity management and reports sync rather than legacy Session status", async ({ page, isMobile }) => {
+  const state = await fixture(page)
+  await page.goto("/settings")
+  await expect(settings(page)).toBeVisible()
+  const row = page.locator(".device-settings-row").filter({ hasText: "Development Mac" })
+  await expect(row).toContainText("Sync offline · history retained")
+  await expect(row).not.toContainText("1 Session")
+  await expect(row.getByText("offline", { exact: true })).toBeVisible()
+  expect(state.requests.some(path => path.endsWith("/sessions"))).toBe(false)
+  await row.getByRole("button", { name: "Rename", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "Rename Device" })
+  await dialog.getByLabel("Device name").fill("Stream producer")
+  await dialog.getByRole("button", { name: "Save name" }).click()
+  await expect(settings(page).getByText("Stream producer", { exact: true })).toBeVisible()
+  await page.locator(".device-settings-row").filter({ hasText: "Stream producer" }).getByRole("button", { name: "Rotate token" }).click()
+  await expect(settings(page).getByText(/mock-rotated-secret/)).toBeVisible()
+  await settings(page).getByRole("button", { name: "Hide", exact: true }).click()
+  await expect(settings(page).getByRole("link", { name: "Link Google" })).toBeVisible()
+  await expect(settings(page).getByRole("button", { name: "Unlink", exact: true })).toBeDisabled()
+  if (isMobile) await expect(page.getByRole("button", { name: "Back to Streams", exact: true })).toBeVisible()
+  else await expect(page.getByRole("link", { name: "Back to Streams", exact: true })).toHaveAttribute("href", "/")
+})
+
 async function openSettings(page: Page) {
   await page.getByRole("button", { name: "Account menu for Reviewer" }).click()
   await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
@@ -178,7 +203,7 @@ async function select(page: Page, title: string) {
 
 test("Settings is a route with two modules and icon-only account controls", async ({ page, isMobile }) => {
   const state = await fixture(page)
-  const response = await page.goto("/settings?connector=one&session=same")
+  const response = await page.goto("/legacy/settings?connector=one&session=same")
   expect(response?.status()).toBe(200)
   expect(response?.request().redirectedFrom()).toBeNull()
   await expect(page).toHaveURL(/\/settings\?connector=one&session=same$/)
@@ -198,7 +223,7 @@ test("Settings is a route with two modules and icon-only account controls", asyn
   await page.keyboard.press("Escape")
   const link = settings(page).getByRole("link", { name: "Link Google" })
   expect(new URL((await link.getAttribute("href"))!).searchParams.get("returnTo"))
-    .toBe("/settings?connector=one&session=same")
+    .toBe("/legacy/settings?connector=one&session=same")
   await page.reload()
   await expect(page).toHaveURL(/\/settings\?connector=one&session=same$/)
   await expect(settings(page)).toBeVisible()
@@ -207,7 +232,7 @@ test("Settings is a route with two modules and icon-only account controls", asyn
 
 test("inline creation shares the device list, cancels without IO and preserves failed input", async ({ page }) => {
   const state = await fixture(page)
-  await page.goto("/settings")
+  await page.goto("/legacy/settings")
   await settings(page).getByRole("button", { name: "Add device", exact: true }).click()
   await expect(settings(page).getByLabel("Device name")).toBeFocused()
   await settings(page).getByLabel("Device name").fill("New workstation")
@@ -232,7 +257,7 @@ test("inline creation shares the device list, cancels without IO and preserves f
 
 test("Session drafts are isolated by device and survive Settings and refresh", async ({ page }) => {
   await fixture(page)
-  await page.goto("/?connector=one&session=same")
+  await page.goto("/legacy?connector=one&session=same")
   await input(page).fill("alpha")
   await openSettings(page)
   await expect(page.locator(".session-item-select[aria-current='page']")).toHaveCount(0)
@@ -252,7 +277,7 @@ test("Session drafts are isolated by device and survive Settings and refresh", a
 test("narrow Settings returns to the full Session list without losing workspace state", async ({ page, isMobile }, testInfo) => {
   test.skip(!isMobile, "Narrow navigation only")
   await fixture(page)
-  await page.goto("/?connector=one&session=same")
+  await page.goto("/legacy?connector=one&session=same")
   await input(page).fill("alpha")
   await page.getByRole("button", { name: "Back to Sessions", exact: true }).click()
   const search = page.getByRole("textbox", { name: "Search Sessions, Agents, and Devices" })
@@ -274,7 +299,7 @@ test("narrow Settings returns to the full Session list without losing workspace 
   await back.focus()
   await expect(back).toBeFocused()
   await back.press("Enter")
-  await expect(page).toHaveURL(/\/$/)
+  await expect(page).toHaveURL(/\/legacy$/)
   await expect(settings(page)).toHaveCount(0)
   await expect(page.getByRole("complementary", { name: "Sessions", exact: true })).toBeVisible()
   await expect(search).toHaveValue("First")
@@ -291,7 +316,7 @@ test("narrow Settings returns to the full Session list without losing workspace 
 
 test("Device rename cancels without IO, retains failed input and updates attribution", async ({ page }) => {
   const state = await fixture(page)
-  await page.goto("/settings?connector=one&session=same")
+  await page.goto("/legacy/settings?connector=one&session=same")
   const row = page.locator(".device-settings-row").filter({ hasText: "Development Mac" })
   const rename = row.getByRole("button", { name: "Rename", exact: true })
   await rename.click()
@@ -318,7 +343,7 @@ test("Device rename cancels without IO, retains failed input and updates attribu
 
 test("Device deletion retains read-only history and exposes persistent disconnect retry", async ({ page, isMobile }) => {
   const state = await fixture(page)
-  await page.goto("/settings?connector=one&session=same")
+  await page.goto("/legacy/settings?connector=one&session=same")
   const row = page.locator(".device-settings-row").filter({ hasText: "Development Mac" })
   await row.getByRole("button", { name: "Delete", exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "Delete Development Mac?" })
@@ -360,7 +385,7 @@ test("Device deletion retains read-only history and exposes persistent disconnec
   await expect(createDialog.getByRole("combobox").getByRole("option", { name: "Development Mac" })).toHaveCount(0)
   await expect(createDialog.getByRole("combobox")).toContainText("Work desktop")
   await createDialog.getByRole("button", { name: "Cancel" }).click()
-  await page.goto("/?connector=one&session=same")
+  await page.goto("/legacy?connector=one&session=same")
   const workspace = page.getByRole("region", { name: "Session workspace" })
   await expect(workspace).toContainText("Device removed")
   await expect(workspace.getByText("First message 39", { exact: true })).toBeVisible()
@@ -371,7 +396,7 @@ test("Device deletion retains read-only history and exposes persistent disconnec
 test("long Device deletion titles ellipsize without a redundant close button", async ({ page }) => {
   const state = await fixture(page)
   state.deviceName = "Device-" + "LongName".repeat(9)
-  await page.goto("/settings")
+  await page.goto("/legacy/settings")
   const opener = page.locator(".device-settings-row").filter({ hasText: state.deviceName })
     .getByRole("button", { name: "Delete", exact: true })
   await opener.click()
@@ -409,7 +434,7 @@ test("long Device deletion titles ellipsize without a redundant close button", a
 
 test("Device deletion returns focus to an open Add device form without clearing its draft", async ({ page }) => {
   await fixture(page)
-  await page.goto("/settings")
+  await page.goto("/legacy/settings")
   await settings(page).getByRole("button", { name: "Add device", exact: true }).click()
   const name = settings(page).getByLabel("Device name")
   await name.fill("Next workstation")
@@ -424,7 +449,7 @@ test("Device deletion returns focus to an open Add device form without clearing 
 
 test("back and forward resolve the right-side destination, and Devices opens its card", async ({ page, isMobile }) => {
   await fixture(page)
-  await page.goto("/?connector=one&session=same")
+  await page.goto("/legacy?connector=one&session=same")
   await expect(input(page)).toBeVisible()
   await openSettings(page)
   await expect(page).toHaveURL(/\/settings\?connector=one&session=same$/)
@@ -440,7 +465,7 @@ test("back and forward resolve the right-side destination, and Devices opens its
 
 test("temporary Settings navigation preserves history position and follow intent", async ({ page }) => {
   const state = await fixture(page)
-  await page.goto("/?connector=one&session=same")
+  await page.goto("/legacy?connector=one&session=same")
   const region = page.getByRole("region", { name: "Session messages" })
   await expect(page.getByText("First message 39", { exact: true })).toBeVisible()
   const position = await region.evaluate((element) => {
@@ -463,7 +488,7 @@ test("temporary Settings navigation preserves history position and follow intent
 
 test("failed receipts preserve source drafts; later success never clears newer edits or another Session", async ({ page }) => {
   const state = await fixture(page)
-  await page.goto("/?connector=one&session=same")
+  await page.goto("/legacy?connector=one&session=same")
   await input(page).fill("alpha")
   await page.getByRole("button", { name: "Send follow-up", exact: true }).click()
   await expect(input(page)).toHaveValue("alpha")
@@ -486,7 +511,7 @@ test("failed receipts preserve source drafts; later success never clears newer e
 test("a late submission receipt clears only its source after navigation and refresh", async ({ page }) => {
   const state = await fixture(page)
   state.messageDelay = 400
-  await page.goto("/?connector=one&session=same")
+  await page.goto("/legacy?connector=one&session=same")
   await input(page).fill("alpha")
   await page.getByRole("button", { name: "Send follow-up", exact: true }).click()
   await openSettings(page)
@@ -504,7 +529,7 @@ test("a late submission receipt clears only its source after navigation and refr
 
 test("profile leaves with Settings and a late token response is never redisplayed", async ({ page }) => {
   const state = await fixture(page)
-  await page.goto("/settings")
+  await page.goto("/legacy/settings")
   await settings(page).getByRole("button", { name: "Rotate token" }).click()
   await expect(page.locator(".token-reveal")).toContainText("mock-rotated-secret")
   await select(page, "First Session")
@@ -524,7 +549,7 @@ test("profile leaves with Settings and a late token response is never redisplaye
 
 test("storage denial is explicit and logout clears only this account's drafts", async ({ page }) => {
   const state = await fixture(page)
-  await page.goto("/?connector=one&session=same")
+  await page.goto("/legacy?connector=one&session=same")
   await input(page).fill("private draft")
   await page.evaluate(() => sessionStorage.setItem("unrelated", "keep"))
   await page.getByRole("button", { name: "Account menu for Reviewer" }).click()
@@ -547,7 +572,7 @@ test("storage denial is explicit and logout clears only this account's drafts", 
 
 test("authentication expiration removes drafts and does not restore a late profile", async ({ page }) => {
   const state = await fixture(page)
-  await page.goto("/?connector=one&session=same")
+  await page.goto("/legacy?connector=one&session=same")
   await input(page).fill("private draft")
   state.authenticated = false
   await expect(page.getByRole("heading", { name: "Sign in or get started" })).toBeVisible({ timeout: 8_000 })
@@ -557,7 +582,7 @@ test("authentication expiration removes drafts and does not restore a late profi
 test("message request failures preserve input and an uncertain refresh never resends", async ({ page }) => {
   const state = await fixture(page)
   state.messageFailure = true
-  await page.goto("/?connector=one&session=same")
+  await page.goto("/legacy?connector=one&session=same")
   await input(page).fill("alpha")
   await page.getByRole("button", { name: "Send follow-up", exact: true }).click()
   await expect(page.getByRole("alert")).toContainText("Message request rejected.")
@@ -574,7 +599,7 @@ test("message request failures preserve input and an uncertain refresh never res
 
 test("layout stays single-column with aligned creation rows at every tested width", async ({ page, isMobile }, testInfo) => {
   await fixture(page)
-  await page.goto("/settings")
+  await page.goto("/legacy/settings")
   await expect(settings(page)).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath("settings.png") })
   await settings(page).getByRole("button", { name: "Add device", exact: true }).click()
@@ -609,13 +634,13 @@ test("layout stays single-column with aligned creation rows at every tested widt
 test("signed-out Settings keeps its login return destination and invalid routes are explicit", async ({ page }) => {
   const state = await fixture(page)
   state.authenticated = false
-  await page.goto("/settings")
+  await page.goto("/legacy/settings")
   await expect(page.getByRole("heading", { name: "Sign in or get started" })).toBeVisible()
   const href = await page.getByRole("link", { name: "Continue with GitHub" }).getAttribute("href")
-  expect(new URL(href!).searchParams.get("returnTo")).toBe("/settings")
+  expect(new URL(href!).searchParams.get("returnTo")).toBe("/legacy/settings")
   state.authenticated = true
-  await page.goto("/not-a-page")
+  await page.goto("/legacy/not-a-page")
   await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible()
   await page.getByRole("button", { name: "Open Sessions", exact: true }).click()
-  await expect(page).toHaveURL(/\/$/)
+  await expect(page).toHaveURL(/\/legacy$/)
 })

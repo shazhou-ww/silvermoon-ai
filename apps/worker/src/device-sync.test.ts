@@ -4,6 +4,7 @@ import { LIMITS, type ClientMessage, type ServerMessage } from "@silvermoon-ai/s
 import { DeviceSync } from "./device-sync";
 import { connectionTokenHash } from "./auth";
 import type { AppEnv } from "./env";
+import { createSession } from "./session";
 
 const appEnv = env as AppEnv;
 let serial = 0;
@@ -72,11 +73,114 @@ beforeAll(async () => {
     CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY);
     CREATE TABLE IF NOT EXISTS devices (user_id TEXT NOT NULL, id TEXT NOT NULL, display_name TEXT NOT NULL, removed_at TEXT, PRIMARY KEY(user_id,id));
     CREATE TABLE IF NOT EXISTS connection_tokens (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,device_id TEXT NOT NULL,secret_hash TEXT NOT NULL,scope TEXT NOT NULL,expires_at TEXT,revoked_at TEXT,last_used_at TEXT);
+    CREATE TABLE IF NOT EXISTS browser_sessions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,secret_hash TEXT NOT NULL,csrf_hash TEXT NOT NULL,expires_at TEXT NOT NULL,revoked_at TEXT,user_agent TEXT);
   `);
 });
 afterEach(() => { for (const ws of sockets.splice(0)) ws.close(1000, "test complete"); });
 
 describe("DeviceSync actual Workers SQLite / WebSocket integration", () => {
+  it("reads the actual device SQLite log with cookie-only ownership and Origin authorization", async () => {
+    const auth = await identity();
+    const other = await identity();
+    const { peer } = await connect(auth);
+    await open(peer, "s", "application/vnd.test.v1+json");
+    await append(peer, [{ seq: "1", payload: '{"real":true}' }]);
+    const session = await createSession(auth.user, new Request("https://relay.silvermoon.work"), appEnv);
+    const otherSession = await createSession(other.user, new Request("https://relay.silvermoon.work"), appEnv);
+    const headers = { cookie: `sm_session=${session.token}`, origin: appEnv.WEB_ORIGIN };
+    const base = `https://relay.silvermoon.work/api/stream-connectors/${auth.device}`;
+    const devices = await SELF.fetch("https://relay.silvermoon.work/api/stream-connectors", { headers });
+    expect(await devices.json()).toMatchObject({ devices: [{ id: auth.device, status: "online" }] });
+    const list = await SELF.fetch(`${base}/streams`, { headers });
+    expect(list.status).toBe(200);
+    expect(await list.json()).toMatchObject({ streams: [{ streamId: "s", committedThrough: "1", contentType: "application/vnd.test.v1+json" }] });
+    const read = await SELF.fetch(`${base}/events?streamId=s&after=0`, { headers });
+    expect(await read.json()).toMatchObject({ events: [{ seq: "1", payload: '{"real":true}' }], next: "1" });
+    expect(read.headers.get("cache-control")).toBe("no-store");
+    expect((await SELF.fetch(`${base}/streams`, { headers: { ...headers, cookie: `sm_session=${otherSession.token}` } })).status).toBe(404);
+    expect((await SELF.fetch(`${base}/streams`, { headers: { ...headers, cookie: "" } })).status).toBe(401);
+    expect((await SELF.fetch(`${base}/streams`, { headers: { origin: appEnv.WEB_ORIGIN, authorization: `Bearer ${auth.token}` } })).status).toBe(401);
+    expect((await SELF.fetch(`${base}/streams`, { headers: { cookie: headers.cookie } })).status).toBe(403);
+    expect((await SELF.fetch(`${base}/streams`, { headers: { ...headers, origin: "https://evil.test" } })).status).toBe(403);
+    expect((await SELF.fetch(`${base}/streams`, { method: "POST", headers })).status).toBe(405);
+    expect((await SELF.fetch(`${base}/subscribe`, { headers: { cookie: headers.cookie, upgrade: "websocket" } })).status).toBe(403);
+    expect((await SELF.fetch(`${base}/subscribe`, { headers: { ...headers, upgrade: "websocket", origin: "https://evil.test" } })).status).toBe(403);
+    expect((await SELF.fetch(`${base}/events?streamId=s&after=9007199254740993`, { headers })).status).toBe(400);
+    const collision = await identity(`collision-${serial}`, auth.device);
+    const collisionSession = await createSession(collision.user, new Request("https://relay.silvermoon.work"), appEnv);
+    const isolated = await SELF.fetch(`${base}/streams`, { headers: { ...headers, cookie: `sm_session=${collisionSession.token}` } });
+    expect(await isolated.json()).toMatchObject({ streams: [], next: null });
+    await env.DB.prepare("UPDATE connection_tokens SET revoked_at=CURRENT_TIMESTAMP WHERE id=?").bind(auth.id).run();
+    expect((await SELF.fetch(`${base}/events?streamId=s&after=0`, { headers })).status).toBe(200);
+    await env.DB.prepare("UPDATE devices SET removed_at=CURRENT_TIMESTAMP WHERE user_id=? AND id=?").bind(auth.user, auth.device).run();
+    expect((await SELF.fetch(`${base}/streams`, { headers })).status).toBe(404);
+  });
+
+  it("forces browser subscriptions to reader, catches up without gaps and revalidates expiry and device removal on delivery/alarm", async () => {
+    for (const revoke of ["expiry", "device", "session"] as const) {
+      const auth = await identity();
+      const { peer: writer } = await connect(auth);
+      await open(writer);
+      await append(writer, [{ seq: "1", payload: "history" }]);
+      const session = await createSession(auth.user, new Request("https://relay.silvermoon.work"), appEnv);
+      const headers = { cookie: `sm_session=${session.token}`, origin: appEnv.WEB_ORIGIN, upgrade: "websocket" };
+      const url = `https://relay.silvermoon.work/api/stream-connectors/${auth.device}/subscribe`;
+      const bad = await SELF.fetch(url, { headers });
+      const noWriter = new Peer(bad.webSocket!);
+      expect(await noWriter.request({ type: "hello", version: 1, role: "writer" })).toMatchObject({ type: "error", code: "forbidden" });
+      noWriter.ws.close();
+      const response = await SELF.fetch(url, { headers });
+      expect(response.status).toBe(101);
+      const browser = new Peer(response.webSocket!);
+      expect(await browser.request({ type: "hello", version: 1, role: "reader" })).toMatchObject({ type: "welcome", generation: "0" });
+      expect(await append(browser, [{ seq: "2", payload: "forbidden" }])).toMatchObject({ code: "forbidden" });
+      await browser.request({ type: "stream.subscribe", streamId: "s", after: "0", subscriptionId: "browser" });
+      expect(await browser.next(m => m.type === "subscription.events")).toMatchObject({ events: [{ seq: "1", payload: "history" }] });
+      await browser.request({ type: "subscription.ack", subscriptionId: "browser", through: "1" });
+      await append(writer, [{ seq: "2", payload: "live" }]);
+      expect(await browser.next(m => m.type === "subscription.events")).toMatchObject({ events: [{ seq: "2", payload: "live" }] });
+      if (revoke === "device") await env.DB.prepare("UPDATE devices SET removed_at=CURRENT_TIMESTAMP WHERE user_id=? AND id=?").bind(auth.user, auth.device).run();
+      if (revoke !== "device") await env.DB.prepare(`UPDATE browser_sessions SET ${revoke === "expiry" ? "expires_at='2000-01-01'" : "revoked_at=CURRENT_TIMESTAMP"} WHERE user_id=?`).bind(auth.user).run();
+      if (revoke === "expiry") await append(writer, [{ seq: "3", payload: "must not be delivered" }]);
+      else await runDurableObjectAlarm(auth.stub);
+      expect(await browser.next(m => m.type === "error")).toMatchObject({ code: "unauthorized" });
+      expect(browser.deliveries()).toHaveLength(0);
+    }
+  });
+
+  it("pages and locates a 100000-event actual SQLite history without full preload, preserving decimal identities above 2^53", async () => {
+    const auth = await identity();
+    const session = await createSession(auth.user, new Request("https://relay.silvermoon.work"), appEnv);
+    await runInDurableObject(auth.stub, async (_instance, state) => {
+      state.storage.sql.exec("INSERT INTO streams VALUES ('large','0000000000000100000',NULL)");
+      state.storage.sql.exec(`WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM numbers WHERE n<100000)
+        INSERT INTO events SELECT 'large',printf('%019d',n),'history-'||n,32 FROM numbers`);
+      state.storage.sql.exec("INSERT INTO streams VALUES ('huge','0009007199254740994',NULL)");
+      state.storage.sql.exec("INSERT INTO events VALUES ('huge','0009007199254740993','opaque',6),('huge','0009007199254740994','next',4)");
+      state.storage.sql.exec("INSERT INTO streams VALUES ('wide','0000000000000000003',NULL)");
+      for (const seq of ["1", "2", "3"]) state.storage.sql.exec("INSERT INTO events VALUES ('wide',?,?,?)", seq.padStart(19, "0"), "x".repeat(65536), 65536);
+    });
+    const headers = { cookie: `sm_session=${session.token}`, origin: appEnv.WEB_ORIGIN };
+    const base = `https://relay.silvermoon.work/api/stream-connectors/${auth.device}/events`;
+    const first = await (await SELF.fetch(`${base}?streamId=large&after=0`, { headers })).json<{ events: { seq: string }[]; next: string }>();
+    expect(first.events).toHaveLength(128);
+    expect(first.next).toBe("128");
+    const located = await (await SELF.fetch(`${base}?streamId=large&after=99998`, { headers })).json<{ events: { seq: string }[] }>();
+    expect(located.events.map(e => e.seq)).toEqual(["99999", "100000"]);
+    const huge = await (await SELF.fetch(`${base}?streamId=huge&after=9007199254740992`, { headers })).json<{ events: { seq: string }[] }>();
+    expect(huge.events.map(e => e.seq)).toEqual(["9007199254740993", "9007199254740994"]);
+    const previous = await (await SELF.fetch(`${base}?streamId=wide&before=3`, { headers })).json<{ events: { seq: string }[]; after: string; next: string }>();
+    expect(previous.events.map(e => e.seq)).toEqual(["2"]);
+    expect(previous.after).toBe("1");
+    expect(previous.next).toBe("2");
+    const forward = await (await SELF.fetch(`${base}?streamId=wide&after=2`, { headers })).json<{ events: { seq: string }[] }>();
+    expect(forward.events.map(e => e.seq)).toEqual(["3"]);
+    const latest = await (await SELF.fetch(`${base}?streamId=wide&tail=1`, { headers })).json<{ events: { seq: string }[]; after: string }>();
+    expect(latest.events.map(e => e.seq)).toEqual(["3"]);
+    expect(latest.after).toBe("2");
+    const hugeTail = await (await SELF.fetch(`${base}?streamId=huge&tail=1`, { headers })).json<{ events: { seq: string }[] }>();
+    expect(hugeTail.events.map(e => e.seq)).toEqual(["9007199254740993", "9007199254740994"]);
+  });
   it("persists immutable atomic batches, rejects gaps/conflicts, and replays an ACK-lost prefix", async () => {
     const auth = await identity();
     const { peer } = await connect(auth);

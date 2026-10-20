@@ -98,7 +98,7 @@ interface Identity {
   emailVerified: boolean
 }
 
-interface Account {
+export interface Account {
   user: {
     id: string
     displayName: string | null
@@ -219,7 +219,7 @@ function csrfToken(): string {
   return item ? decodeURIComponent(item.slice("sm_csrf=".length)) : ""
 }
 
-async function api<T>(
+export async function api<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
@@ -240,6 +240,18 @@ async function api<T>(
     throw new Error(value.error ?? `Request failed: ${response.status}`)
   }
   return value
+}
+
+async function loadSyncStatuses(): Promise<Map<string, "online" | "offline">> {
+  const statuses = new Map<string, "online" | "offline">()
+  let after: string | null = null
+  do {
+    const page: { devices: { id: string; status: "online" | "offline" }[]; next: string | null } = await api(`/api/stream-connectors${after ? `?after=${encodeURIComponent(after)}` : ""}`)
+    for (const device of page.devices) statuses.set(device.id, device.status)
+    if (page.next && page.next === after) throw new Error("Device status pagination did not advance")
+    after = page.next
+  } while (after)
+  return statuses
 }
 
 async function loadSessionInventory(connectorId: string, isCurrent: () => boolean): Promise<AgentSession[]> {
@@ -788,7 +800,7 @@ function ProviderIcon({ provider }: { provider: Provider }) {
   )
 }
 
-function LoginPage({
+export function LoginPage({
   error,
   loading,
   returnTo,
@@ -893,6 +905,7 @@ function LoginPage({
 }
 
 function App() {
+  const modern = !window.location.pathname.startsWith("/legacy")
   const [account, setAccount] = useState<Account | null>(null)
   const [tokens, setTokens] = useState<ConnectionToken[]>([])
   const [connectors, setConnectors] = useState<Connector[]>([])
@@ -1142,7 +1155,11 @@ function App() {
       if (epoch !== authEpoch.current) return
       const [tokenItems, connectorItems] = await Promise.all([
         api<ConnectionToken[]>("/api/tokens"),
-        api<Connector[]>("/api/connectors"),
+        api<Connector[]>("/api/connectors").then(async items => {
+          if (!modern) return items
+          const sync = await loadSyncStatuses()
+          return items.map(item => ({ ...item, status: sync.get(item.id) ?? "offline" }))
+        }),
       ])
       if (epoch !== authEpoch.current || request !== deviceRefreshRequest.current) return
       if (accountRef.current && accountRef.current.user.id !== current.user.id) {
@@ -1168,7 +1185,7 @@ function App() {
     } finally {
       if (request === deviceRefreshRequest.current) setLoading(false)
     }
-  }, [clearAuthenticatedState])
+  }, [clearAuthenticatedState, modern])
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- Initial remote state loads after mount.
@@ -1181,7 +1198,11 @@ function App() {
     const poll = async () => {
       const request = ++deviceRefreshRequest.current
       try {
-        const items = await api<Connector[]>("/api/connectors")
+        let items = await api<Connector[]>("/api/connectors")
+        if (modern) {
+          const sync = await loadSyncStatuses()
+          items = items.map(item => ({ ...item, status: sync.get(item.id) ?? "offline" }))
+        }
         if (active && request === deviceRefreshRequest.current) {
           setConnectors(items)
           setDevicesRefreshFailed(false)
@@ -1198,10 +1219,10 @@ function App() {
       active = false
       window.clearInterval(timer)
     }
-  }, [account])
+  }, [account, modern])
 
   useEffect(() => {
-    if (!account) return
+    if (!account || modern) return
     const connectorIds = connectorIdKey ? connectorIdKey.split("|") : []
     if (connectorIds.length === 0) {
       // oxlint-disable-next-line react/set-state-in-effect -- The remote index is empty when no Devices exist.
@@ -1245,7 +1266,7 @@ function App() {
       active = false
       window.clearInterval(timer)
     }
-  }, [account, connectorIdKey, sessionRefreshAttempt])
+  }, [account, connectorIdKey, sessionRefreshAttempt, modern])
   const retryRefresh = () => {
     setSessionRefreshAttempt((attempt) => attempt + 1)
     void refresh()
@@ -1374,6 +1395,7 @@ function App() {
   }, [navigate])
 
   const openSessionList = useCallback(() => {
+    if (modern) { window.location.assign("/"); return }
     if (routeRef.current !== "session") {
       const nextSelection = routeRef.current === "settings"
         ? selectionFromLocation()
@@ -1388,7 +1410,7 @@ function App() {
     }
     setMobileView("list")
     updateLocationSelection(null, "push")
-  }, [applyRoute, selection])
+  }, [applyRoute, selection, modern])
 
   const selectedSessionAvailable = Boolean(
     selectedConnectorId
@@ -2392,7 +2414,7 @@ function App() {
                 type="button"
                 className="mobile-back-button"
                 onClick={openSessionList}
-                aria-label="Back to Sessions"
+                aria-label={modern ? "Back to Streams" : "Back to Sessions"}
               >
                 <ArrowLeft aria-hidden="true" />
               </button>
@@ -2489,7 +2511,7 @@ function App() {
           </DropdownMenu>
         </header>
 
-        <aside className="session-rail" aria-label="Sessions">
+        {modern ? <aside className="session-rail" aria-label="Streams"><div className="session-rail-heading"><div><h2>Streams</h2><p>Read-only Connector logs</p></div></div><a className="session-item-select" href="/">Back to Streams</a></aside> : <aside className="session-rail" aria-label="Sessions">
           <div className="session-rail-heading">
             <div>
               <h2>Sessions</h2>
@@ -2757,10 +2779,11 @@ function App() {
                 : `${availableConnectorCount} Devices`}
             </button>
           </div>
-        </aside>
+        </aside>}
 
         {isSettings && (
           <SettingsPage
+            syncMode={modern}
             pageRef={settingsPageRef}
             deviceNameRef={deviceNameRef}
             addDeviceRef={addDeviceRef}
@@ -3261,7 +3284,7 @@ function App() {
   )
 }
 
-function RelayMark({ compact = false }: { compact?: boolean }) {
+export function RelayMark({ compact = false }: { compact?: boolean }) {
   return (
     <img
       className={`relay-mark${compact ? " is-compact" : ""}`}

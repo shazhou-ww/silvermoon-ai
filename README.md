@@ -1,18 +1,32 @@
 # Silvermoon Relay
 
-Access Agent Host Sessions on your own devices from a browser.
+Browse your devices' immutable event Streams from a read-only browser workspace.
 [Open Silvermoon Relay](https://silvermoon.work).
 
-When work is running on another computer, Relay gives you one place to find
-Sessions, read their messages and activity, and send follow-up instructions
-when the Session supports them. A local **Connector** keeps that device
-connected; agents and their tools still run on that device, not in your
-browser.
+The main workspace keeps the Silvermoon shell and device-grouped left rail,
+with a virtualized raw event table on the right. Select a Connector's Stream,
+read offline history, locate a decimal sequence, or follow new events.
+Full raw payloads live in a separate detail panel. Empty Streams are not
+connection failures. Account, identity, device and token management remain
+in **Settings**.
 
 For application-owned immutable event logs, the separate
 [`@silvermoon-ai/connector/sync` API](docs/event-stream-sync.md) provides generic
-device synchronization. It does not change the Session/AHP workflow below,
-add a UI, connect Supervisor producers, or introduce remote commands.
+device synchronization. The browser uses only its existing account cookie,
+not a device token or writer role. Versioned content types may select trusted,
+bundled views; unknown types always retain raw events. No Supervisor producer,
+Supervisor view, remote plugin, or new remote command is included.
+
+See [Stream workspace, checkout producer and real local browser smoke](docs/stream-workspace.md).
+Code in a checkout is not evidence of an npm release or production deployment.
+
+## Legacy Session compatibility
+
+The former Session/AHP workspace and its existing APIs/history remain available
+at **`/legacy`**, with management at `/legacy/settings`. Old root
+`?connector=…&session=…` links show an explicit compatibility link; Session ids
+are never guessed to be Stream ids. The instructions below describe this
+retained legacy workflow; use `/legacy` when they say “Sessions”.
 
 ## When to use it
 

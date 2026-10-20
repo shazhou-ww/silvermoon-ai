@@ -148,7 +148,7 @@ async function fixture(
     }
     await route.fulfill({ json: body })
   })
-  await page.goto("/?connector=one&session=session-1")
+  await page.goto("/legacy?connector=one&session=session-1")
   return state
 }
 

@@ -25,6 +25,7 @@ interface Token {
 type Provider = "google" | "microsoft" | "github"
 
 interface SettingsPageProps {
+  syncMode?: boolean
   pageRef: RefObject<HTMLElement | null>
   deviceNameRef: RefObject<HTMLInputElement | null>
   addDeviceRef: RefObject<HTMLButtonElement | null>
@@ -176,8 +177,8 @@ export function SettingsPage({
                   </div>
                 </div>
                 <div className="device-settings-context">
-                  <span>{device.agent ? `${device.agent.name}${device.agent.version ? ` ${device.agent.version}` : ""}` : "Not connected yet"}</span>
-                  <span>{device.sessionCount} {device.sessionCount === 1 ? "Session" : "Sessions"}</span>
+                  <span>{props.syncMode ? "Event synchronization" : device.agent ? `${device.agent.name}${device.agent.version ? ` ${device.agent.version}` : ""}` : "Not connected yet"}</span>
+                  <span>{props.syncMode ? (device.status === "online" ? "Sync connected" : "Sync offline · history retained") : `${device.sessionCount} ${device.sessionCount === 1 ? "Session" : "Sessions"}`}</span>
                 </div>
                 <div className="settings-row-actions">
                   <Badge variant="outline">{device.status}</Badge>
@@ -206,7 +207,7 @@ export function SettingsPage({
             </div>
           ))}
           {props.devices.some(device => device.removedAt) && (
-            <p className="settings-empty">Removed Device history remains in Sessions. Use Show offline Sessions in View options to read it.</p>
+            <p className="settings-empty">{props.syncMode ? "Removed device logs are retained, but Stream access is disabled. Legacy Session history remains at /legacy." : "Removed Device history remains in Sessions. Use Show offline Sessions in View options to read it."}</p>
           )}
         </CardContent>
       </Card>
@@ -222,7 +223,7 @@ export function SettingsPage({
           <DialogHeader className="min-w-0">
             <DialogTitle className="min-w-0 truncate leading-normal" title={managementTitle}>{managementTitle}</DialogTitle>
             <DialogDescription>{management?.action === "rename"
-              ? "Only the display name changes. Your connection, token and Sessions stay unchanged."
+              ? props.syncMode ? "Only the display name changes. Your connection, token and event logs stay unchanged." : "Only the display name changes. Your connection, token and Sessions stay unchanged."
               : "Remove this Device from your account. Its connection credentials cannot be restored."}</DialogDescription>
           </DialogHeader>
           <form onSubmit={event => void submitManagement(event)}>
@@ -232,7 +233,7 @@ export function SettingsPage({
             ) : (
               <div className="grid gap-3 text-sm">
                 <p>{management?.device.status === "online" ? "This Device is online. Its Relay connection will be disconnected." : "This Device is offline or already removed. Old credentials cannot reconnect."}</p>
-                <p>All connection tokens will be invalidated. The {management?.device.sessionCount ?? 0} synced Sessions and their history remain read-only.</p>
+                <p>{props.syncMode ? "All connection tokens will be invalidated. Stream logs and legacy Session history are retained, but browser Stream access ends when the device is removed." : `All connection tokens will be invalidated. The ${management?.device.sessionCount ?? 0} synced Sessions and their history remain read-only.`}</p>
                 <p>This does not delete local data, stop local agents, or recall instructions already sent.</p>
                 <p>To reconnect this computer, add a new Device and configure its new token. Old history will not be merged.</p>
               </div>

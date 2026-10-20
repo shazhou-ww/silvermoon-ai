@@ -69,9 +69,13 @@ export const errorCodeSchema = z.enum([
 ]);
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
 export class SyncError extends Error {
-  constructor(public readonly code: ErrorCode, message: string = code, public readonly retryable = false, options?: ErrorOptions) {
+  readonly code: ErrorCode;
+  readonly retryable: boolean;
+  constructor(code: ErrorCode, message: string = code, retryable = false, options?: ErrorOptions) {
     super(message, options);
     this.name = "SyncError";
+    this.code = code;
+    this.retryable = retryable;
   }
 }
 const range = {

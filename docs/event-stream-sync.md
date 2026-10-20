@@ -1,7 +1,8 @@
 # 通用不可变事件同步（v1）
 
 这是独立于旧 Session/tRPC/AHP 的同步底座。入口为 `GET /v1/sync` WebSocket，
-使用已有的 `Authorization: Bearer smr1_...` 设备凭证。没有新 UI、Supervisor
+使用已有的 `Authorization: Bearer smr1_...` 设备凭证。[只读浏览器工作区](stream-workspace.md)
+复用这份日志，但使用账户 cookie 而非设备凭证。没有 Supervisor
 生产者适配、远程命令、跨流事务、服务端消费组或业务端到端 exactly-once 承诺。
 代码存在不表示已发布 npm 或已部署服务。
 

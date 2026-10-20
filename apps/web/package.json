@@ -13,6 +13,7 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
+    "@silvermoon-ai/sync-protocol": "workspace:*",
     "@silvermoon-ai/protocol": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",

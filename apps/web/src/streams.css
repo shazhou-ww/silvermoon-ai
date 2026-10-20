@@ -1,0 +1,34 @@
+.stream-workspace { min-width: 0; overflow: auto; display: flex; flex-direction: column; }
+.stream-events { display: flex; flex-direction: column; min-height: 0; height: 100%; padding: 1rem 1.25rem; gap: .6rem; }
+.stream-events h2 { font-size: 1.1rem; margin: 0; overflow-wrap: anywhere; }
+.stream-range, .stream-window-status, .stream-view-choice { color: var(--muted-foreground); font-size: .75rem; overflow-wrap: anywhere; }
+.stream-controls { display: flex; gap: .4rem; flex-wrap: wrap; }
+.stream-controls form { display: flex; gap: .3rem; min-width: 0; }
+.stream-controls input { width: 12rem; min-width: 0; }
+.stream-view-choice { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+.event-table-head, .event-row { display: grid; grid-template-columns: minmax(6rem, 10rem) minmax(0, 1fr) 6.5rem; gap: .6rem; align-items: center; }
+.event-table-head { font-size: .75rem; font-weight: 600; padding: .4rem; border-bottom: 1px solid var(--border); }
+.event-scroll { overflow: auto; flex: 1 1 24rem; min-height: 8rem; overflow-anchor: none; border: 1px solid var(--border); border-radius: .5rem; }
+.event-row { height: 44px; padding: 0 .4rem; border-bottom: 1px solid var(--border); font-size: .8rem; }
+.event-preview, .event-seq { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; }
+.event-actions { display: flex; gap: .6rem; }
+.event-actions button { color: var(--primary); text-decoration: underline; }
+.event-detail { flex: 0 0 auto; max-height: 40%; overflow: auto; border: 1px solid var(--border); padding: .75rem; border-radius: .5rem; }
+.event-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; user-select: text; }
+.stream-device-status { display: block; font-size: .7rem; font-weight: normal; color: var(--muted-foreground); }
+.stream-search { display: flex; align-items: center; gap: .5rem; }
+.stream-search svg { width: 1rem; flex-shrink: 0; }
+.stream-app .session-device-group > p, .stream-app .session-list > p { padding: .75rem; font-size: .8rem; }
+.stream-app .session-item-select { width: 100%; min-width: 0; }
+.stream-app .mobile-topbar-context { flex: 1; overflow: hidden; }
+.stream-app .mobile-topbar-context h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.stream-app .mobile-topbar-context > svg, .stream-app .mobile-back-button { flex-shrink: 0; }
+.stream-app .session-item-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14rem; }
+@media (max-width: 760px) {
+  .stream-events { padding: .75rem; }
+  .stream-controls { font-size: .75rem; }
+  .stream-controls button { padding-inline: .5rem; }
+  .event-table-head, .event-row { grid-template-columns: 4.5rem minmax(0, 1fr) 3rem; gap: .3rem; }
+  .event-actions { flex-direction: column; gap: 0; font-size: .7rem; }
+  .stream-view-choice span { max-width: 100%; }
+}

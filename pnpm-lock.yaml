@@ -26,6 +26,9 @@ importers:
       '@silvermoon-ai/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@silvermoon-ai/sync-protocol':
+        specifier: workspace:*
+        version: link:../../packages/sync-protocol
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1

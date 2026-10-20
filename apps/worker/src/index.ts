@@ -2,6 +2,7 @@ import { handleApi } from "./api";
 import { authenticate } from "./auth";
 import type { AppEnv } from "./env";
 import { completeOAuth, beginOAuth } from "./oauth";
+import { handleStreamApi } from "./stream-api";
 export { ConnectorSession as DaemonSession } from "./connector-session";
 export { DeviceSync } from "./device-sync";
 
@@ -49,6 +50,9 @@ async function connectConnector(
 export default {
   async fetch(request, env, context): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/api/stream-connectors" || url.pathname.startsWith("/api/stream-connectors/")) {
+      return handleStreamApi(request, env);
+    }
     if (request.method === "GET" && url.pathname === "/v1/sync") {
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return jsonError(426, "websocket-upgrade-required");
       const auth = await authenticate(request, env, context);

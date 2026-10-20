@@ -237,7 +237,7 @@ async function fixture(
     }
     await route.fulfill({ json: body })
   })
-  await page.goto("/")
+  await page.goto("/legacy")
   await expect(
     page.locator(".session-list").getByText(
       "Confirm signing identity",
@@ -610,6 +610,8 @@ test("work state is not overwritten by an older inventory response", async ({ pa
 const preferenceNames = ["Show ended", "Show unavailable", "Show offline Sessions (1)", "Group by Device"]
 
 async function openViewOptions(page: Page) {
+  await expect(page.locator(".relay-app")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Account menu for Reviewer" })).toBeVisible()
   const opener = page.getByRole("button", { name: "Open Sessions", exact: true })
   if (await opener.isVisible()) await opener.click()
   const back = page.getByRole("button", { name: "Back to Sessions", exact: true })
@@ -763,7 +765,7 @@ test("restored grouping expands a visible device when the selected Session is hi
   await fixture(page)
   await openViewOptions(page)
   await page.getByRole("menuitemcheckbox", { name: "Group by Device", exact: true }).click()
-  await page.goto("/?connector=travel&session=preview")
+  await page.goto("/legacy?connector=travel&session=preview")
   await expectViewOptions(page, 8)
   await expect(page.getByRole("button", { name: /Studio laptop/ })).toHaveAttribute("aria-expanded", "true")
   await expect(page.locator(".session-list").getByText("Release desktop client", { exact: true })).toBeVisible()

@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   LIMITS, MAX_SEQ, SYNC_VERSION, SyncError, eventBytes, parseClientMessage,
-  type ClientMessage, type EventRecord, type ServerMessage,
+  type ClientMessage, type EventRecord, type ServerMessage, type ErrorCode,
 } from "@silvermoon-ai/sync-protocol";
 
 interface Subscription {
@@ -15,6 +15,7 @@ interface Attachment {
   userId: string;
   deviceId: string;
   tokenId: string;
+  sessionId?: string;
   ready: boolean;
   role: "reader" | "writer";
   generation: string;
@@ -29,6 +30,12 @@ type StreamRow = {
   content_type: string | null;
 }
 type LeaseRow = { generation: string; owner: string | null; expires: number };
+type BrowserStream = { streamId: string; committedThrough: string; retainedFrom: string | null; contentType?: string };
+type BrowserReadResult =
+  | { status: "online" | "offline" }
+  | { streams: BrowserStream[]; next: string | null }
+  | (BrowserStream & { events: EventRecord[]; next: string; after?: string })
+  | { error: ErrorCode };
 const key = (seq: string) => seq.padStart(19, "0");
 const position = (seq: string) => BigInt(seq).toString();
 
@@ -115,6 +122,7 @@ export class DeviceSync extends DurableObject<Env> {
   }
 
   private async authorized(a: Attachment): Promise<boolean> {
+    if (a.sessionId) return this.browserAuthorized(a.userId, a.deviceId, a.sessionId);
     const row = await this.env.DB.prepare(`
       SELECT token.id FROM connection_tokens AS token
       JOIN devices AS device ON device.user_id = token.user_id AND device.id = token.device_id
@@ -125,6 +133,61 @@ export class DeviceSync extends DurableObject<Env> {
         AND (token.expires_at IS NULL OR julianday(token.expires_at) > julianday('now'))
     `).bind(a.tokenId, a.userId, a.deviceId).first();
     return row !== null;
+  }
+
+  private async browserAuthorized(userId: string, deviceId: string, sessionId: string): Promise<boolean> {
+    return null !== await this.env.DB.prepare(`
+      SELECT session.id FROM browser_sessions AS session
+      JOIN users AS account ON account.id=session.user_id
+      JOIN devices AS device ON device.user_id=session.user_id AND device.id=?2
+      WHERE session.id=?3 AND session.user_id=?1 AND session.revoked_at IS NULL
+        AND julianday(session.expires_at)>julianday('now') AND device.removed_at IS NULL
+    `).bind(userId, deviceId, sessionId).first();
+  }
+
+  async browserRead(userId: string, deviceId: string, sessionId: string, input: string, backwards = false, latest = false): Promise<BrowserReadResult> {
+    try {
+      return await this.readForBrowser(userId, deviceId, sessionId, input, backwards, latest);
+    } catch (error) {
+      if (error instanceof SyncError) return { error: error.code };
+      throw error;
+    }
+  }
+
+  private async readForBrowser(userId: string, deviceId: string, sessionId: string, input: string, backwards: boolean, latest: boolean): Promise<BrowserReadResult> {
+    if (!await this.browserAuthorized(userId, deviceId, sessionId)) throw new SyncError("unauthorized");
+    const m = parseClientMessage(input);
+    if (m.type === "ping") {
+      const writer = this.lease();
+      return { status: writer.owner && writer.expires > Date.now() ? "online" : "offline" };
+    }
+    if (m.type === "stream.list") {
+      const rows = this.ctx.storage.sql.exec<StreamRow>("SELECT * FROM streams WHERE id>? ORDER BY id LIMIT ?", m.after ?? "", m.limit + 1).toArray();
+      return { streams: rows.slice(0, m.limit).map(row => this.range(row)), next: rows.length > m.limit ? rows[m.limit - 1].id : null };
+    }
+    if (m.type === "stream.read") {
+      const stream = this.stream(m.streamId);
+      this.cursor(stream, m.after);
+      if (backwards || latest) {
+        const rows = this.ctx.storage.sql.exec<{ seq: string; payload: string }>(
+          `SELECT seq,payload FROM events WHERE stream_id=? AND seq${latest ? "<=" : "<"}? ORDER BY seq DESC LIMIT ?`, m.streamId, latest ? stream.head : key(m.after), m.limit,
+        ).toArray();
+        const events: EventRecord[] = [];
+        let bytes = 2;
+        for (const row of rows) {
+          const event = { seq: position(row.seq), payload: row.payload };
+          bytes += eventBytes(event) + 1;
+          if (bytes > LIMITS.batchBytes) break;
+          events.push(event);
+        }
+        events.reverse();
+        const after = events.length ? (BigInt(events[0].seq) - 1n).toString() : (BigInt(m.after) > 0n ? (BigInt(m.after) - 1n).toString() : "0");
+        return { ...this.range(stream), events, after, next: events.at(-1)?.seq ?? after };
+      }
+      const events = this.read(m.streamId, m.after, m.limit);
+      return { ...this.range(stream), events, next: events.at(-1)?.seq ?? m.after };
+    }
+    throw new SyncError("forbidden");
   }
 
   private lease(): LeaseRow {
@@ -158,11 +221,12 @@ export class DeviceSync extends DurableObject<Env> {
     const userId = request.headers.get("x-sync-user");
     const deviceId = request.headers.get("x-sync-device");
     const tokenId = request.headers.get("x-sync-token");
-    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket" || !userId || !deviceId || !tokenId) {
+    const sessionId = request.headers.get("x-sync-session");
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket" || !userId || !deviceId || (!tokenId && !sessionId)) {
       return new Response("unauthorized", { status: 401 });
     }
     const a: Attachment = {
-      id: crypto.randomUUID(), userId, deviceId, tokenId, ready: false,
+      id: crypto.randomUUID(), userId, deviceId, tokenId: tokenId ?? "", ...(sessionId ? { sessionId } : {}), ready: false,
       role: "reader", generation: "0", expires: Date.now() + LIMITS.handshakeMs,
       subscriptions: {},
       requestPeriod: Date.now(), requests: 0,
@@ -332,6 +396,7 @@ export class DeviceSync extends DurableObject<Env> {
     if (m.type === "hello") {
       if (a.ready) throw new SyncError("invalid_message", "already negotiated");
       if (m.version !== SYNC_VERSION) throw new SyncError("unsupported_version");
+      if (a.sessionId && m.role !== "reader") throw new SyncError("forbidden", "browser connections are read-only");
       if (m.role === "writer") {
         this.ctx.storage.transactionSync(() => {
           const lease = this.lease();
@@ -517,7 +582,7 @@ export class DeviceSync extends DurableObject<Env> {
       this.save(a);
       if (!this.inFlight.has(a.id)) this.ctx.storage.sql.exec("DELETE FROM sync_connections WHERE id=?", a.id);
     }
-    ws.close(code, reason);
+    ws.close([1005, 1006, 1015].includes(code) ? 1000 : code, reason);
   }
 
   webSocketError(ws: WebSocket): void {

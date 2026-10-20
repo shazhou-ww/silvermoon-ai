@@ -17,9 +17,9 @@ export function workspaceRoute(location: Pick<Location, "pathname" | "search">):
   const connectorId = params.get("connector")
   const sessionId = params.get("session")
   return {
-    view: location.pathname === "/settings"
+    view: location.pathname === "/settings" || location.pathname === "/legacy/settings"
       ? "settings"
-      : location.pathname === "/" ? "session" : "not-found",
+      : location.pathname === "/" || location.pathname === "/legacy" ? "session" : "not-found",
     selection: connectorId && sessionId ? { connectorId, sessionId } : null,
   }
 }
@@ -31,7 +31,8 @@ export function workspaceUrl(
   hash = "",
 ): string {
   const url = new URL(current)
-  url.pathname = view === "settings" ? "/settings" : "/"
+  const legacy = url.pathname.startsWith("/legacy")
+  url.pathname = view === "settings" ? (legacy ? "/legacy/settings" : "/settings") : (legacy ? "/legacy" : "/")
   url.hash = hash
   if (selection) {
     url.searchParams.set("connector", selection.connectorId)
