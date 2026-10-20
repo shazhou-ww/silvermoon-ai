@@ -1,9 +1,47 @@
 # Account messages and the generic Device connector (v2)
 
-This is a source-tree capability, **not an npm release or a deployed service**.
-It adds an independent `@silvermoon-ai/connector/duplex` entrypoint and
+The Relay v2 endpoints were deployed to production on **2026-10-20**.
+The library/CLI remain a checkout capability, **not a new npm release**.
+This adds an independent `@silvermoon-ai/connector/duplex` entrypoint and
 `silvermoon-duplex` validation executable. Existing AHP/tRPC entrypoints,
 `/v1/sync`, multi-stream archives and browser pages are unchanged.
+
+## Production rollout and trying it
+
+- Source: [`8bb1e8072242`](https://github.com/shazhou-ww/silvermoon-ai/commit/8bb1e8072242997241dff078d79ee6321d65f530).
+  The existing [release workflow](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/39444769096)
+  passed full checks, 241 browser tests (2 skipped), remote D1 migration
+  verification, Worker deployment and Pages deployment.
+- Relay: <https://relay.silvermoon.work>; frontend: <https://silvermoon.work>.
+  Worker version `875a4196-d982-46b8-b072-b3e03d993c86` was observed at 100%.
+  The new `AccountMessages` binding/class is additive; D1 had no pending
+  migrations. Existing `DeviceSync`/`DaemonSession` and old history remain.
+- Production probes after deployment: `/health` returned 200; unauthenticated
+  v2 Client/Device endpoints returned the expected `401 unauthorized`;
+  frontend `/` and `/legacy` returned 200. An actual browser on the frontend
+  could read both the v2 and legacy 401 responses, verifying the CORS boundary.
+  These checks did not create devices, submit messages or alter existing data.
+- Worker logs remain enabled; traces are explicitly enabled with 1% head
+  sampling. Online Cloudflare documentation was unavailable during preflight;
+  command/config compatibility was checked against installed Wrangler 4.147.0,
+  its schema/help, generated types, dry-run and the successful release workflow.
+
+For an authenticated trial, sign in on the frontend and create a separate test
+Device in Settings. Keep its credential in a protected local file, never chat,
+source, console output or shell arguments. Use the checkout-built CLI described
+below with that Device and `https://relay.silvermoon.work`; do not assume the
+currently published npm package contains the new entrypoint. Use the Client
+API from the signed-in frontend origin, explicitly enable the session's write
+access, then submit a harmless test payload to that Device. Observe it with
+CLI `receive`; printing must leave it pending until explicit `ack`. Enqueue
+and flush an upstream event, then read it through the account Client endpoint.
+
+The existing web workspace still displays v1 Streams: this rollout did not add
+v2 send/receive controls. Actual authenticated end-to-end production testing
+requires the user's sign-in and test-Device setup; it is not claimed by the
+unauthenticated probes above. Existing test devices/history must not be reused
+or deleted as cleanup. The real target host has not yet been integrated, and
+production capacity/retention/disaster recovery are not established by rollout.
 
 ## Identity, ordering and persistence
 
