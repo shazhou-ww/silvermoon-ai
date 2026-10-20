@@ -9,6 +9,11 @@ when the Session supports them. A local **Connector** keeps that device
 connected; agents and their tools still run on that device, not in your
 browser.
 
+For application-owned immutable event logs, the separate
+[`@silvermoon-ai/connector/sync` API](docs/event-stream-sync.md) provides generic
+device synchronization. It does not change the Session/AHP workflow below,
+add a UI, connect Supervisor producers, or introduce remote commands.
+
 ## When to use it
 
 - Check an agent's progress from another computer or a phone.

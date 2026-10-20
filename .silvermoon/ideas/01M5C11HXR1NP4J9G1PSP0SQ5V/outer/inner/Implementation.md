@@ -4,6 +4,8 @@
 
 连接、消息原语与分包边界见[通用事件流同步技术方案](Event-Stream-Sync-Design.md)。草案中的未决实现细节由实施与评审收敛，必要偏差须记录理由。
 
+实施结果、主 Agent 评审修复与独立验证见[实施评审与验证](Implementation-Verification.md)，具体使用方式见[同步说明](../../../../../docs/event-stream-sync.md)。
+
 ## Steps
 
 ### I-S01: 定义通用同步契约

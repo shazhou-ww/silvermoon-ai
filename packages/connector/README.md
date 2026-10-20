@@ -37,6 +37,24 @@ The published package includes the Silvermoon protocol and RPC implementation
 used by the connector. The monorepo's private workspace packages are not
 runtime dependencies for consumers.
 
+## Generic immutable event synchronization
+
+The source tree also provides the independent `@silvermoon-ai/connector/sync`
+export (`SyncClient`, `runSync`, `ReliableEventSource`, `FileEventSource`).
+It uses `/v1/sync`, not the Session tRPC endpoint, and does not adapt AHP
+observations automatically. `FileEventSource` uses Node's built-in SQLite
+API (Node **22.13+**, experimental on Node 22); the transport itself has no
+SQLite dependency until a file source is opened. Keep the original durable
+source and stream IDs across restarts. `open()` deliberately fails if a
+source disappears; never replace it with `create()` as a recovery strategy.
+
+The generic protocol is bundled into this public package, including its
+declarations; consumers do not install the private `sync-protocol` workspace.
+These source changes do not mean a corresponding npm version is published.
+See [the generic sync guide](../../docs/event-stream-sync.md) for producer and
+consumer examples, resource limits, failure semantics, and the local runtime
+smoke test.
+
 Maintainers publish reviewed versions through immutable
 `npm/connector/v<version>` tags and npm Trusted Publishing. See the
 [release guide](https://github.com/shazhou-ww/silvermoon-ai/blob/main/docs/npm-package-releases.md) for setup, validation and

@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "./packages/sync-protocol" },
     { "path": "./packages/protocol" },
     { "path": "./packages/rpc" },
     { "path": "./packages/connector" },

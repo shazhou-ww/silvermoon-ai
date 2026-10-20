@@ -31,6 +31,10 @@
 	"durable_objects": {
 		"bindings": [
 			{
+				"name": "DEVICE_SYNC",
+				"class_name": "DeviceSync"
+			},
+			{
 				"name": "DAEMON_SESSIONS",
 				"class_name": "DaemonSession"
 			}
@@ -42,6 +46,10 @@
 			"new_sqlite_classes": [
 				"DaemonSession"
 			]
+		},
+		{
+			"tag": "v2-device-sync",
+			"new_sqlite_classes": ["DeviceSync"]
 		}
 	]
 }

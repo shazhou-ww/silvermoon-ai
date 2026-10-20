@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 import { registry, registryMetadata, releasePlan, requireUnpublished,
   validatePackManifest, verifyPack, verifyPublished } from "./npm-release.mjs";
@@ -42,7 +41,7 @@ test("manifest identity, version, access and registry are authoritative", () => 
   }
   for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
     for (const dependency of [{ "@silvermoon-ai/protocol": "1.0.0" },
-      { "@silvermoon-ai/rpc": "workspace:*" }, { external: "file:../external" },
+      { "@silvermoon-ai/rpc": "workspace:*" }, { "@silvermoon-ai/sync-protocol": "1.0.0" }, { external: "file:../external" },
       { external: "link:../external" }]) {
       assert.throws(() => releasePlan("npm/connector/v1.2.3", { ...candidate, [field]: dependency }));
     }
@@ -62,7 +61,7 @@ test("registry preflight distinguishes 404, duplicates and explicit errors", asy
   await assert.rejects(registryMetadata(async () => Response.json({ name: "wrong", versions: {} })), /identity/);
 });
 
-test("packed manifest keeps CLI and both runtime/type exports", () => {
+test("packed manifest keeps CLI and all three runtime/type exports", () => {
   validatePackManifest(plan, candidate);
   assert.throws(() => validatePackManifest(plan, { ...candidate, exports: {} }));
   assert.throws(() => validatePackManifest(plan, { ...candidate, bin: {} }));
@@ -70,7 +69,7 @@ test("packed manifest keeps CLI and both runtime/type exports", () => {
 });
 
 test("tarball checks validate actual bytes, entrypoints and inlined private dependencies", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "silvermoon-npm-pack-test-"));
+  const directory = resolve(".wrangler", `silvermoon-npm-pack-test-${crypto.randomUUID()}`);
   try {
     const files = {
       "package.json": JSON.stringify(candidate),
@@ -80,6 +79,8 @@ test("tarball checks validate actual bytes, entrypoints and inlined private depe
       "dist/index.d.ts": "export {};",
       "dist/adapter.js": "export {};",
       "dist/adapter.d.ts": "export {};",
+      "dist/sync.js": "export {};",
+      "dist/sync.d.ts": "export {};",
     };
     await mkdir(join(directory, "package", "dist"), { recursive: true });
     for (const [name, content] of Object.entries(files)) {
@@ -104,10 +105,12 @@ test("tarball checks validate actual bytes, entrypoints and inlined private depe
     await assert.rejects(verifyPack(plan, [{ ...record, shasum: "wrong" }], directory));
     await assert.rejects(verifyPack(plan, [{ ...record, integrity: "wrong" }], directory));
     await assert.rejects(verifyPack(plan, [{ ...record, filename: "../candidate.tgz" }], directory), /escape/);
-    for (const file of ["dist/index.js", "dist/index.d.ts"]) {
-      await writeFile(join(directory, "package", file), 'import { x } from "@silvermoon-ai/protocol";');
-      await assert.rejects(verifyPack(plan, await pack(), directory), /Private workspace import/);
-      await writeFile(join(directory, "package", file), files[file]);
+    for (const file of ["dist/index.js", "dist/index.d.ts", "dist/sync.js", "dist/sync.d.ts"]) {
+      for (const name of ["protocol", "rpc", "sync-protocol"]) {
+        await writeFile(join(directory, "package", file), `import { x } from "@silvermoon-ai/${name}";`);
+        await assert.rejects(verifyPack(plan, await pack(), directory), /Private workspace import/);
+        await writeFile(join(directory, "package", file), files[file]);
+      }
     }
     await rm(join(directory, "package", "dist", "adapter.d.ts"));
     packedFiles = packedFiles.filter((file) => file !== "dist/adapter.d.ts");

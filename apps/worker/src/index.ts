@@ -3,6 +3,7 @@ import { authenticate } from "./auth";
 import type { AppEnv } from "./env";
 import { completeOAuth, beginOAuth } from "./oauth";
 export { ConnectorSession as DaemonSession } from "./connector-session";
+export { DeviceSync } from "./device-sync";
 
 function jsonError(status: number, error: string): Response {
   return Response.json({ error }, { status });
@@ -48,6 +49,19 @@ async function connectConnector(
 export default {
   async fetch(request, env, context): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname === "/v1/sync") {
+      if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return jsonError(426, "websocket-upgrade-required");
+      const auth = await authenticate(request, env, context);
+      if (!auth) return jsonError(401, "unauthorized");
+      const headers = new Headers({
+        upgrade: "websocket",
+        "x-sync-user": auth.userId,
+        "x-sync-device": auth.deviceId,
+        "x-sync-token": auth.tokenId,
+      });
+      return env.DEVICE_SYNC.getByName(JSON.stringify([auth.userId, auth.deviceId]))
+        .fetch(new Request(request, { headers }));
+    }
     if (request.method === "GET" && url.pathname === "/health") {
       return Response.json({ service: "silvermoon-relay", status: "ok" });
     }

@@ -9,7 +9,7 @@ export const registry = "https://registry.npmjs.org/";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const packageDirectory = "packages/connector";
 const packageName = "@silvermoon-ai/connector";
-const privatePackages = ["@silvermoon-ai/protocol", "@silvermoon-ai/rpc"];
+const privatePackages = ["@silvermoon-ai/protocol", "@silvermoon-ai/rpc", "@silvermoon-ai/sync-protocol"];
 
 export function releasePlan(tag, manifest) {
   const match = /^npm\/connector\/v((0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?)$/.exec(tag);
@@ -84,6 +84,7 @@ export function validatePackManifest(plan, manifest) {
   assert.deepEqual(manifest.exports, {
     ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
     "./adapter": { types: "./dist/adapter.d.ts", default: "./dist/adapter.js" },
+    "./sync": { types: "./dist/sync.d.ts", default: "./dist/sync.js" },
   }, "Public entrypoints changed; update the package smoke contract deliberately.");
 }
 
@@ -108,14 +109,14 @@ export async function verifyPack(plan, pack, directory) {
       !file.split("/").includes(".."), `Unexpected tarball file: ${file}`);
   }
   for (const file of ["package.json", "README.md", "dist/cli.js", "dist/index.js",
-    "dist/index.d.ts", "dist/adapter.js", "dist/adapter.d.ts"]) {
+    "dist/index.d.ts", "dist/adapter.js", "dist/adapter.d.ts", "dist/sync.js", "dist/sync.d.ts"]) {
     assert.ok(files.includes(`package/${file}`), `Missing public package file: ${file}`);
   }
   validatePackManifest(plan, JSON.parse(content("package.json")));
   assert.match(content("dist/cli.js"), /^#!\/usr\/bin\/env node\r?\n/, "CLI must retain its Node shebang.");
   for (const file of files.filter((file) => /\.(?:js|ts)$/.test(file))) {
     assert.doesNotMatch(content(file.slice("package/".length)),
-      /(?:from\s*|import\s*\(|require\s*\()\s*["']@silvermoon-ai\/(?:protocol|rpc)(?:["'/])/,
+      /(?:from\s*|import\s*\(|require\s*\()\s*["']@silvermoon-ai\/(?:protocol|rpc|sync-protocol)(?:["'/])/,
       `Private workspace import remains in ${file}`);
   }
   return { tarball, sha256: digest(bytes, "sha256", "hex"), integrity: record.integrity };
