@@ -10,7 +10,7 @@
 
 ## 边界
 
-- 上游称 Client，下游称 Device；一个持久 Connector 对应一个 Device、固定两方向，不开放用户多 Stream 或按任务建流。
+- 上游称 Client，下游称 Device；消息、历史与固定两方向都归属 Device。Connector 仅为连接 Relay 的程序，不是业务实体；不开放用户多 Stream 或按任务建流。
 - 保留设备自治、历史归属和授权清理；不承诺端到端 exactly-once，不绑定某种长连接或存储技术。
 - 本轮只准备协议与模型评审；UI 改版、应用代码、部署和生产数据操作不在本轮范围。
 

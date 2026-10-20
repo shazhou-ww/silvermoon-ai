@@ -6,7 +6,7 @@
 
 ### I-S01: 收敛协议与身份兼容
 
-统一 Account/Device/Client 术语，确定账户内下行单目标与上行全量群发契约，细化版本协商、身份映射、权限、幂等范围、fencing 与保留策略；核实原 user/device/connector/stream 历史归属，不因名称相同就假定身份映射。
+统一 Account/Device/Client 业务模型，Connector 仅是连接程序；消息、方向日志与凭证归属 Device，不引入独立 Connector 业务 ID。确定下行单目标与上行全量群发契约，细化版本协商、权限、幂等、fencing 与保留策略；优先保留既有 Account/Device ID，核实原 user/device/connectors/stream 历史归属。
 
 ### I-S02: 接通双向持久链路
 
@@ -20,7 +20,7 @@
 
 ### I-AC01: 身份与历史保持可归属
 
-用迁移夹具证明凭证轮换、重连和重启不更换 Connector，旧命名空间历史仍可定位且不被重新编号合并；冲突映射明确阻断。
+用迁移与本地状态重开夹具证明 Connector 程序升级/替换、凭证轮换、重连和重启不更换 Device 身份，不丢失其历史、方向日志、outbox/inbox 与游标；接口不要求独立 Connector 业务 ID。旧命名空间历史仍可定位且不被重新编号合并，冲突映射明确阻断。
 
 ### I-AC02: 账户路由与群发可验证
 
