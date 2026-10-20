@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Supervisor 集中观测评审</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; color: #17212b; background: #f3f5f7; font: 15px/1.6 "Segoe UI", sans-serif; }
+    header, main, footer { max-width: 1480px; margin: auto; }
+    h1 { margin: 0; font-size: 26px; }
+    a { color: #3454d1; }
+    a:focus-visible, iframe:focus-visible { outline: 3px solid #3454d1; outline-offset: 3px; }
+    .decision { margin: 18px 0; padding: 16px; background: white; border: 1px solid #d8dfe8; border-radius: 12px; }
+    .tabs { padding: 10px 0; }
+    iframe { display: block; width: 100%; height: 1100px; border: 1px solid #d8dfe8; border-radius: 12px; background: white; }
+    footer { padding-top: 18px; color: #687487; }
+    @media (max-width: 720px) { body { padding: 12px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>在 Silvermoon Relay 中集中观测 Supervisor</h1>
+    <p>说明性评审材料，不是生产 UI 或规范性行为契约。示例数据均为虚构。</p>
+  </header>
+  <main>
+    <section class="decision" aria-labelledby="decision-title">
+      <h2 id="decision-title">待决定：新增独立只读观测入口，保留现有 Sessions 体验</h2>
+      <p>重点变化：按设备查看多个 Supervisor；分开呈现连接、观察及执行状态；离线保留带时间的最后已知状态。不增加任何控制按钮。</p>
+      <p>依据 <a href="../Idea.md">Idea 契约</a>与 <a href="../Business-Data-Model-Review.md">业务模型边界</a>。Before 根据当前 App.tsx 的 Sessions 清单和搜索结构制作，是受影响区域示意，不是截图；当前产品没有 Supervisor 观测入口。</p>
+    </section>
+    <nav class="tabs" aria-label="评审场景">
+      <a href="scenarios/01-primary-flow.html" target="scenario-frame">多设备清单与离线详情</a>
+    </nav>
+    <iframe id="scenario-frame" name="scenario-frame" src="scenarios/01-primary-flow.html" title="多设备清单与离线详情对比"></iframe>
+    <p><strong>是否同意新增独立的 Supervisor 只读观测入口，并明确显示离线及最后观察时间？</strong></p>
+  </main>
+  <footer>尚需实施时核实：观测端真实接口、状态过期阈值及数据保留上限。样式和布局不构成生产实现承诺。</footer>
+  <script>
+    const frame = document.querySelector("#scenario-frame");
+    window.addEventListener("message", (event) => {
+      if (event.source !== frame.contentWindow || event.data?.type !== "ui-review:height") return;
+      if (Number.isFinite(event.data.height)) frame.style.height = `${Math.max(320, event.data.height)}px`;
+    });
+  </script>
+</body>
+</html>

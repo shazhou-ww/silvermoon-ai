@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>多设备清单与离线详情</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 18px; color: #17212b; font: 14px/1.6 "Segoe UI", sans-serif; background: white; }
+    h1 { font-size: 21px; margin: 0; }
+    h2 { font-size: 17px; }
+    h3 { font-size: 15px; margin: 8px 0; }
+    p { overflow-wrap: anywhere; }
+    .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .state { min-width: 0; border: 1px solid #d8dfe8; border-radius: 12px; overflow: hidden; }
+    .state-label { padding: 10px 14px; background: #edf0f3; border-bottom: 1px solid #d8dfe8; }
+    .product-surface { min-height: 790px; padding: 18px; background: #f8f9fb; }
+    .brand { margin-bottom: 12px; font-size: 18px; font-weight: 700; color: #142033; }
+    .nav { padding-bottom: 12px; border-bottom: 1px solid #d8dfe8; color: #687487; }
+    .active { color: #3454d1; font-weight: 700; }
+    .row, .detail { margin-top: 12px; padding: 12px; border: 1px solid #d8dfe8; border-radius: 10px; background: #fbfcfd; }
+    .selected { border-color: #3454d1; }
+    .muted { color: #687487; }
+    .pill { display: inline-block; padding: 2px 7px; border-radius: 6px; background: #e1f2eb; color: #176149; }
+    .warning { color: #a86618; background: #fff0d9; }
+    .offline { background: #e8ecf1; color: #26354a; }
+    .search { padding: 8px; border: 1px solid #c8d1dc; border-radius: 6px; background: white; }
+    .empty { margin-top: 22px; padding: 15px; border: 1px dashed #c8d1dc; border-radius: 8px; }
+    @media (max-width: 760px) {
+      body { padding: 12px; }
+      .comparison { grid-template-columns: 1fr; }
+      .product-surface { min-height: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>相同设备、相同快照时刻：2026-10-20 14:40 UTC+8</h1>
+    <p>设备 A 在线、B 断线；相同 Session 数据。After 才有 Supervisor 投影。新增层级与状态，不用更换视觉语言制造差异。</p>
+  </header>
+  <main class="comparison">
+    <section class="state" aria-labelledby="before-title">
+      <header class="state-label"><strong id="before-title">Before：当前清单结构示意</strong></header>
+      <div class="product-surface">
+        <div class="brand">Silvermoon Relay</div>
+        <div class="nav"><span class="active">Sessions</span> · Settings</div>
+        <h2>Sessions <span class="muted">＋ New Session</span></h2>
+        <div class="search">Search Sessions, Agents, Devices</div>
+        <p class="muted">视图：Group by Device · Show offline Sessions</p>
+        <h3>设备 A · 在线</h3>
+        <div class="row">修复构建 <span class="pill">Running</span><p class="muted">Agent Session · 14:39</p></div>
+        <h3>设备 B · 离线</h3>
+        <div class="row">检查测试 <span class="pill offline">Offline</span><p class="muted">Agent Session · 14:34</p></div>
+        <div class="empty">现有界面面向 Agent Sessions，没有 Supervisor 目标、观察结果或资源占用视图。</div>
+      </div>
+    </section>
+    <section class="state" aria-labelledby="after-title">
+      <header class="state-label"><strong id="after-title">After：只读 Supervisor 观测</strong></header>
+      <div class="product-surface">
+        <div class="brand">Silvermoon Relay</div>
+        <div class="nav">Sessions · <span class="active">Supervisors</span> · Settings</div>
+        <h2>Supervisors</h2>
+        <p><span class="pill warning">需要关注 2</span> <span class="muted">现有 Sessions 数据与入口保持不变</span></p>
+        <h3>设备 A · 在线</h3>
+        <div class="row"><strong>开发环境</strong> <span class="pill">快照最新</span><p>运行 1 · 资源 1/2 · 1 个目标未达标</p></div>
+        <div class="row"><strong>仓库维护</strong> <span class="pill warning">等待授权</span><p>本地上报：操作未获许可；本页不可批准</p></div>
+        <h3>设备 B · 离线</h3>
+        <div class="row selected"><strong>健康维护</strong> <span class="pill offline">最后已知状态</span><p>快照收到于 14:35；当前执行情况未知</p></div>
+        <section class="detail" aria-labelledby="detail-title">
+          <h3 id="detail-title">健康维护 / 目标详情</h3>
+          <p>运行于：设备 B<br>管理对象：测试主机 C</p>
+          <p>最后观察：14:34 UTC+8<br>当前 level：configured → 目标：terminal</p>
+          <p>差距：健康探测未通过<br>最后上报：等待具备 linux 能力的资源</p>
+          <p class="muted">以上均为断线前事实，不代表当前仍在等待。无历史或尚未同步时显示未知，而非正常。</p>
+        </section>
+      </div>
+    </section>
+  </main>
+  <script>
+    function reportHeight() {
+      window.parent.postMessage({ type: "ui-review:height", height: document.documentElement.scrollHeight }, "*");
+    }
+    new ResizeObserver(reportHeight).observe(document.documentElement);
+    window.addEventListener("load", reportHeight);
+  </script>
+</body>
+</html>
