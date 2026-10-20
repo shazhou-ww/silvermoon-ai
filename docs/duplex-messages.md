@@ -47,6 +47,39 @@ production capacity/retention/disaster recovery are not established by rollout.
 
 ## Identity, ordering and persistence
 
+### Authenticated production trial — 2026-10-21
+
+Reconfirmed the deployed release against the current feature source: no pending
+application/config difference required another deployment. Worker version
+`6f8b5d98-4541-460c-ba8d-ddc90e111c3f` remained active at 100%, from the successful
+[release run](https://github.com/shazhou-ww/silvermoon-ai/actions/runs/39487776073).
+
+With the user's authorization, the existing separate trial Device was used for
+two harmless messages. The built public Device library read a user-supplied,
+ACL-protected credential file without exposing its contents:
+
+- Device uplink received Relay Message `1`; the authenticated shared browser
+  read the same record in both account uplink and Device history, and the live
+  UI displayed it.
+- Client downlink received Message `2`; the real Device library reopened its
+  persistent state, received that record and had one pending inbox message.
+  A local host receipt was written and fsynced before explicit ACK; pending
+  then became zero. The payload was not executed.
+- Resubmitting the exact downlink request key returned the original ID `2`.
+  A changed payload under that key returned `409 idempotency_conflict`.
+  Device history still contained exactly those two records.
+- The original v1 `checkout-observations` stream remained committed through
+  sequence `18`. Both trial messages and all existing devices/history were
+  retained; no credentials were rotated or records deleted.
+
+The shared tab was hidden, so this trial verifies browser-authenticated API,
+real Device lib, durable receipt and live rendered message updates, **not**
+visible pointer interaction or a second independent authenticated Client.
+The session's write opt-in was explicitly enabled only for the trial, then
+restored to disabled. No npm package was published, and no external business
+payload execution or Supervisor integration is claimed. Local Device state
+and receipt evidence are retained in the private session directory.
+
 The existing user ID is the Account ID; existing Device IDs and connection
 tokens are reused. Connector is a library, not another registered identity.
 Clients and Devices associate through Account only.
