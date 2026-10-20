@@ -2414,7 +2414,7 @@ function App() {
                 type="button"
                 className="mobile-back-button"
                 onClick={openSessionList}
-                aria-label={modern ? "Back to Streams" : "Back to Sessions"}
+                aria-label={modern ? "Back to Devices" : "Back to Sessions"}
               >
                 <ArrowLeft aria-hidden="true" />
               </button>
@@ -2511,7 +2511,7 @@ function App() {
           </DropdownMenu>
         </header>
 
-        {modern ? <aside className="session-rail" aria-label="Streams"><div className="session-rail-heading"><div><h2>Streams</h2><p>Read-only Connector logs</p></div></div><a className="session-item-select" href="/">Back to Streams</a></aside> : <aside className="session-rail" aria-label="Sessions">
+        {modern ? <aside className="session-rail" aria-label="Devices"><div className="session-rail-heading"><div><h2>Devices</h2><p>Account messages</p></div></div><a className="session-item-select" href="/">Back to Devices</a></aside> : <aside className="session-rail" aria-label="Sessions">
           <div className="session-rail-heading">
             <div>
               <h2>Sessions</h2>

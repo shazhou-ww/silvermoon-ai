@@ -1,5 +1,29 @@
 # Devices 工作区实施证据
 
+## 最终导航复核退修 — FIXED
+
+生产 release 检查期间，主 Agent 继续核对共享外壳，发现 `App.tsx` 的现代 Settings 仍以 Streams 为侧栏标题及 “Back to Streams” 返回标签，而实际根路径已经切换为 Devices。该问题由本次根路由改变直接引起，不是设置功能重做范围。主 Agent 已取消本次 release `39471185944`，确认 check/deploy 均为 cancelled、没有进行生产部署；要求修正现代 Settings 的导航语义并补桌面/窄屏回归，旧 `/legacy/settings` 的 Sessions 语义必须保留。
+
+2026-10-21 在 `a81a80ea57857d5abd7bc07493849063fba31b7c` 上完成本次精确修正：仅现代 Settings 的移动返回 accessible name 改为 `Back to Devices`，现代侧栏的 label/标题/说明/返回链接改为 `Devices` / `Account messages` / `Back to Devices`。返回地址仍是原来的 `/`，未改设置管理、状态来源、token/identity 功能或 `/legacy/settings` 的 Sessions 分支。
+
+新增三宽度回归不只检查字符串：桌面实际点击返回链接、手机实际点击返回按钮，断言根页面为 Devices、All devices 可见且请求账户 v2 上行；旧 Settings 仍为 Sessions，桌面可选择原 Session，窄屏返回 Sessions 后路径仍是 `/legacy`。原管理功能断言全部保留，只将旧现代返回文案期望更新为正确目的地；fixture 新增 v2 空页/清单响应以允许真正进入根 Devices 页面。
+
+| 本次命令 | 实际结果 |
+| --- | --- |
+| `pnpm --filter @silvermoon-ai/web typecheck` | 退出 0 |
+| `pnpm --filter @silvermoon-ai/web test` | 7 个文件、83/83 通过 |
+| `pnpm --filter @silvermoon-ai/web build` | 退出 0，保留既有 >500KiB chunk 提示 |
+| `pnpm exec oxlint apps\web\src\App.tsx apps\web\tests\settings.browser.ts` | 退出 0；仅 App 原有 fast-refresh export warning |
+| `$env:PLAYWRIGHT_BUILT_APP='1'; pnpm --filter @silvermoon-ai/web test:browser -- devices.browser.ts settings.browser.ts --workers=2` | **92 通过、1 原有 skip，48.3 秒**；1440×900、390×664、320×640 实际构建页面，含新导航回归及全部原 Settings 工作流；skip 为 desktop 不适用的窄屏 Session 导航用例，无新增跳过或自动重试 |
+| `pnpm test:devices:smoke` | 退出 0，真实本地 UI＋Relay/D1/DO＋Device lib、Settings/legacy、未知响应原键恢复等闭环通过 |
+| `pnpm test:streams:smoke` | 退出 0，真实旧 v1 历史/raw/follow/离线 reload/会话撤销通过 |
+
+新旧 Settings 的三宽度截图共六张在 `.wrangler\device-workspace-settings-rework-evidence\`，文件名为 `settings.browser.ts-modern-c16db-retains-Sessions-navigation-{desktop,mobile,narrow}-{modern-settings-devices,legacy-settings-sessions}.png`；已查看本次桌面/窄屏实际渲染。日志在 `.wrangler\device-workspace-settings-rework-{build,browser,smoke,stream-smoke}.log`。两个本地 smoke 前后生产 dist 逐文件哈希不变；随机状态目录与端口 4173 listener 均为零，没有生产/私有凭证/共享标签操作。
+
+本次重新证明并勾选 I-S03 / I-AC03，全部 D 项仍未勾选。以下既有完整测试是前一候选的历史证据，本次未冒称重跑全仓或全量浏览器；新的精确 Inner 修订仍须由主 Agent 重新提交/验收，不能沿用旧修订的批准。Outer `Local-Verification.md` 保持未改，待新 Inner gate 后重新按新候选取得 Outer 验证。
+
+主 Agent 复查了两处精确外壳修改，并独立执行构建模式下 `settings.browser.ts --grep 'modern Settings' --workers=3`：三宽度共 6/6 通过，实际点击现代返回与旧 Sessions 导航保持正确；Web typecheck 和 diff hygiene 亦通过。没有把执行错文件而未匹配到测试的初次选择器当作验证。
+
 ## 主 Agent 独立复核
 
 主 Agent 直接审查了 Client 只读 API/账户隔离、路由兼容、Devices 页面、持久游标与发送恢复、实际桌面/窄屏截图。首轮指出同账户多标签页 localStorage 读改写可能覆盖未确认请求，以及手机直达链接未进入详情；已由同一实现 Agent 退修为账户范围 Web Locks、提交前同步重入保护、单调游标与按原 key 清除，并补齐两标签页/直达/前进后退回归。还要求增加真实本地 UI＋Relay＋Device lib 闭环，不能仅以 mock API 通过冒充集成。

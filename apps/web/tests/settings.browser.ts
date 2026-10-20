@@ -47,6 +47,10 @@ async function fixture(page: Page) {
         identities: [{ provider: "github", email: "reviewer@example.test", displayName: "Reviewer", emailVerified: true }],
         sessionId: `browser-${state.user}`,
       }
+    } else if (path === "/api/v2/devices") {
+      body = { devices: [{ id: "one", displayName: state.deviceName }, { id: "two", displayName: "Work desktop" }], next: null }
+    } else if (path === "/api/v2/account/events") {
+      body = { messages: [], next: url.searchParams.get("after") ?? "0", retained_after: "0" }
     } else if (path === "/api/tokens" && request.method() === "POST") {
       await state.createGate
       await new Promise((resolve) => setTimeout(resolve, state.createDelay))
@@ -159,7 +163,7 @@ async function fixture(page: Page) {
 const settings = (page: Page) => page.getByRole("region", { name: "Settings", exact: true })
 const input = (page: Page) => page.getByRole("textbox", { name: "Follow-up message" })
 
-test("Stream Settings retains device/token/identity management and reports sync rather than legacy Session status", async ({ page, isMobile }) => {
+test("modern Settings retains device/token/identity management and reports sync rather than legacy Session status", async ({ page, isMobile }) => {
   const state = await fixture(page)
   await page.goto("/settings")
   await expect(settings(page)).toBeVisible()
@@ -178,8 +182,8 @@ test("Stream Settings retains device/token/identity management and reports sync 
   await settings(page).getByRole("button", { name: "Hide", exact: true }).click()
   await expect(settings(page).getByRole("link", { name: "Link Google" })).toBeVisible()
   await expect(settings(page).getByRole("button", { name: "Unlink", exact: true })).toBeDisabled()
-  if (isMobile) await expect(page.getByRole("button", { name: "Back to Streams", exact: true })).toBeVisible()
-  else await expect(page.getByRole("link", { name: "Back to Streams", exact: true })).toHaveAttribute("href", "/")
+  if (isMobile) await expect(page.getByRole("button", { name: "Back to Devices", exact: true })).toBeVisible()
+  else await expect(page.getByRole("link", { name: "Back to Devices", exact: true })).toHaveAttribute("href", "/")
 })
 
 async function openSettings(page: Page) {
@@ -200,6 +204,41 @@ async function select(page: Page, title: string) {
   await page.locator(".session-item-select").filter({ hasText: title }).click()
   await expect(input(page)).toBeVisible()
 }
+
+test("modern Settings returns to root Devices while legacy Settings retains Sessions navigation", async ({ page, isMobile }, info) => {
+  const state = await fixture(page)
+  await page.goto("/settings")
+  await expect(settings(page)).toBeVisible()
+  const devicesRail = page.getByRole("complementary", { name: "Devices", includeHidden: true })
+  await expect(devicesRail.getByRole("heading", { name: "Devices", exact: true, includeHidden: true })).toHaveText("Devices")
+  await expect(devicesRail).toContainText("Account messages")
+  await expect(page.getByRole("link", { name: "Back to Streams", includeHidden: true })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Back to Streams", includeHidden: true })).toHaveCount(0)
+  await page.screenshot({ path: info.outputPath("modern-settings-devices.png"), fullPage: true })
+  if (isMobile) await page.getByRole("button", { name: "Back to Devices", exact: true }).click()
+  else {
+    const back = devicesRail.getByRole("link", { name: "Back to Devices", exact: true })
+    await expect(back).toHaveAttribute("href", "/")
+    await back.click()
+  }
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/")
+  await expect(page.getByRole("complementary", { name: "Devices" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "All devices All account uplink messages", exact: true })).toBeVisible()
+  await expect.poll(() => state.requests.includes("GET /api/v2/account/events")).toBe(true)
+  await expect(settings(page)).toHaveCount(0)
+  await page.goto("/legacy/settings")
+  await expect(settings(page)).toBeVisible()
+  const sessionsRail = page.getByRole("complementary", { name: "Sessions", includeHidden: true })
+  await expect(sessionsRail.getByRole("heading", { name: "Sessions", exact: true, includeHidden: true })).toHaveText("Sessions")
+  await expect(page.getByRole("link", { name: "Back to Devices", includeHidden: true })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Back to Devices", includeHidden: true })).toHaveCount(0)
+  await page.screenshot({ path: info.outputPath("legacy-settings-sessions.png"), fullPage: true })
+  if (isMobile) await page.getByRole("button", { name: "Back to Sessions", exact: true }).click()
+  else await select(page, "First Session")
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/legacy")
+  await expect(page.getByRole("complementary", { name: "Sessions" })).toBeVisible()
+  await expect(page.getByRole("complementary", { name: "Devices" })).toHaveCount(0)
+})
 
 test("Settings is a route with two modules and icon-only account controls", async ({ page, isMobile }) => {
   const state = await fixture(page)
