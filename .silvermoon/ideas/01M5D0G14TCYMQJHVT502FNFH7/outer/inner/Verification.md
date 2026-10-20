@@ -1,5 +1,25 @@
 # Devices 工作区实施证据
 
+## 当前 Linux CI 的导航夹具就绪阻塞 — 本地 FIXED，待新候选 CI
+
+认证修正后的 release `39484389883` 中，原账户切换及其确定性回归均通过；整体为 303 通过、2 原有 skip、1 narrow 用例失败，deploy skipped。失败发生在当前会话撤销用例的初始 `pendingAccount → choose`，尚未执行撤销断言：`choose` 在认证加载期间即时判断 Devices 侧栏不可见，错误地把“尚未挂载”当成“手机详情页”，随后等待并不存在的 Back to Devices。
+
+本次基于 `a617285970c508be8e7b280232e67cdb3bb38f72` 修正：共享测试 `choose` 只新增一行 `await page.locator(".devices-app").waitFor({ state: "visible" })`，然后才执行原来的 rail 可见性判断。等待的是实际账户工作区，不是侧栏可见；侧栏在手机详情模式可以合法隐藏，原 Back 分支及全部撤销/隐私/停止订阅断言保留。没有产品认证、应用源码、超时、sleep、retry 或 skip 变更。
+
+新增两种受控场景（根列表、`?device=one` 详情）各运行三项目：身份响应保持未交付，真实调用公共导航 helper 后才释放；测试只观察 helper 的 workspace 等待/rail 可见性探测及 Back 请求次数。根列表必须零 Back 请求，手机详情必须一次 Back，桌面详情无需 Back；因此也防止把修正误写为先等待可见侧栏。原 helper 下先运行根列表红测，247ms 明确失败为 `Navigation mistook the loading page for mobile detail`，不是靠延长等待掩盖。
+
+| 本次命令 | 实际结果 |
+| --- | --- |
+| `pnpm --filter @silvermoon-ai/web typecheck`；`pnpm --filter @silvermoon-ai/web build` | 均退出 0；正常应用构建，应用源码未改 |
+| `pnpm exec oxlint apps\web\tests\devices.browser.ts` | 退出 0，无新 warning |
+| `$env:PLAYWRIGHT_BUILT_APP='1'; pnpm --filter @silvermoon-ai/web test:browser -- devices.browser.ts --grep 'choose waits for delayed identity' --workers=1` | **6/6 通过，4.5 秒**；1440×900 / 390×664 / 320×640 的列表及详情受控延迟 |
+| `pnpm --filter @silvermoon-ai/web test:browser -- devices.browser.ts --project=narrow --grep 'current-session revocation hides all private pending' --repeat-each=5 --workers=1`（沿用构建页面设置） | 原 CI narrow 撤销用例全部原断言，**5/5 通过，5.7 秒**，固定重复而非失败重试 |
+| `pnpm --filter @silvermoon-ai/web test:browser -- devices.browser.ts --workers=1`（构建页面） | **66/66 通过，53.8 秒，0 skip/0 retry**，原 60 条及新增六条全部保留 |
+
+日志在 `.wrangler\device-workspace-helper-{red,build,delayed,revocation,full-devices}.log`；红测在改 helper 前取得。按要求未跑昂贵的无关全量浏览器或生产 CI，也未修改 Ideal/Outer/Deployment/events。I-S03 / I-AC03 在本次证明后重新勾选，全部 D 项仍未勾选；必须由主 Agent 对新的精确测试/证据修订重新提交/验收并让新 release 通过必需 Linux CI，以下历史记录不冒充该结果。
+
+主 Agent 已复查一行就绪等待及受控延迟回归，独立在构建页执行全部 66/66 Devices 用例（0 skip/retry，53.5 秒）与 Web typecheck，通过；确认产品源码、Worker、协议与运行脚本没有本轮差异。本轮测试修正没有重做已验证的认证逻辑，亦不把本地通过当作尚未取得的 Linux CI 通过。
+
 ## 生产必需 CI 的账户切换阻塞 — 本地 FIXED，待新候选 CI
 
 修正 Settings 后的 release `39473467729` 没有通过必需浏览器检查：276 通过、2 原有 skip，desktop 的“账户切换清除旧 pending 并停止旧订阅”用例在切换后等待新账户发送 opt-in 控件失败。deploy job 为 skipped，未上传本候选。该用例属于新增的账户边界验证，不能作为既有并行 fixture 风险忽略，也不能靠反复重跑或放宽断言批准上线。

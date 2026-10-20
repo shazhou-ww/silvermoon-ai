@@ -56,6 +56,7 @@ async function fixture(page: Page) {
 }
 
 async function choose(page: Page, name: string) {
+  await page.locator(".devices-app").waitFor({ state: "visible" })
   const rail = page.getByRole("complementary", { name: "Devices" })
   if (!await rail.isVisible()) await page.getByRole("button", { name: "Back to Devices" }).click()
   await rail.getByRole("button", { name }).click()
@@ -68,6 +69,59 @@ function barrier() {
   let open!: () => void
   const ready = new Promise<void>(resolve => { open = resolve })
   return { ready, open }
+}
+
+for (const destination of ["/", "/?device=one"]) {
+  test(`choose waits for delayed identity before navigating ${destination === "/" ? "the list" : "mobile detail"}`, async ({ page, isMobile }) => {
+    await fixture(page)
+    const identityRequested = barrier(), identityReply = barrier(), navigationCalled = barrier()
+    await page.route(`${origin}/api/me`, async route => {
+      identityRequested.open()
+      await identityReply.ready
+      await route.fulfill({ json: account })
+    })
+    await page.goto(destination)
+    await identityRequested.ready
+    await expect(page.locator(".devices-app")).toHaveCount(0)
+    const locate = page.locator.bind(page), byRole = page.getByRole.bind(page)
+    const workspace = locate(".devices-app"), rail = byRole("complementary", { name: "Devices" })
+    const waitForWorkspace = workspace.waitFor.bind(workspace), railVisible = rail.isVisible.bind(rail)
+    const expectedBack = isMobile && destination !== "/" ? 1 : 0
+    let backRequests = 0
+    // Release identity only once navigation actually waits or has observed the unmounted rail.
+    workspace.waitFor = options => {
+      const waiting = waitForWorkspace(options)
+      navigationCalled.open()
+      return waiting
+    }
+    rail.isVisible = async options => {
+      const visible = await railVisible(options)
+      navigationCalled.open()
+      return visible
+    }
+    page.locator = (selector, options) => selector === ".devices-app" ? workspace : locate(selector, options)
+    page.getByRole = (role, options) => {
+      if (role === "complementary" && options?.name === "Devices") return rail
+      if (role === "button" && options?.name === "Back to Devices") {
+        backRequests++
+        if (!expectedBack) throw new Error("Navigation mistook the loading page for mobile detail")
+      }
+      return byRole(role, options)
+    }
+    try {
+      const navigation = choose(page, "Workstation").then(() => ({ error: null }), (error: unknown) => ({ error }))
+      await navigationCalled.ready
+      await expect(locate(".devices-app")).toHaveCount(0)
+      identityReply.open()
+      expect((await navigation).error).toBeNull()
+      expect(backRequests).toBe(expectedBack)
+      await expect(page.getByRole("heading", { name: "Send to Workstation · this Device only", exact: true })).toBeVisible()
+    } finally {
+      identityReply.open()
+      page.locator = locate
+      page.getByRole = byRole
+    }
+  })
 }
 
 async function pendingAccount(page: Page, state: { failSend: boolean }) {
