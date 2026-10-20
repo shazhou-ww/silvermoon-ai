@@ -17,5 +17,5 @@
 ## 验收标准
 
 - 同账户指定 Device 路由、全部 Client 群发与跨账户隔离清晰可验证，见[业务模型](Business-Data-Model-Review.md)。
-- 接收、执行、重试与各 Client 独立补读不混用，见[连接与消息设计](Connection-and-Message-Design.md)。
+- Message 自增 ID 兼作排序与补读依据，不另设 position；接收、执行、请求幂等与各 Client 独立补读不混用，见[连接与消息设计](Connection-and-Message-Design.md)。
 - 版本隔离与原历史只读映射有明确边界；技术选型、精确字段和切换细节仍标为提案或待决，不作为已批准事实。

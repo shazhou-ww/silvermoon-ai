@@ -23,29 +23,43 @@ Device 重启、重连或同一身份的实例接管不新建业务 Device；单
 
 ## Account 路由与群发规则
 
-- **下行定向：** 每条 Client 消息必须指定一个目标 Device；Relay 从认证上下文确定 Account，再校验目标 Device 归属与有效状态，只写入该 Device 下行日志。不能省略目标后猜默认值，不能将同一条下行隐式广播到所有 Device；无效/停用/跨账户目标明确拒绝。
+- **下行定向：** 每条 Client 消息必须指定一个目标 Device；Relay 从认证上下文确定 Account，再校验目标 Device 归属与有效状态，仅以该 Device 为目标写入 Message。不能省略目标后猜默认值，不能将同一条下行隐式广播到所有 Device；无效/停用/跨账户目标明确拒绝。
 - **上行全量群发：** 任一 Device 的每条持久上行 event 都进入 Account 的逻辑群发范围，向该 Account 所有有效 Client 交付，不以 Client 是否发起相关任务、正在查看哪个 Device 或是否单独订阅该 Device 为条件。所有有效在线 Client 都应收到；同一 Client 的多个有效连接不能因其他连接已 ACK 就被跳过。
-- **账户级订阅：** Client 订阅的是 Account 内全部 Device 的 events；Relay 负责发现、聚合与扇出，不要求 Client 逐设备枚举才能满足群发。新 Device 加入后也必须纳入，发现与订阅/补读交界不得漏项；可有展示层筛选，但不能缩小底层要求的群发范围。
+- **账户级订阅：** Client 订阅的是 Account 内全部 Device 的 events；Relay 按 Account 和上行方向读取/推送 Message，不要求 Client 逐设备枚举或维护配对关系。新 Device 的上行写入相同账户范围后自然纳入；补读与实时交界不得漏项，可有展示层筛选，但不能缩小群发范围。
 - **离线恢复：** 各 Client 独立持久化接收游标，断线不代表已收。恢复后在仍具账户访问权及历史保留范围内补读全部来源的缺口；新 Client 可从显式历史起点读取保留事件，不能把浏览器自动重连当完整恢复。超过保留范围须明确报告缺口，不承诺为永久离线或已撤销 Client 无限保留。
 - **逻辑聚合而非新业务流：** Device 各自固定两个方向；Account 群发是服务端路由/聚合能力，不新增用户可创建的 Stream，也不把消息按 Client 复制成不同业务消息。每份交付保留 Account、源 Device 与原消息身份；重复交付由各 Client 独立去重，Connector 程序不成为新的消息归属。
 
 这些规则适用于各方向的每条消息，不按 task/objective 关联、消息类型或是否有任务发起 Client 缩小范围；设备状态、自主产生的 events 也要群发。
 
-账户聚合的恢复游标需覆盖多个 Device 的位置与来源发现进度，不能把不同 Device 的 position 当成同一计数器。可选择复合游标/服务端恢复状态，或可恢复的账户索引；精确机制待实现设计验证，但必须保证持久接收与群发故障之间可补偿、既有及新增 Device 都不会漏发。此处不承诺账户内跨 Device 总序，也不强行把原历史重新编号成统一日志。
+账户级补读直接使用统一 Message 的自增 ID，不再合并多个 Device 的独立 position 或引入复合游标。旧 v1 历史仍留在原命名空间，不为了统一新表而重新编号。
+
+## 最小消息模型与自增 ID
+
+核心 Message 提案只有 `id`、`account_id`、`device_id`、`is_upstream`、`payload`。`id` 是 Relay 在权威 Message 表中持久分配的自增主键，兼作排序与历史补读依据；不再额外设置 position。`is_upstream=true` 表示 Device→Client，false 表示 Client→Device，始终以 Device 为参照，不随观察者改变。
+
+两个方向先共用一张 Message 表：下行 `device_id` 是目标，上行是来源。按 Account、Device 和方向过滤即可形成所需读取范围，不为两个方向或每个 Client 各复制一份消息表；交付/执行状态单独保存，不改写已追加的 Message。精确字段拼写、索引与数据库产品待实施细化。
+
+- **排序与补读：** 在已授权范围中按 `id > after ORDER BY id` 有界分页。Client 读取同 Account 的上行，Device 读取同 Account/自身 Device 的下行；各自仅在可靠处理后保存已处理 ID。实时交付也须与该补读顺序衔接，不能先推进到较大 ID 再漏掉较小记录。
+- **作用域：** 自增 ID 在同一权威 Message 表内唯一且不复用；不能把多个 Device DO 各自生成的局部 ID 当成这个共同 ID。后续若物理分区，仍须满足账户查询范围内单一可排序/恢复的 ID 语义；不能静默换回复合游标或要求额外 position。
+- **提交可见性：** 自增分配本身不保证事务提交顺序。必须由存储事务/单写协调等机制保证，小 ID 尚未提交时不会先发布较大水位让读者越过去。并发、回滚、提交延迟与推送乱序需专门测试，不满足就不能宣称 ID 可安全补读。
+- **空洞与保留：** 回滚、其他 Account/方向的记录和授权清理都会产生可见 ID 空洞；读取不要求 `next = previous + 1`，缺号不等于丢消息或游标过期。过期判定依据读取范围的保留记录/下界，授权、清理与恢复不能仅看某个 ID 是否存在。
+- **精度与恢复：** ID 在 JSON/游标中使用不会丢精度的表示（可沿用 decimal string）；删除/清理/恢复备份后也不能复用已发出的 ID。ID 只表达 Relay 存储顺序，不代表设备本地发生顺序、业务因果或执行完成顺序。
+
+`producer_id` 不作为 Message 业务必填字段：鉴权上下文确定提交归属，必要的来源审计/重试校验放在服务端元数据。`task_ref`、task/objective/regulation 关联是可选 payload 内容，由上层解释，Relay 不要求每条消息关联任务。Client–Device 通信能力由同一 Account 推导，不添加直接绑定关系。
 
 ## 两条业务时序
 
 ### ① regulation：Client 短请求提交，Device 长订阅接收
 
-1. 获授权的 Client 产生稳定消息身份、目标 Device 与任务关联，HTTP 提交 regulation 到 Relay。短请求可复用 TCP/TLS，不要求每次重建连接。
-2. Relay 校验认证 Account、目标 Device 归属与状态、写入权限、大小与幂等冲突，仅原子写入该 Device 下行日志、去重记录和位置，再返回“Relay 已接收”，随后只通知该 Device 订阅。目标 Device 暂时离线不阻止持久接收，但目标已停用则拒绝。
+1. 获授权的 Client 产生稳定请求幂等键与目标 Device，HTTP 提交 regulation 到 Relay；任务关联仅按上层需要放在 payload。此时尚无 Relay Message ID。短请求可复用 TCP/TLS，不要求每次重建连接。
+2. Relay 校验认证 Account、目标 Device 归属与状态、写入权限、大小与幂等冲突，原子写入下行 Message、分配自增 ID 并保存幂等对应关系，再返回“Relay 已接收”和 Message ID，随后只通知该 Device 订阅。目标 Device 暂时离线不阻止持久接收，但目标已停用则拒绝。
 3. 当前有效 generation 的 Device 实例从自己的持久接收游标补读，先将 regulation 写入本地持久 inbox/去重记录，再推进接收进度；由 Device 自主调度，不由 Relay 冒充执行者。
-4. Device 接收、开始执行、完成或失败可作为关联 events 上报；“无回报/结果未知”不得解释为成功，也不得仅因超时自动换 ID 再执行。
+4. Device 接收、开始执行、完成或失败可作为关联 events 上报；“无回报/结果未知”不得解释为成功，也不得仅因超时换幂等键再次提交/执行。
 
 ### ② events：Device 短请求上报，Client 长订阅接收
 
-1. Device 在本地先记录事件/outbox，Relay 离线也继续自治；HTTP 单条或批量推送稳定 ID 的 events。
-2. Relay 校验下游 Account/Device 归属、有效 generation、幂等和配额，持久化上行日志后才确认并发起账户群发。HTTP 成功不等于所有 Client 已收到；响应丢失时沿用相同消息 ID 重试，不能当作未持久化。
+1. Device 在本地先记录事件/outbox 与稳定幂等键，Relay 离线也继续自治；HTTP 单条或有界批量提交，不能要求离线 Device 预知 Relay 自增 ID。
+2. Relay 校验下游 Account/Device 归属、有效 generation、幂等和配额，原子持久化上行 Message、自增 ID 与幂等对应关系后才确认并发起群发。HTTP 成功不等于所有 Client 已收到；响应丢失沿用原幂等键重试并取回原 Message ID，不能当作未持久化。
 3. Relay 将每条 event 扇出给同 Account 全部有效 Client；Client 通过账户级入口按各自游标读取/订阅所有 Device 的上行 events。每个订阅独立窗口、ACK 和恢复进度；一个 Client ACK 不得截断其他 Client 的历史，慢/离线 Client 通过独立补读恢复。
 4. 下游收到持久接收确认后可按本地策略释放已确认 outbox 内容；消息去重与执行证据的保留不能因此立即消失。
 
@@ -55,7 +69,7 @@ Device 重启、重连或同一身份的实例接管不新建业务 Device；单
 
 | 主体 | 提交 regulation | 消费/确认 regulation | 上报 events | 读取/订阅历史 |
 | --- | --- | --- | --- | --- |
-| Account 下有效 Client | 是，指定同 Account 的一个 Device，独立生产者身份和幂等键，须有写入权限 | 否，不冒充 Device | 否，不冒充下游执行证据 | 接收该 Account 所有 Device 的 events；regulation 历史按显式读取权限，不含消费权 |
+| Account 下有效 Client | 是，指定同 Account 的一个 Device，持认证归属和稳定请求幂等键，须有写入权限 | 否，不冒充 Device | 否，不冒充下游执行证据 | 接收该 Account 所有 Device 的 events；regulation 历史按显式读取权限，不含消费权 |
 | 持有效 Device 身份的活动实例 | 否，不代替用户授权 | 仅自身下行，须有效 fencing generation | 仅自身上行，须有效 generation，不选择或缩小 Client 接收名单 | 自身 regulation；events 自恢复读取须单独声明范围，不取得其他 Device 消费权 |
 | 账户访问已失效或其他 Account 主体 | 否 | 否 | 否 | 否 |
 | 管理/保留操作主体 | 不是普通消息提交权 | 不是执行权 | 不是执行证据 | 仅依单独授权执行撤销、清理或审计 |
@@ -66,17 +80,17 @@ Device 重启、重连或同一身份的实例接管不新建业务 Device；单
 
 | 业务原语 | 可选 HTTP/订阅表达 | 语义 |
 | --- | --- | --- |
-| 提交下行 | `POST /api/v2/devices/{deviceId}/regulations` | 直接指定同 Account 的 Device，无需 Connector ID；返回消息身份、目标、Relay 分配位置与持久接收状态，不返回执行成功 |
+| 提交下行 | `POST /api/v2/devices/{deviceId}/regulations` | 直接指定同 Account 的 Device，无需 Connector ID；带稳定幂等键，返回自增 Message ID、目标与持久接收状态，不返回执行成功 |
 | 上报上行 | `POST /api/v2/devices/{deviceId}/events` | 认证身份须与路径 Device 一致；单条或有界批量，建议整批原子接收，混入冲突/越权则整批失败，不靠含糊的部分成功 |
-| 历史补读 | Device 下行 `GET .../regulations?after=...`；Client 上行 `GET /api/v2/account/events?after=...` | 授权分页；下行按目标日志，上行聚合账户全部 Device，返回来源、水位/保留下界及续读游标；游标绑定其 Account/范围，不可跨范围借用 |
+| 历史补读 | Device 下行 `GET .../regulations?after=<id>`；Client 上行 `GET /api/v2/account/events?after=<id>` | 按授权范围过滤统一 Message 表，按自增 ID 升序分页；返回来源、保留范围与续读 ID，身份/读取范围变化不能直接继承旧游标 |
 | 实时订阅 | Device 下行按自身 Device 身份；Client 上行 `GET /api/v2/account/events/subscribe` 等账户级表达 | SSE、WebSocket 或长轮询均为候选；先补读再持续交付，上行覆盖所有既有/新增 Device，不要求 Client 手动逐设备订阅 |
 | 下游所有权与接收进度 | 显式取得/续租 generation，提交持久接收游标 | 不混用浏览器订阅 ACK；精确 wire shape 后续决定 |
 
-候选消息字段包括 `messageId`、`producerId`、下行 `targetDeviceId` 或等价路径目标、上行 `sourceDeviceId`、`taskId`/`objectiveId`、`regulationId`/`causedBy`、`type`、`payload`。Account/源 Device 由认证上下文绑定，不能信任可伪造的 payload；路径、消息声明与认证约束的 Device 不一致须拒绝，已持久化消息不得通过重试改投另一个 Device。Relay 独立分配每 Device 方向内 `position`，不添加 Connector 业务字段。不是字段定稿，也不把所有业务对象硬归成一个 task 表。位置可沿用 decimal string 的精度边界，不能作为 JavaScript Number 隐式转换。
+Account/源 Device 由认证上下文绑定，不能信任可伪造的 payload；路径、消息声明与认证约束的 Device 不一致须拒绝。下行与上行入口可由服务端确定 `is_upstream`，不让提交者通过改 bool 越权。
 
-幂等建议以 `(account, messageId)` 绑定经授权的生产者、方向、目标/来源 Device 及规范化内容指纹，ID 采用足够唯一的生成方案；不同 Client 各有生产者身份，不能假定共用一个本地序号。身份、内容与归属相同返回原位置；相同身份不同生产者、改方向、改投 Device 或内容冲突均拒绝。跨 Device 的重试身份绑定需可原子校验，不能只在目标日志中局部去重而允许改投；具体协调机制在实施前确定。提交方误换 ID 重试无法由传输去重自动修复，执行侧仍须业务幂等。
+**自增 ID 不代替提交幂等：** 提交方在发送前持久保存幂等键（例如协议头/每条批量记录的同步元数据，不是 Message 业务字段），Relay 在账户范围内校验该键与认证归属、方向、Device、内容指纹的绑定，并保存其 Message ID。完全相同的重试返回原 ID；冲突、改方向或改投 Device 明确拒绝，不追加新 Message。不同 Client 独立生成足够唯一的键，不共用本地计数器；更换浏览器会话/设备凭证后的合法恢复不能仅因连接 ID 改变就失去重试映射。
 
-批次与重复校验、配额和位置分配须在同一原子边界；通知丢失不影响历史补读。重试身份的保存期限必须覆盖承诺的重试窗口；若消息已清理且无法证明旧内容，不得重新接受为新任务，应明确返回历史不可验证/需人工恢复。
+消息、自增 ID、批次/重复校验、配额与幂等映射须在同一原子边界，跨目标改投不能只靠目标局部去重。HTTP 响应丢失时，提交方不知道 ID 也能以原键取回原结果；通知丢失不影响按 ID 补读。映射须覆盖承诺的重试窗口；内容已清理且无法验证旧请求时明确阻断，不将旧请求重新当成新任务。超出窗口的行为与恢复流程须在实施前定清，不能无限承诺去重。业务副作用仍需要执行侧幂等，不能把 Relay 去重当端到端 exactly-once。
 
 ## 三层确认与执行安全
 
@@ -96,13 +110,13 @@ Relay fencing 不能取消旧实例已经开始的外部副作用，网络隔离
 
 ## 顺序、失败与容量
 
-每 Device 每方向只承诺 Relay 追加顺序、独立游标与至少一次交付；不承诺跨任务因果、跨 Device/跨方向全局总序或端到端 exactly-once。不同 Client 可能看到不同 Device 事件的不同交错顺序，但每条都应交付且来源内顺序不变。本地事件顺序若有业务意义，需要显式来源序列/因果关联，不能把并发 HTTP 到达顺序当实际发生顺序。
+各授权读取范围按 Message 自增 ID 升序交付，重复记录由接收方按 ID 去重，Device 下行和各 Client 上行的确认/消费进度独立。统一表提供存储排序，不承诺现实发生顺序、跨任务因果、业务执行/完成总序或端到端 exactly-once。本地事件的业务关联若有意义，由 payload 表达，不把 Relay 自增顺序当外部世界因果。
 
 | 场景 | 所需行为 |
 | --- | --- |
-| 持久化前失败 | 明确失败，提交方用原 ID 重试；不得先确认 |
-| 已提交、HTTP 响应或通知丢失 | 原 ID 重试返回同一结果；订阅从持久游标补读 |
-| 多 Client 并发写 | Relay 原子分配位置；独立消息 ID 不冲突，不要求共享 Client 计数器 |
+| 持久化前失败 | 明确失败，提交方用原请求幂等键重试；不得先确认 |
+| 已提交、HTTP 响应或通知丢失 | 原键重试返回原 Message ID；订阅按已处理 ID 补读 |
+| 多 Client/Device 并发写、低 ID 提交延迟或回滚 | Relay 原子分配 ID 与记录映射，保证提交可见水位安全；不要求连续 ID 或共享客户端计数器，不能推进到高 ID 后遗漏低 ID |
 | 目标缺失/不存在/停用/跨账户 | 明确拒绝，不默认路由、不投其他 Device；停用与提交竞争需有协调的授权/接收边界 |
 | 群发中断或账户新增 Device | 从持久来源/恢复状态补齐；既有及新增来源均纳入账户级订阅，不把一次内存通知当唯一交付依据 |
 | 某个 Client 断线、慢或已 ACK | 不阻塞其他 Client，不代替其他 Client 确认；各自限流、窗口与补读，超期明确报错 |
@@ -112,7 +126,7 @@ Relay fencing 不能取消旧实例已经开始的外部副作用，网络隔离
 | 超过保留期/游标早于保留下界 | 明确 `cursor_expired` 或历史不可验证类失败，返回可恢复范围；禁止静默从最新位置开始或跳过未执行 regulation |
 | 凭证/账户权限撤销 | 新请求拒绝，现有订阅及时重新校验/关闭；停用和保留期清理按独立授权执行，不能用 AO 禁止所有法定删除 |
 
-具体窗口、重试退避、配额、保留期、未消费 regulation 的清理约束和超期恢复流程待定，不能直接照搬 v1 常量。Account 级聚合还需评估多个 Device 对多个 Client 的扇出量、来源发现和复合游标大小，避免一个嘈杂 Device 饿死其他来源或一个慢 Client 拖住全账户。先通过有界分页/索引/公平调度评估，不再开放用户多 Stream。
+具体窗口、重试退避、配额、保留期、未消费 regulation 的清理约束和超期恢复流程待定，不能直接照搬 v1 常量。需评估统一消息写入/自增协调及账户扇出负载，避免一个嘈杂 Device 饿死其他来源或一个慢 Client 拖住全账户。先通过有界分页/索引/公平调度评估，不因此恢复多 Stream、额外 position 或按方向拆表。
 
 ## 传输与 DO 分开决定
 
@@ -122,8 +136,8 @@ Relay fencing 不能取消旧实例已经开始的外部副作用，网络隔离
 | 上游 WebSocket | 可显式 ACK/窗口，现有浏览器已有实现；需处理鉴权、心跳、连接配额 | 候选，不因已有实现就绑定新业务协议 |
 | 下游 WebSocket | 低延迟下发、显式窗口和所有权控制；有连接生命周期成本 | 候选，与长轮询比较后决定 |
 | 下游长轮询 | HTTP 请求模型易复用，断开恢复清晰；需验证等待期限、请求频度和唤醒路由 | 候选，不预设成本/规模优势 |
-| 每 Device 的协调与持久存储 | 当前 DO 合并顺序日志、writer lease/generation、SQLite 持久化和浏览器订阅；HTTP 写入仍可按 Account/Device 路由到相同协调所有者 | 先明确一致性与路由需求，再决定保留/调整 DO，不因 HTTP 自动移除，也不因连接程序更换而换存储归属 |
-| Account 级聚合与群发 | 现有逐 Device DO 不能自动覆盖全部 Device→全部 Client；需要账户范围发现、可恢复 fan-in/fan-out、隔离背压与权限撤销 | 在保留来源身份/独立顺序前提下评估路由与恢复机制，不预先承诺新增 Account DO 或统一存储 |
+| Message 存储与 Device 所有权协调 | 当前逐 Device DO 同时持有多流日志、writer lease/generation、SQLite 和订阅；各 DO 局部自增不能直接满足统一 Message ID | 以统一 Message 表、自增 ID 与安全补读为设计约束，另评估 Device lease/fencing 与消息写入的一致性；不因改 HTTP 自动移除 DO，也不假装可原样复用旧存储 |
+| Account 级群发 | 统一 Message 按 Account/上行过滤并用 ID 补读，新增 Device 自动落入范围；仍需实时扇出、背压与撤销校验 | 不再为各来源维护复合游标；具体存储产品/通知路由与是否保留 DO 待证，不凭空承诺成本/规模 |
 
 仅事件上报可以使用 HTTP 与其他耐久存储，并不天然依赖 WebSocket 或 DO；但本目标还包括顺序、幂等、下游单所有权与实时路由，移除 DO 就必须给出替代原子协调/存储/通知方案及故障证明。研究文档不为比较而部署资源，不凭空承诺价格、吞吐或容量。
 
@@ -141,7 +155,7 @@ Relay fencing 不能取消旧实例已经开始的外部副作用，网络隔离
 
 ## 待决事项
 
-1. **协议提案：** 字段、路径、状态码、Client 生产者身份/恢复身份、幂等规范化/保留期限、批次原子性、关联引用约束与位置格式。下行单目标与上行同账户全量群发是确定要求，不是待决。
-2. **技术验证：** 上游 SSE/WebSocket、下游 WebSocket/长轮询，协调/存储是否沿用 DO，账户级聚合、动态发现与恢复游标机制；用真实需求与后续获准环境证据决定。
+1. **协议提案：** 精确字段/路径、状态码、认证归属、请求幂等键及保留期限、批次原子性、ID 的安全 wire 表示与超期恢复。自增 ID 排序/补读、下行单目标与上行同账户全量群发是确定要求，不另加 position。统一表和布尔方向是本版模型提案。
+2. **技术验证：** 上游 SSE/WebSocket、下游 WebSocket/长轮询，统一 Message 存储/事务与 ID 提交可见顺序，Device 所有权协调及是否沿用 DO、账户群发路由；用需求与后续获准环境证据决定。
 3. **所有权与执行：** 接管/租期策略、离线自治可启动范围、本地 inbox/outbox 恢复、外部副作用幂等/fencing、未知结果对账。
 4. **容量与迁移：** 背压/公平性/保留清理、游标超期恢复、旧身份映射、版本并存/退出与安全回退。构想认可仅确定不丢身份/历史的边界，不批准尚无证据的切换细案。

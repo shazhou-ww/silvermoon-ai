@@ -6,11 +6,11 @@
 
 ### I-S01: 收敛协议与身份兼容
 
-统一 Account/Device/Client 业务模型，Connector 仅是连接程序；消息、方向日志与凭证归属 Device，不引入独立 Connector 业务 ID。确定下行单目标与上行全量群发契约，细化版本协商、权限、幂等、fencing 与保留策略；优先保留既有 Account/Device ID，核实原 user/device/connectors/stream 历史归属。
+按 Account 推导 Client/Device 通信关系，Connector 仅是连接程序。细化统一 Message 表、自增 ID 兼作排序/补读、布尔方向和独立请求幂等键的契约；不另加 position 或强制 producer/task 字段。确定存储事务/Device fencing 一致性、权限和保留边界，核实原历史且优先保留既有 Account/Device ID。
 
 ### I-S02: 接通双向持久链路
 
-实现 Client→Relay→指定 Device 的 regulation 下行及每个 Device→Relay→同 Account 全部 Client 的 events 群发。接通账户级订阅、动态来源发现、各 Client 独立恢复与去重，贯通 Device 本地 outbox、持久 inbox/执行记录和游标；不以更换 HTTP 自动移除协调存储。
+实现 Client→Relay→指定 Device 的下行与 Device→Relay→同 Account 全部 Client 的群发；按授权过滤统一 Message 并按 ID 补读，不要求逐设备复合游标。接通各 Client 独立恢复、Device 本地 outbox/inbox、请求键到 Relay Message ID 的原子映射；根据统一存储和租约协调需要决定 DO 调整，不以 HTTP 自动移除。
 
 ### I-S03: 验证故障与兼容边界
 
@@ -24,7 +24,7 @@
 
 ### I-AC02: 账户路由与群发可验证
 
-用至少两个同 Account Device、两个同 Account Client 和另一个 Account 的对照主体做集成测试：每个 Client 均能定向下发到每个 Device，每条只被目标消费；每个 Device 每条 event 都被全部同 Account Client 接收且不跨账户；新增 Device 自动纳入，离线 Client 独立补读。两个方向先持久化再确认、同 ID 去重/冲突拒绝，HTTP 接收与执行状态独立。
+用至少两个同 Account Device、两个同 Account Client 和另 Account 对照主体测试：下行仅目标消费，上行全部同账户 Client 接收，新增 Device 自动纳入。并发/低 ID 延迟提交、回滚空洞与精度边界下按自增 ID 补读无遗漏；响应丢失时原幂等键返回原 ID 不重复追加、冲突拒绝，且 HTTP 接收与执行状态独立。
 
 ### I-AC03: 故障与权限边界显式可见
 

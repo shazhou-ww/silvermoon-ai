@@ -24,7 +24,7 @@
 
 ### D-AC02: 外部路由群发与自治有实证
 
-以关联消息 ID、目标/来源 Device、各 Client 游标及脱敏交付矩阵证明：下行仅到指定 Device，每个 Device 上行都到全部同 Account Client 且不跨账户，新增来源/离线补读无遗漏。HTTP 接收不冒充执行成功，Relay 离线时 Device 本地记录继续积累且恢复后同步。
+以 Relay 自增 Message ID、目标/来源 Device、各 Client 已处理 ID 和脱敏交付矩阵证明：下行仅到指定 Device，上行全部同账户 Client 收到且不跨账户，新增来源/按 ID 补读无遗漏；同一请求键重试返回原 ID。HTTP 接收不冒充执行成功，Relay 离线时 Device 本地记录继续积累且恢复后同步。
 
 ### D-AC03: 历史与恢复无静默损失
 
